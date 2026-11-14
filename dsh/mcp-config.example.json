@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "sdd": {
+      "url": "https://sdd-mcp.intra.example.com/mcp",
+      "transport": "streamable-http"
+    }
+  }
+}

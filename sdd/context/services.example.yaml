@@ -1,0 +1,24 @@
+services:
+  order-api:
+    repo: order-api
+    owner: team-order
+    language: java
+    runtime: spring-boot
+    test_command: ./mvnw test
+    run_command: docker compose up order-api
+    contracts:
+      - contracts/order-api.openapi.yaml
+    depends_on:
+      - payment-api
+      - user-api
+  order-web:
+    repo: order-web
+    owner: team-order
+    language: typescript
+    runtime: vite
+    test_command: npm test
+    run_command: npm run dev
+    contracts:
+      - contracts/order-api.openapi.yaml
+    depends_on:
+      - order-api

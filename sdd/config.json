@@ -1,0 +1,47 @@
+{
+  "project": "demo",
+  "sdd_level": "L2",
+  "spec_root": "docs/specs",
+  "report_root": "sdd/reports",
+  "prd_index": "docs/prd-index.md",
+  "prd_mode": "workitem",
+  "require_prd_index": true,
+  "test_globs": [
+    "tests/**/*",
+    "test/**/*",
+    "**/*.test.*",
+    "**/*.spec.*",
+    "**/*_test.*",
+    "**/test_*.py"
+  ],
+  "exclude_dirs": [
+    ".git",
+    ".hg",
+    ".svn",
+    "node_modules",
+    "dist",
+    "build",
+    "coverage",
+    ".venv",
+    "venv",
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache"
+  ],
+  "test_commands": [],
+  "require_commit_sha": false,
+  "risk_stop": [
+    "security",
+    "data_migration",
+    "destructive_change",
+    "public_api_break"
+  ],
+  "gates": {
+    "G0": "human",
+    "G1": "auto",
+    "G2": "auto_if_no_risk",
+    "G3": "auto",
+    "G4": "auto",
+    "G5": "auto"
+  }
+}

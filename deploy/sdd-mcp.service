@@ -1,0 +1,15 @@
+[Unit]
+Description=SDD shared MCP server
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/sdd-kit
+Environment=SDD_MCP_REGISTRY=/opt/sdd-kit/registry.json
+ExecStart=/usr/bin/python3 -m sdd.mcp.server --transport streamable-http --host 127.0.0.1 --port 8765 --path /mcp
+Restart=always
+RestartSec=3
+User=sdd
+Group=sdd
+
+[Install]
+WantedBy=multi-user.target

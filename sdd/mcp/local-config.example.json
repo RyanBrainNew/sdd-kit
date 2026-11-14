@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "sdd-local": {
+      "command": "python",
+      "args": [
+        "-m",
+        "sdd.mcp.server",
+        "--root",
+        ".",
+        "--transport",
+        "stdio"
+      ],
+      "cwd": "."
+    }
+  }
+}

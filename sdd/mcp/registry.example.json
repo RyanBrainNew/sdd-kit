@@ -1,0 +1,20 @@
+{
+  "workspace_root": "/workspaces",
+  "projects": {
+    "order-platform": {
+      "path": "order-platform",
+      "description": "Order domain control repository",
+      "tags": ["domain:order", "team:commerce"]
+    },
+    "payment-api": {
+      "path": "payment-api",
+      "description": "Payment backend service",
+      "tags": ["service:payment", "team:payments"]
+    },
+    "order-web": {
+      "path": "order-web",
+      "description": "Order frontend",
+      "tags": ["frontend", "team:commerce"]
+    }
+  }
+}

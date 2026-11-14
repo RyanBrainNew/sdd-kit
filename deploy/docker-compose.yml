@@ -1,0 +1,18 @@
+services:
+  sdd-mcp:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: sdd-mcp:local
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8765:8765"
+    environment:
+      SDD_MCP_REGISTRY: /app/registry.json
+      SDD_MCP_TRANSPORT: streamable-http
+      SDD_MCP_HOST: 0.0.0.0
+      SDD_MCP_PORT: "8765"
+      SDD_MCP_PATH: /mcp
+    volumes:
+      - ../workspaces:/workspaces
+      - ./registry.json:/app/registry.json:ro

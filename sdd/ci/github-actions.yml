@@ -1,0 +1,30 @@
+name: SDD
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  sdd:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Validate SDD artifacts
+        env:
+          PYTHONPATH: .
+        run: |
+          python -m sdd verify-core
+          python -m sdd verify-agent
+          python -m sdd check --all --stage ci --check-git
+
+      # 项目原有的 test / build / security scan 保持不动，放在这里或独立 job。

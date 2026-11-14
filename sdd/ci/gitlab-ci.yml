@@ -1,0 +1,14 @@
+sdd:
+  image: python:3.11-slim
+  stage: test
+  variables:
+    PYTHONPATH: "."
+  script:
+    - python -m sdd verify-core
+    - python -m sdd verify-agent
+    - python -m sdd check --all --stage ci --check-git
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
+  # 项目原有的 test / build / security scan 保持不动，放在同一 job 或独立 job。

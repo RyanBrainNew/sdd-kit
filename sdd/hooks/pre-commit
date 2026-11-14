@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || {
+  echo '[SDD-HOOK][BLOCK] 当前目录不是 Git 仓库' >&2
+  exit 2
+}
+
+python_bin=${PYTHON:-python}
+if ! command -v "$python_bin" >/dev/null 2>&1; then
+  python_bin=python3
+fi
+
+exec "$python_bin" "$repo_root/sdd/scripts/sdd.py" hook pre-commit
