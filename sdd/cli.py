@@ -33,11 +33,14 @@ def _print_human(payload: dict[str, Any]) -> None:
         if not specs:
             print("[sdd] no specs found")
             return
+        if payload.get("current_spec"):
+            print(f"[sdd] current session: {payload['current_spec']}")
         for item in specs:
             counts = item.get("task_counts", {})
             next_action = item.get("next", {})
+            marker = "*" if item.get("current") else " "
             print(
-                f"{item.get('spec')}  [{item.get('state')}]  "
+                f"{marker} {item.get('spec')}  [{item.get('state')}]  "
                 f"next={next_action.get('action')}  "
                 f"tasks={counts.get('done', 0)}/{counts.get('total', 0)} done"
             )
@@ -48,6 +51,34 @@ def _print_human(payload: dict[str, Any]) -> None:
                 )
             if not item.get("tasks"):
                 print("  (no tasks yet)")
+        return
+    if payload.get("kind") == "events":
+        for event in payload.get("events", []):
+            print(
+                f"{event.get('seq')}  {event.get('at')}  "
+                f"{event.get('event')}  "
+                f"{event.get('from_state')} -> {event.get('to_state')}  "
+                f"{event.get('evidence', '')}"
+            )
+        return
+    if payload.get("kind") == "manifest":
+        print(
+            f"[sdd] wrote sdd/manifest.json "
+            f"(version {payload.get('version')}, {len(payload.get('files', {}))} files)"
+        )
+        return
+    if payload.get("kind") == "sync_agent":
+        if payload.get("changed"):
+            print("[sdd] updated the SDD managed block in AGENTS.md")
+        else:
+            print("[sdd] AGENTS.md managed block already up to date")
+        return
+    if payload.get("kind") in {"verify_core", "verify_agent"}:
+        if payload.get("ok"):
+            print(f"[sdd] {payload['kind']} passed")
+        else:
+            for error in payload.get("errors", []):
+                print(f"[sdd] {error}", file=sys.stderr)
         return
     spec = payload.get("spec") or payload.get("spec_id") or "-"
     state = payload.get("state") or payload.get("next", {}).get("state") or "-"
@@ -201,6 +232,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=lambda a, w: w.board())
 
+    p = sub.add_parser("events", help="show the append-only audit events")
+    p.add_argument("--spec")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=lambda a, w: w.events(a.spec))
+
     p = sub.add_parser("check", help="validate artifacts")
     p.add_argument("--spec")
     p.add_argument("--all", action="store_true")
@@ -310,12 +346,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _verify_agent_payload(root: Path) -> dict[str, Any]:
     errors = verify_agents(root)
-    return {"ok": not errors, "errors": errors}
+    return {"ok": not errors, "kind": "verify_agent", "errors": errors}
 
 
 def _verify_core_payload(root: Path) -> dict[str, Any]:
     errors = verify_core(root)
-    return {"ok": not errors, "errors": errors}
+    return {"ok": not errors, "kind": "verify_core", "errors": errors}
 
 
 def main(argv: list[str] | None = None) -> int:

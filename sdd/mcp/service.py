@@ -82,6 +82,11 @@ class SddService:
     def board(self, project_id: str) -> dict[str, Any]:
         return self._workspace(project_id).board()
 
+    def events(
+        self, project_id: str, spec: str | None = None
+    ) -> dict[str, Any]:
+        return self._mcp(self._workspace(project_id).events(spec))
+
     def session(
         self,
         project_id: str,

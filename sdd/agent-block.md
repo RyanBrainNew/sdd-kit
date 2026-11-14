@@ -22,7 +22,8 @@ python -m sdd start-work --work-item <work-item> --json
 - 产出 `next.artifact` 后，用 `next.submit_with` 提交：
   - 阶段产物：`python -m sdd submit --artifact <name> --file <path> --json`
   - 实现任务：`python -m sdd submit-task --task T-xxx --evidence "..." --json`
-- `ok=false` 时按 `errors` 修复后重新提交；不要跳步，不要直接编辑 `state.json`。
+- `ok=false` 时按 `errors` 修复后重新提交；不要跳步，不要直接编辑 `state.json`；
+  也不要手工改 `events.jsonl`，审计流由 `sdd` 自动追加。
 - `decision_required=true` 时停止，把 `question` / `options` 交给人类，不要继续编码。
 - 只有 `human_checkpoint.required=true` 时才停下来找人。
 

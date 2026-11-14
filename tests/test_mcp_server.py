@@ -58,6 +58,7 @@ class SddMcpServerTest(unittest.TestCase):
         self.assertIn("sdd_submit_task", names)
         self.assertIn("sdd_list_specs", names)
         self.assertIn("sdd_board", names)
+        self.assertIn("sdd_events", names)
         self.assertIn("sdd_pr", names)
         self.assertIn("sdd_next", names)
         self.assertIn("sdd_context", names)

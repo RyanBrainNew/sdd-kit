@@ -212,6 +212,42 @@ class CliTest(unittest.TestCase):
         )
         self.assertEqual(task["next"]["action"], "run_verification")
 
+    def test_events_are_append_only_and_board_marks_current_session(self):
+        started = self.start("srdcloud-553377", "订单取消")
+        spec = started["spec_id"]
+        first = self.run_cli("events", "--spec", spec)
+        self.assertEqual(first["kind"], "events")
+        self.assertEqual(first["source"], "events.jsonl")
+        self.assertEqual(first["count"], 1)
+        first_event = first["events"][0]
+        self.assertEqual(first_event["event"], "spec_created")
+        self.assertEqual(first_event["to_state"], "DRAFT")
+
+        self.write_artifact(spec, "spec.md", SPEC_TEXT)
+        self.run_cli(
+            "submit",
+            "--spec",
+            spec,
+            "--artifact",
+            "spec.md",
+            "--file",
+            str(self.root / "docs" / "specs" / spec / "spec.md"),
+        )
+        self.run_cli(
+            "approve", "--spec", spec, "--human", "--evidence", "需求已确认"
+        )
+
+        second = self.run_cli("events", "--spec", spec)
+        self.assertGreaterEqual(second["count"], 2)
+        self.assertEqual(second["events"][0], first_event)
+        self.assertEqual(second["events"][-1]["to_state"], "SPEC_READY")
+
+        board = self.run_cli("board")
+        self.assertEqual(board["current_spec"], spec)
+        item = next(item for item in board["specs"] if item["spec"] == spec)
+        self.assertTrue(item["current"])
+        self.assertEqual(item["events_count"], second["count"])
+
     def test_verify_core_and_agent_detect_tampering(self):
         self.run_cli("manifest", "--write")
         self.assertEqual(self.run_cli("verify-core")["ok"], True)

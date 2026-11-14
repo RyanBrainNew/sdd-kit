@@ -265,7 +265,25 @@ class Workspace:
 
     def board(self) -> dict[str, Any]:
         """Return a Spec Kitty-style read-only board for specs and tasks."""
-        return self._json(self._run(["board", "--json"]))
+        payload = self._json(self._run(["board", "--json"]))
+        pointer = self.read_pointer()
+        current_spec = (
+            str(pointer["pointer"].get("spec"))
+            if pointer.get("valid") and pointer.get("pointer")
+            else None
+        )
+        for item in payload.get("specs", []):
+            item["current"] = bool(current_spec and item.get("spec") == current_spec)
+        payload["current_spec"] = current_spec
+        payload["session"] = self.session_info()
+        return payload
+
+    def events(self, spec: str | None = None) -> dict[str, Any]:
+        """Return the append-only audit stream for one Spec."""
+        resolved = spec or self._resolve_current_spec()
+        return self._json(
+            self._run(["events", "--spec", resolved, "--json"])
+        )
 
     def session(
         self,
@@ -1205,7 +1223,7 @@ def write_manifest(root: str | Path) -> dict[str, Any]:
         path.relative_to(base).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
         for path in protected_files(base)
     }
-    payload = {"version": version, "files": files}
+    payload = {"kind": "manifest", "version": version, "files": files}
     path = base / "sdd" / "manifest.json"
     path.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",

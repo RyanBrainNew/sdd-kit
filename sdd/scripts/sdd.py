@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Iterable, Optional
 
 
-VERSION = "0.5.0"
+VERSION = "0.6.0"
 
 SPEC_SECTIONS = (
     ("元数据", "Metadata"),
@@ -227,8 +227,76 @@ def resolve_spec(
 
 
 def save_state(directory: Path, state: dict[str, Any]) -> None:
+    state_path = directory / "state.json"
     state["updated_at"] = now()
-    write_json(directory / "state.json", state)
+    write_json(state_path, state)
+    append_event_log(directory, state)
+
+
+def _event_from_history(
+    seq: int, entry: dict[str, Any], from_state: Optional[str]
+) -> dict[str, Any]:
+    evidence = str(entry.get("evidence") or "")
+    event_name = entry.get("action") or (
+        "spec_created" if evidence == "created" else "state_transition"
+    )
+    event: dict[str, Any] = {
+        "schema": 1,
+        "seq": seq,
+        "at": entry.get("at"),
+        "event": event_name,
+        "from_state": from_state,
+        "to_state": entry.get("state"),
+        "evidence": evidence,
+    }
+    for key in ("task", "commit", "pr_url", "gate", "reason", "actor", "source"):
+        if entry.get(key) is not None:
+            event[key] = entry[key]
+    return event
+
+
+def read_event_log(directory: Path) -> list[dict[str, Any]]:
+    path = directory / "events.jsonl"
+    if not path.is_file():
+        return []
+    events: list[dict[str, Any]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(item, dict):
+            events.append(item)
+    return events
+
+
+def derive_events(state: dict[str, Any]) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    previous_state: Optional[str] = None
+    for seq, entry in enumerate(state.get("history", []), start=1):
+        if not isinstance(entry, dict):
+            continue
+        event = _event_from_history(seq, entry, previous_state)
+        events.append(event)
+        previous_state = entry.get("state")
+    return events
+
+
+def append_event_log(directory: Path, state: dict[str, Any]) -> None:
+    """Append new history entries to events.jsonl without rewriting old events."""
+    history = [entry for entry in state.get("history", []) if isinstance(entry, dict)]
+    existing = read_event_log(directory)
+    if len(existing) >= len(history):
+        return
+    previous_state = existing[-1].get("to_state") if existing else None
+    path = directory / "events.jsonl"
+    with path.open("a", encoding="utf-8", newline="\n") as handle:
+        for seq, entry in enumerate(history[len(existing) :], start=len(existing) + 1):
+            event = _event_from_history(seq, entry, previous_state)
+            handle.write(json.dumps(event, ensure_ascii=False) + "\n")
+            previous_state = entry.get("state")
 
 
 def add_history(
@@ -1502,6 +1570,38 @@ def command_next(args: argparse.Namespace, root: Path, config: dict[str, Any]) -
     return 0
 
 
+def command_events(
+    args: argparse.Namespace, root: Path, config: dict[str, Any]
+) -> int:
+    spec_id, directory, state = resolve_spec(root, config, args.spec)
+    events = read_event_log(directory)
+    source = "events.jsonl"
+    if len(events) < len(
+        [entry for entry in state.get("history", []) if isinstance(entry, dict)]
+    ):
+        events = derive_events(state)
+        source = "state.json.history"
+    payload = {
+        "ok": True,
+        "kind": "events",
+        "spec": spec_id,
+        "source": source,
+        "count": len(events),
+        "events": events,
+    }
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0
+    for event in events:
+        print(
+            f"{event.get('seq')}  {event.get('at')}  "
+            f"{event.get('event')}  "
+            f"{event.get('from_state')} -> {event.get('to_state')}  "
+            f"{event.get('evidence', '')}"
+        )
+    return 0
+
+
 def command_board(args: argparse.Namespace, root: Path, config: dict[str, Any]) -> int:
     """Show a deterministic, read-only view of specs and task lanes."""
     base = spec_root(root, config)
@@ -1528,12 +1628,20 @@ def command_board(args: argparse.Namespace, root: Path, config: dict[str, Any]) 
             }
         tasks = parse_tasks(read_text(directory / "tasks.md"))
         statuses = [str(task.get("status", "Todo")) for task in tasks]
+        events = read_event_log(directory)
+        history_count = len(
+            [entry for entry in state.get("history", []) if isinstance(entry, dict)]
+        )
+        if len(events) < history_count:
+            events = derive_events(state)
         specs.append(
             {
                 "spec": spec_id,
                 "title": state.get("title", ""),
                 "state": state.get("state", "UNKNOWN"),
                 "next": action,
+                "events_count": len(events),
+                "last_event": events[-1] if events else None,
                 "tasks": [
                     {
                         "id": task["id"],
@@ -1565,7 +1673,8 @@ def command_board(args: argparse.Namespace, root: Path, config: dict[str, Any]) 
         print(
             f"{item['spec']}  [{item['state']}]  "
             f"next={item['next'].get('action')}  "
-            f"tasks={counts['done']}/{counts['total']} done"
+            f"tasks={counts['done']}/{counts['total']} done  "
+            f"events={item['events_count']}"
         )
         for task in item["tasks"]:
             print(
@@ -2641,6 +2750,11 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("board", help="show specs and task statuses")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=command_board)
+
+    p = sub.add_parser("events", help="show the append-only audit events for a Spec")
+    add_spec_option(p)
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=command_events)
 
     p = sub.add_parser("check", help="validate artifacts")
     add_spec_option(p)

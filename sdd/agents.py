@@ -55,6 +55,7 @@ def sync_agents(root: str | Path) -> dict[str, object]:
         path.write_text(merged, encoding="utf-8", newline="\n")
     return {
         "ok": True,
+        "kind": "sync_agent",
         "path": path.relative_to(base).as_posix(),
         "changed": changed,
         "created": not bool(existing),

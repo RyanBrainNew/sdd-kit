@@ -8,7 +8,7 @@
 - 正常流程只有两个人类检查点：**Spec 确认**和 **PR 合并**；
 - MCP 是可选适配器；没有 MCP，`AGENTS.md + CLI + Git Hook + CI` 也能跑完整流程。
 
-当前版本：`0.5.0`。
+当前版本：`0.6.0`。
 
 ---
 
@@ -123,6 +123,7 @@ MCP 只是把同一套 CLI 能力包装成结构化工具，方便 Agent 调用�
 | `sdd_status` / `sdd_next` / `sdd_check` | 读取状态、下一步、校验结果 |
 | `sdd_list_specs` | 列出所有 Spec |
 | `sdd_board` | 看所有 Spec 的 Task 状态、进度和下一步 |
+| `sdd_events` | 读取某个 Spec 的 append-only 审计事件流 |
 | `sdd_reserve_spec_id` / `sdd_create_spec` | 并行开发时分配 Spec ID、创建 Spec |
 | `sdd_verify` / `sdd_report` / `sdd_pr` | 验证、生成 PR 正文、记录 PR |
 | `sdd_block` | 记录阻塞 |
@@ -771,11 +772,15 @@ commit trailer、PR 四要素、PRD index 和消费端 CI 校验也不在内建�
 2026-11-14，其 gate 机制仍是 accepted design，当前 gate fault 还会 fail open。
 所以它不是“装上就满足 L2”的替代品，详见 `LANDSCAPE.md` 的 Build vs Adopt 一节。
 
-实际对照后，我们吸收了 Spec Kitty 控制面里成本最低、收益最直接的两点：
+实际对照后，我们吸收了 Spec Kitty 控制面里成本最低、收益最直接的三点：
 
 - `next` 增加稳定的 `step_id / kind / decision_required / question / options /
   prompt_file` 契约，Agent 不必自己猜当前步骤；
-- 增加 `python -m sdd board` 和 `sdd_board`，直接看 Spec、Task 状态、进度和下一步。
+- 增加 `python -m sdd board` 和 `sdd_board`，直接看 Spec、Task 状态、进度、
+  当前会话绑定和下一步；
+- 增加每个 Spec 的 `events.jsonl` append-only 审计流，以及 `python -m sdd events`
+  / `sdd_events`，记录每次状态迁移、Task 完成和人工检查点；它只是审计投影，
+  不替代 `state.json` 和 `sdd.py` 的状态机。
 
 暂不照搬它按 work package 自动计算 lane、创建 worktree 和执行 review/accept 的完整体系。
 那套东西适合多 Agent 并行，但会显著增加 Git 和权限复杂度；等我们的并行 Agent 数量真的上来，

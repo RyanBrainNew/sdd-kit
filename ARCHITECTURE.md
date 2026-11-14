@@ -145,12 +145,12 @@ worktree 和 org doctrine 思路。中期若要收敛到开源底座，优先评
 |---|---|---|---|
 | 确定性下一步 | `next --json` 返回 `kind/action/step_id/prompt_file/question/options` | `next` 返回 `action/state/step_id/kind/prompt_file/artifact/done_when` | 已吸收核心契约 |
 | 当前任务视图 | work package kanban + lane 事件 | `sdd board` + `task_counts` | 已吸收轻量版 |
-| 任务状态 | 9 个 lane、27 个合法迁移、append-only event log | `Todo / In Progress / Done` + `state.json` history | 保留轻量 L2 模型 |
+| 任务状态 | 9 个 lane、27 个合法迁移、append-only event log | `Todo / In Progress / Done` + `state.json` history + `events.jsonl` 审计流 | 保留轻量 L2 模型，吸收事件流 |
 | 并行隔离 | 自动计算 lane、每个 lane 一个 worktree | 会话指针 + 分支回退；一个 Spec/分支 | 暂不自动创建 worktree |
 | 评审闭环 | implement → review → approve → done | Task 完成 → PR → 人工 merge | 公司 L2 只需 PR 级评审 |
 | 治理分发 | Charter/Doctrine pack | 仓库 bootstrap + manifest + 同步 bot | 用更轻的方式解决 |
 
-这不是“谁更先进”的判断，而是成本/收益判断。Spec Kitty 的 lane 和 event log 对
+这不是“谁更先进”的判断，而是成本/收益判断。Spec Kitty 的 lane 和 worktree 对
 高并发、多 Agent、强审计很有价值；对本阶段的 L2 默认路径，它们带来的 Git、
 权限和培训成本高于收益。等出现“同一仓库多个 Agent 并行改代码”的真实需求，再把
 worktree/lane 作为可选的 execution adapter 接入。

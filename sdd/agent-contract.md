@@ -48,6 +48,7 @@ python -m sdd resume --json
 ## 4. 强制边界
 
 - 不直接编辑 `state.json`。
+- 不手工编辑 `events.jsonl`；它是由 `sdd` 自动追加的审计流。
 - 不跳过 `sdd submit` 的校验。
 - 不伪造测试结果。
 - 一次只做一个实现任务。

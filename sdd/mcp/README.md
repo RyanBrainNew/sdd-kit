@@ -105,6 +105,7 @@ Agent 可用：
 - `sdd_session`（恢复入口）
 - `sdd_list_specs`
 - `sdd_board`（Spec/Task 看板与进度）
+- `sdd_events`（append-only 状态与人工检查点审计流）
 - `sdd_submit_artifact`（阶段产物提交，自动校验/推进）
 - `sdd_submit_task`（单 Task 提交，自动 start + complete）
 - `sdd_status`

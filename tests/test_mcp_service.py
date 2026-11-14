@@ -113,6 +113,22 @@ class SddMcpServiceTest(unittest.TestCase):
         self.assertEqual(board["specs"][0]["task_counts"]["total"], 1)
         self.assertEqual(board["specs"][0]["tasks"][0]["status"], "Todo")
 
+    def test_events_and_board_mark_current_session(self):
+        self.service.create_spec(
+            "demo",
+            title="订单取消",
+            spec_id="SPEC-ORDER-001",
+            work_item="srdcloud-553377",
+        )
+        self.service.session("demo", "SPEC-ORDER-001")
+        events = self.service.events("demo", "SPEC-ORDER-001")
+        self.assertEqual(events["kind"], "events")
+        self.assertEqual(events["events"][0]["event"], "spec_created")
+        board = self.service.board("demo")
+        self.assertEqual(board["current_spec"], "SPEC-ORDER-001")
+        self.assertTrue(board["specs"][0]["current"])
+        self.assertEqual(board["specs"][0]["events_count"], events["count"])
+
     def test_check_returns_structured_errors(self):
         self.service.create_spec(
             "demo",

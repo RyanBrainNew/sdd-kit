@@ -98,6 +98,7 @@ python -m sdd start-work --work-item srdcloud-553377 --title "订单取消" --do
 
 # 查看
 python -m sdd board
+python -m sdd events --spec SPEC-ORDER-001
 python -m sdd current --json
 python -m sdd status --json
 python -m sdd next --json
@@ -136,6 +137,7 @@ python -m sdd check --all --stage ci --check-git
 | `sdd_submit_task` | 自动 start + complete 一个 Task |
 | `sdd_status` / `sdd_next` / `sdd_check` | 读取状态和校验 |
 | `sdd_board` | 查看 Spec、Task 状态和进度 |
+| `sdd_events` | 查看 Spec 的 append-only 审计事件流 |
 | `sdd_context` / `sdd_read_artifact` | 读取上下文和工件 |
 | `sdd_report` / `sdd_pr` / `sdd_verify` | 报告、PR、验证 |
 

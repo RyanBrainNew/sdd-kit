@@ -58,6 +58,14 @@ def create_server(service: SddService) -> Any:
         return service.board(project)
 
     @server.tool()
+    def sdd_events(
+        project: str,
+        spec: str | None = None,
+    ) -> dict[str, Any]:
+        """Read the append-only state and human-checkpoint audit stream."""
+        return service.events(project, spec)
+
+    @server.tool()
     def sdd_session(
         project: str,
         spec: str | None = None,
