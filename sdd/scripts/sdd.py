@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Iterable, Optional
 
 
-VERSION = "0.6.0"
+VERSION = "0.6.1"
 
 SPEC_SECTIONS = (
     ("元数据", "Metadata"),

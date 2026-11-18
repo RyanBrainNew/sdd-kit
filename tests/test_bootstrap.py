@@ -28,6 +28,8 @@ class BootstrapTest(unittest.TestCase):
             agents_text = (target / "AGENTS.md").read_text(encoding="utf-8")
             self.assertIn("<!-- SDD:MANAGED:START -->", agents_text)
             self.assertIn("<!-- SDD:MANAGED:END -->", agents_text)
+            self.assertIn("不要问", agents_text)
+            self.assertIn("python -m sdd resume --json", agents_text)
             self.assertTrue((target / "sdd" / "manifest.json").is_file())
             self.assertTrue((target / "sdd" / "context" / "services").is_dir())
             self.assertIn(

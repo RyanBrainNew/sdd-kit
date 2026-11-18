@@ -8,7 +8,7 @@
 - 正常流程只有两个人类检查点：**Spec 确认**和 **PR 合并**；
 - MCP 是可选适配器；没有 MCP，`AGENTS.md + CLI + Git Hook + CI` 也能跑完整流程。
 
-当前版本：`0.6.0`。
+当前版本：`0.6.1`。
 
 ---
 
@@ -65,6 +65,9 @@ python -m sdd resume --json
 ```
 
 不需要初始化，不需要注册 workflow，不需要安装任何个人工具。
+仓库根目录的 `AGENTS.md` 会包含一段 `SDD:MANAGED` 托管块，标题是
+“SDD Agent 执行协议”；Agent 读到它后会先执行 `python -m sdd resume --json`，
+再按返回的 `next.action` 自动推进，不需要人告诉它当前阶段。
 
 升级也由平台团队做：
 
