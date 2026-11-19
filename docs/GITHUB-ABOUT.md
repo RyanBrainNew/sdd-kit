@@ -28,6 +28,14 @@ code-review
 https://ryanbrainnew.github.io/sdd-kit/
 ```
 
+## License
+
+```text
+Apache-2.0
+```
+
+许可证全文见仓库根目录 `LICENSE`。GitHub 会在仓库首页自动识别并展示。
+
 ## 写入命令
 
 ```powershell
@@ -48,9 +56,9 @@ gh repo edit RyanBrainNew/sdd-kit `
 
 ## 前置条件
 
-- 仓库需公开，或账号具备支持私有仓库 Pages 的付费计划。
-- 在仓库 `Settings -> Pages -> Build and deployment` 中选择 `GitHub Actions`。
-- 首次运行 `pages.yml` 后，Homepage 才会返回 200。
+- 仓库已转公开。
+- Pages 已启用为 `GitHub Actions` 构建（`build_type: workflow`，源分支 `main`）。
+- 站点文件合并到 `main` 并触发 `pages.yml` 后，Homepage 才会返回 200；在此之前访问为 404。
 
 ## Social preview
 

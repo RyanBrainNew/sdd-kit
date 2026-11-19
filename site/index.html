@@ -26,7 +26,7 @@
           <circle cx="22" cy="24" r="2" fill="currentColor"/>
         </svg>
         <span class="brand-name">SDD Kit</span>
-        <span class="brand-version">0.6.1</span>
+        <span class="brand-version">0.8.0</span>
       </a>
 
       <nav class="nav-links" id="nav-links" aria-label="主导航">
@@ -55,6 +55,7 @@
             <span class="tag">CLI-first</span>
             <span class="tag">仓库自带</span>
             <span class="tag">MCP 可选</span>
+            <span class="tag">命名工作流</span>
           </div>
           <h1 id="hero-title">把 SDD 装进<span class="accent">仓库</span></h1>
           <p class="hero-lede">开发者只说一次需求，Agent 按仓库里的 <code>next.action</code> 自动调研、写工件、推进阶段。你只在两个地方出现：确认 Spec，合并 PR。</p>
@@ -212,7 +213,7 @@
             <article class="layer">
               <span class="layer-tag">协议层</span>
               <h3>AGENTS.md 是唯一入口</h3>
-              <p>托管块告诉 Agent 先 <code>resume</code>，再按返回的动作执行。六个阶段提示词约束每一类产出，Git Hook 与 CI 只做同一套校验。</p>
+              <p>托管块告诉 Agent 先 <code>resume</code>，再按返回的动作执行。0.8 起支持 <code>l2-standard</code>、<code>l2-hotfix</code>、<code>l2-strict</code> 命名预设，创建 Spec 时固定。</p>
             </article>
             <article class="layer">
               <span class="layer-tag">状态机</span>
@@ -313,6 +314,7 @@ python -m sdd check --all --stage ci</code></pre>
             <tbody>
               <tr><td><code>sdd resume --json</code></td><td>Agent</td><td>恢复当前 Spec，返回唯一的下一步</td></tr>
               <tr><td><code>sdd start-work</code></td><td>Agent</td><td>把工作项绑定到新的 Spec</td></tr>
+              <tr><td><code>sdd start-work --workflow l2-strict</code></td><td>人</td><td>为高风险变更选择命名工作流</td></tr>
               <tr><td><code>sdd submit</code></td><td>Agent</td><td>提交阶段工件并接受校验</td></tr>
               <tr><td><code>sdd submit-task</code></td><td>Agent</td><td>完成一个任务并记录测试证据</td></tr>
               <tr><td><code>sdd report</code></td><td>Agent</td><td>生成 PR 正文与 Gate 摘要</td></tr>
@@ -403,7 +405,7 @@ python -m sdd check --all --stage ci</code></pre>
           <span class="brand-name">SDD Kit</span>
         </a>
         <p>把 SDD 装进仓库，让 Agent 按同一套规则交付。</p>
-        <p class="footer-fine">0.6.1 · 内部仓库，当前未声明开源许可证</p>
+        <p class="footer-fine">0.8.0 · Apache-2.0 许可 · 公开仓库</p>
       </div>
       <div class="footer-col">
         <h2>文档</h2>

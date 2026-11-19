@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
 SITE = KIT_ROOT / "site"
+VERSION = (KIT_ROOT / "sdd" / "VERSION").read_text(encoding="utf-8").strip()
 
 
 def read_site(name: str) -> str:
@@ -26,7 +27,7 @@ class SiteStructureTests(unittest.TestCase):
         self.assertEqual(text, "把 SDD 装进仓库")
         self.assertIn('href="#quickstart"', self.html)
         self.assertIn("https://github.com/RyanBrainNew/sdd-kit", self.html)
-        self.assertIn("0.6.1", self.html)
+        self.assertIn(VERSION, self.html)
 
     def test_required_sections(self):
         """[AC-001-2] 六个内容区必须有稳定锚点。"""
@@ -199,7 +200,7 @@ class ReadmeTests(unittest.TestCase):
             "把 SDD 装进仓库",
             "img.shields.io",
             "actions/workflows/tests.yml",
-            "0.6.1",
+            VERSION,
             "3.11",
             "docs/GUIDE.md",
         ):
@@ -230,11 +231,13 @@ class ReadmeTests(unittest.TestCase):
             self.assertIn(expected, self.text)
 
     def test_license_section(self):
-        """[AC-003-4] 未声明许可证时必须如实说明且不放许可证徽章。"""
+        """[AC-003-4] 已声明 Apache-2.0 时，README 指向 LICENSE 并展示许可证徽章。"""
         self.assertIn("许可证", self.text)
-        self.assertIn("未声明", self.text)
+        self.assertIn("Apache License 2.0", self.text)
+        self.assertIn("LICENSE", self.text)
+        self.assertIn("license-Apache--2.0", self.text)
+        self.assertNotIn("未声明", self.text)
         self.assertNotIn("MIT License", self.text)
-        self.assertNotIn("Apache-2.0", self.text)
         self.assertNotIn("license-MIT", self.text)
 
     def test_readme_is_a_front_page(self):

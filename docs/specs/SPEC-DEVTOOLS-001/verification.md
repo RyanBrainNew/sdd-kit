@@ -14,7 +14,7 @@
 
 | 命令 | 目录 | 退出码 | 实际结果 |
 |---|---|---:|---|
-| `python -m unittest discover -s tests -v` | 仓库根目录 | 0 | Ran 74 tests, OK (skipped=2) |
+| `python -m unittest discover -s tests -v` | 仓库根目录 | 0 | Ran 93 tests, OK (skipped=2) |
 | `python -m unittest tests.test_site -v` | 仓库根目录 | 0 | Ran 27 tests, OK |
 | `node --check site/app.js` | 仓库根目录 | 0 | 无语法错误 |
 | `python -m sdd verify-core` | 仓库根目录 | 0 | `verify_core passed` |
@@ -22,8 +22,8 @@
 | `python sdd/scripts/sdd.py verify` | 仓库根目录 | 0 | 提示 `config.json 没有 test_commands`，随后手动执行上述测试 |
 | `node .tmp-check.cjs`（Playwright 1.65.1 / Chromium） | 仓库根目录 | 0 | 5 个视口无横向溢出；复制、菜单、reduced-motion、no-JS、焦点均符合预期 |
 | `gh repo view RyanBrainNew/sdd-kit --json description,homepageUrl,repositoryTopics` | 仓库根目录 | 0 | description、homepage、topics 已写入 |
-| `gh api -X POST repos/RyanBrainNew/sdd-kit/pages -f build_type=workflow` | 仓库根目录 | 1 | HTTP 422：当前计划不支持私有仓库 Pages |
-| `python -m sdd check --all --stage ci --check-git --json` | 仓库根目录 | 1 | 运行时尚在 IMPLEMENTING，缺 verification.md、PR_BODY.md 与 commit trailer；`--check-git` 等待人工提交 |
+| `gh api repos/RyanBrainNew/sdd-kit/pages` | 仓库根目录 | 0 | 返回 `build_type: workflow`，`html_url: https://ryanbrainnew.github.io/sdd-kit/` |
+| `python -m sdd check --all --stage ci --json` | 仓库根目录 | 0 | 全部 Spec `ok: true` |
 
 ## 3. 结果
 
@@ -35,13 +35,13 @@
 - `prefers-reduced-motion: reduce` 下区块 `opacity=1`，标题 `animation-name=none`。
 - 第一次 Tab 聚焦“跳到正文”，焦点轮廓为 `solid 2px`。
 - 本地 HTTP 服务下首页、`styles.css`、`app.js`、`favicon.svg` 均返回 200。
-- 全量单元测试 74 个中 72 个通过、2 个跳过、0 个失败。
+- 全量单元测试 93 个中 91 个通过、2 个跳过、0 个失败。
 - GitHub About 已写入：description 为 SDD-L2 定位，homepage 为 `https://ryanbrainnew.github.io/sdd-kit/`，topics 包含 sdd、spec-driven-development、ai-agents、developer-tools、workflow-automation、agents-md、cli、python、mcp、code-review。
 
 ## 4. 未运行
 
-- GitHub Actions 的 `pages.yml` 与 `tests.yml` 未在远端实际运行：本次会话不推送、不合并，且仓库为私有、当前计划不支持 Pages。
-- `python -m sdd check --all --stage ci --check-git` 的 Git trailer 部分未通过：本会话按约束不创建 Git Commit，需人工提交带 `Spec-Id: SPEC-DEVTOOLS-001` 的 commit 后再执行。
+- GitHub Pages 尚未产生部署记录：仓库已转公开且 Pages 已启用为 workflow 构建，但站点文件仍在 PR 分支，未合并到 `main`，线上地址在合并前返回 404。
+- `python -m sdd check --all --stage ci --check-git` 的 Git trailer 部分需要人工提交后再执行。
 - 未做真实屏幕阅读器走查；已完成语义结构、键盘焦点和 aria 状态的静态与 Playwright 检查。
 - 未测试 Safari / Firefox 实机渲染；已测试 Chromium，并使用标准 CSS 与渐进增强实现。
 
