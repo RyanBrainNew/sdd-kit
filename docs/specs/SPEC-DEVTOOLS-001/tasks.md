@@ -97,7 +97,7 @@ flowchart LR
 
 | 测试命令 | 退出码 | 执行数 | 通过数 | 失败数 | 跳过数 | 结果 |
 |---|---:|---:|---:|---:|---:|---|
-| `python -m unittest discover -s tests -v` | 0 | 74 | 72 | 0 | 2 | 通过 |
+| `python -m unittest discover -s tests -v` | 0 | 93 | 91 | 0 | 2 | 通过 |
 
 ## 7. 自检清单（评审辅助，不作Gate依据）
 
