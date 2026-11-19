@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "name": "l2-hotfix",
+  "version": 1,
+  "description": "紧急修复：保留 design.md，但使用轻量设计；只允许低/中风险。",
+  "stages": [
+    "DRAFT",
+    "SPEC_READY",
+    "DESIGN_READY",
+    "TASKS_READY",
+    "IMPLEMENTING",
+    "VERIFYING",
+    "PR_READY",
+    "MERGED"
+  ],
+  "artifacts": {
+    "DRAFT": "spec.md",
+    "SPEC_READY": "design.md",
+    "DESIGN_READY": "tasks.md",
+    "IMPLEMENTING": "tasks.md",
+    "VERIFYING": "verification.md",
+    "PR_READY": "PR_BODY.md"
+  },
+  "gates": {
+    "G0": "human",
+    "G1": "auto",
+    "G2": "auto",
+    "G3": "auto",
+    "G4": "auto",
+    "G5": "auto"
+  },
+  "required_gates": {
+    "DRAFT": [],
+    "SPEC_READY": ["G0", "G1"],
+    "DESIGN_READY": ["G0", "G1", "G2"],
+    "TASKS_READY": ["G0", "G1", "G2", "G3"],
+    "IMPLEMENTING": ["G0", "G1", "G2", "G3"],
+    "VERIFYING": ["G0", "G1", "G2", "G3", "G4"],
+    "PR_READY": ["G0", "G1", "G2", "G3", "G4", "G5"],
+    "MERGED": ["G0", "G1", "G2", "G3", "G4", "G5"]
+  },
+  "allow_rewind_to": [
+    "DRAFT",
+    "SPEC_READY",
+    "DESIGN_READY",
+    "TASKS_READY",
+    "IMPLEMENTING",
+    "VERIFYING"
+  ],
+  "design_mode": "lite",
+  "review_required": false,
+  "risk_policy": {
+    "max_risk": "medium",
+    "deny_risk_stop": true
+  }
+}

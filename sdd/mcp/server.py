@@ -33,7 +33,7 @@ def create_server(service: SddService) -> Any:
             "approval or PR merge). In shared registry mode, writes apply to "
             "server-side worktrees only; a remote server cannot modify a "
             "developer's local clone. Agents must not edit state.json. approve, "
-            "merge and unblock are deliberately not exposed as MCP tools."
+            "merge, unblock and rewind are deliberately not exposed as MCP tools."
         ),
     )
 
@@ -56,6 +56,11 @@ def create_server(service: SddService) -> Any:
     def sdd_board(project: str) -> dict[str, Any]:
         """Show a read-only board of specs, task statuses and next actions."""
         return service.board(project)
+
+    @server.tool()
+    def sdd_inbox(project: str, stale_days: int = 0) -> dict[str, Any]:
+        """Show read-only work waiting for a human; no actions are executed."""
+        return service.inbox(project, stale_days or None)
 
     @server.tool()
     def sdd_events(
@@ -85,6 +90,7 @@ def create_server(service: SddService) -> Any:
         risk: str = "low",
         risk_labels: list[str] | None = None,
         product_type: str = "传统产品",
+        workflow: str | None = None,
     ) -> dict[str, Any]:
         """Start or resume a requirement from one work item; returns a work order."""
         return service.start_work(
@@ -97,6 +103,7 @@ def create_server(service: SddService) -> Any:
             risk=risk,
             risk_labels=risk_labels or [],
             product_type=product_type,
+            workflow=workflow,
         )
 
     @server.tool()
@@ -160,6 +167,7 @@ def create_server(service: SddService) -> Any:
         risk: str = "low",
         risk_labels: list[str] | None = None,
         product_type: str = "传统产品",
+        workflow: str | None = None,
     ) -> dict[str, Any]:
         """Create a new SDD spec in a registered project."""
         return service.create_spec(
@@ -172,6 +180,7 @@ def create_server(service: SddService) -> Any:
             risk=risk,
             risk_labels=risk_labels or [],
             product_type=product_type,
+            workflow=workflow,
         )
 
     @server.tool()

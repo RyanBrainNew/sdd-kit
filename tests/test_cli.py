@@ -9,7 +9,10 @@ from pathlib import Path
 try:
     from test_sdd import DESIGN_TEXT, SPEC_TEXT, TASKS_TEXT
 except ImportError:  # pragma: no cover
-    SPEC_TEXT = DESIGN_TEXT = TASKS_TEXT = ""
+    try:
+        from tests.test_sdd import DESIGN_TEXT, SPEC_TEXT, TASKS_TEXT
+    except ImportError:
+        SPEC_TEXT = DESIGN_TEXT = TASKS_TEXT = ""
 
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
@@ -90,6 +93,31 @@ class CliTest(unittest.TestCase):
         resumed = self.run_cli("resume")
         self.assertEqual(resumed["spec"], spec)
         self.assertEqual(resumed["next"]["action"], "write_spec")
+
+    def test_start_work_accepts_workflow(self):
+        started = self.run_cli(
+            "start-work",
+            "--work-item",
+            "srdcloud-553379",
+            "--title",
+            "紧急修复",
+            "--domain",
+            "ORDER",
+            "--workflow",
+            "l2-hotfix",
+            "--risk",
+            "medium",
+        )
+        spec = started["spec_id"]
+        status = self.run_cli("status", "--spec", spec)
+        self.assertEqual(
+            status["state"]["workflow"]["name"],
+            "l2-hotfix",
+        )
+        self.assertEqual(
+            status["next"]["workflow"]["version"],
+            1,
+        )
 
     def test_two_sessions_keep_independent_current_specs(self):
         first = self.start("srdcloud-553377", "订单取消", session="session-a")

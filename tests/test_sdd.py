@@ -1,4 +1,5 @@
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -352,6 +353,59 @@ None。
 PASS。无残余阻断风险。
 """
 
+DESIGN_LITE_TEXT = """# 订单取消设计文档（Design Lite）
+
+## 1. 元数据
+
+| 项 | 内容 |
+|---|---|
+| Spec ID | SPEC-ORDER-001 |
+| 工作流 | l2-hotfix |
+
+## 2. 根因
+
+- 现象：待支付订单取消时偶发状态未更新。
+- 根因：取消方法没有校验订单状态和归属。
+- 证据：复现测试 `test_cancel_pending_order`。
+
+## 3. 修复策略
+
+- 修复方案：在 OrderService 增加状态与归属校验。
+- 备选方案：在 Controller 校验；不采用，避免规则分散。
+- 不修的影响：用户可以取消已支付订单。
+
+## 4. 影响范围
+
+| 模块/服务 | 影响 | 兼容性 | 回滚风险 |
+|---|---|---|---|
+| OrderService | 取消接口增加校验 | 向后兼容 | 低 |
+
+## 5. 回滚方案
+
+- 回滚条件：取消接口错误率上升。
+- 回滚步骤：回退本次提交。
+- 数据回滚：不涉及。
+
+## 6. 验收标准
+
+| AC | 验证方式 | 证据 |
+|---|---|---|
+| AC-001-1 | 单元测试 | test_cancel_pending_order |
+"""
+
+VERIFY_STRICT_SUFFIX = """
+
+## 7. 独立审查
+
+| 项 | 内容 |
+|---|---|
+| Reviewer | 独立评审员 |
+| Session | reviewer-session-1 |
+| Model | review-model |
+| Findings | 未发现阻断问题。 |
+| Blocking issues | none |
+"""
+
 
 class SddFlowTest(unittest.TestCase):
     def setUp(self):
@@ -363,7 +417,7 @@ class SddFlowTest(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def run_sdd(self, *args, expect=0):
+    def run_sdd(self, *args, expect=0, env=None):
         result = subprocess.run(
             [sys.executable, str(self.root / "sdd" / "scripts" / "sdd.py"), *args],
             cwd=self.root,
@@ -371,6 +425,7 @@ class SddFlowTest(unittest.TestCase):
             text=True,
             encoding="utf-8",
             errors="replace",
+            env=env,
         )
         if expect is not None:
             self.assertEqual(
@@ -396,7 +451,13 @@ class SddFlowTest(unittest.TestCase):
         result = self.run_sdd("next", "--spec", spec_id, "--json")
         return json.loads(result.stdout)
 
-    def new_spec(self, spec_id=SPEC_ID, risk="low", labels=None):
+    def new_spec(
+        self,
+        spec_id=SPEC_ID,
+        risk="low",
+        labels=None,
+        workflow=None,
+    ):
         args = [
             "new",
             spec_id,
@@ -411,6 +472,8 @@ class SddFlowTest(unittest.TestCase):
         ]
         for label in labels or []:
             args.extend(["--risk-label", label])
+        if workflow:
+            args.extend(["--workflow", workflow])
         self.run_sdd(*args)
 
     def approve_valid_spec(self, spec_id=SPEC_ID):
@@ -546,6 +609,11 @@ class StatusTest(unittest.TestCase):
         )
         self.assertEqual(self.state()["state"], "MERGED")
         self.assertEqual(self.next_action()["action"], "done")
+        metrics = json.loads(self.run_sdd("metrics", "--json").stdout)
+        spec_metrics = metrics["specs"][0]
+        self.assertIsNotNone(spec_metrics["lead_time_hours"])
+        self.assertGreaterEqual(spec_metrics["human_interventions"], 2)
+        self.assertEqual(spec_metrics["ac_coverage"], 1.0)
 
     def test_task_complete_requires_start(self):
         self.new_spec()
@@ -608,6 +676,206 @@ class StatusTest(unittest.TestCase):
             "--human",
         )
         self.assertEqual(self.state()["state"], "DESIGN_READY")
+
+    def test_hotfix_workflow_uses_lite_design_and_auto_g2(self):
+        self.new_spec(risk="medium", workflow="l2-hotfix")
+        state = self.state()
+        self.assertEqual(state["workflow"]["name"], "l2-hotfix")
+        self.assertTrue(
+            (self.root / "docs/specs/SPEC-ORDER-001/workflow.json").is_file()
+        )
+        design = (
+            self.root / "docs/specs/SPEC-ORDER-001/design.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("Design Lite", design)
+
+        self.approve_valid_spec()
+        self.write(
+            "docs/specs/SPEC-ORDER-001/design.md",
+            DESIGN_LITE_TEXT,
+        )
+        self.run_sdd(
+            "complete",
+            "--spec",
+            SPEC_ID,
+            "--evidence",
+            "hotfix design 完成",
+        )
+        self.assertEqual(self.state()["state"], "DESIGN_READY")
+        report = (
+            self.root / "sdd/reports/SPEC-ORDER-001/gate2-report.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("| 执行模式 | auto |", report)
+
+    def test_hotfix_workflow_rejects_high_risk(self):
+        result = self.run_sdd(
+            "new",
+            "SPEC-HOT-001",
+            "--title",
+            "高风险热修复",
+            "--work-item",
+            "srdcloud-553378",
+            "--workflow",
+            "l2-hotfix",
+            "--risk",
+            "high",
+            expect=2,
+        )
+        self.assertIn("risk<=medium", result.stderr)
+        self.assertFalse(
+            (self.root / "docs/specs/SPEC-HOT-001").exists()
+        )
+
+    def test_legacy_spec_without_workflow_uses_standard(self):
+        self.new_spec()
+        state_path = self.root / "docs/specs/SPEC-ORDER-001/state.json"
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        state.pop("workflow", None)
+        state_path.write_text(
+            json.dumps(state, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        (self.root / "docs/specs/SPEC-ORDER-001/workflow.json").unlink()
+        self.run_sdd("status", "--spec", SPEC_ID, "--json")
+
+    def test_spec_keeps_workflow_snapshot_when_preset_changes(self):
+        self.new_spec()
+        preset_path = self.root / "sdd/workflows/l2-standard.json"
+        preset = json.loads(preset_path.read_text(encoding="utf-8"))
+        preset["version"] = 2
+        preset["description"] = "changed for test"
+        preset_path.write_text(
+            json.dumps(preset, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        self.run_sdd("status", "--spec", SPEC_ID, "--json")
+        self.assertEqual(
+            self.state()["workflow"]["version"],
+            1,
+        )
+
+    def test_strict_workflow_requires_human_gates_and_review(self):
+        self.new_spec(workflow="l2-strict")
+        self.assertEqual(self.state()["workflow"]["name"], "l2-strict")
+        self.approve_valid_spec()
+
+        self.write("docs/specs/SPEC-ORDER-001/design.md", DESIGN_TEXT)
+        self.run_sdd(
+            "complete",
+            "--spec",
+            SPEC_ID,
+            "--evidence",
+            "design 完成",
+            expect=2,
+        )
+        self.assertEqual(self.state()["state"], "SPEC_READY")
+        self.run_sdd(
+            "complete",
+            "--spec",
+            SPEC_ID,
+            "--human",
+            "--evidence",
+            "设计评审通过",
+        )
+        self.assertEqual(self.state()["state"], "DESIGN_READY")
+
+        self.write("docs/specs/SPEC-ORDER-001/tasks.md", TASKS_TEXT)
+        self.run_sdd(
+            "complete",
+            "--spec",
+            SPEC_ID,
+            "--evidence",
+            "tasks 完成",
+            expect=2,
+        )
+        self.run_sdd(
+            "complete",
+            "--spec",
+            SPEC_ID,
+            "--human",
+            "--evidence",
+            "任务拆解评审通过",
+        )
+        self.assertEqual(self.state()["state"], "TASKS_READY")
+
+        self.run_sdd("complete", "--spec", SPEC_ID, "--evidence", "开始实现")
+        self.write(
+            "tests/test_status.py",
+            """import unittest
+
+
+class StatusTest(unittest.TestCase):
+    def test_cancel_pending_order(self):
+        # [AC-001-1]
+        self.assertTrue(True)
+""",
+        )
+        self.run_sdd("start", "--spec", SPEC_ID, "--task", "T-001")
+        self.run_sdd(
+            "complete",
+            "--spec",
+            SPEC_ID,
+            "--task",
+            "T-001",
+            "--commit",
+            "abc1234",
+            "--evidence",
+            "python -m unittest tests.test_status: 1 passed",
+        )
+        self.assertEqual(self.state()["state"], "IMPLEMENTING")
+        self.run_sdd(
+            "complete",
+            "--spec",
+            SPEC_ID,
+            "--human",
+            "--evidence",
+            "代码评审通过",
+        )
+        self.assertEqual(self.state()["state"], "VERIFYING")
+
+        session = next(
+            str(item["session"])
+            for item in reversed(self.state()["history"])
+            if item.get("role") == "implementer" and item.get("session")
+        )
+        self.write(
+            "docs/specs/SPEC-ORDER-001/verification.md",
+            VERIFY_TEXT + VERIFY_STRICT_SUFFIX.replace(
+                "reviewer-session-1", session
+            ),
+        )
+        same_session = self.run_sdd(
+            "check",
+            "--spec",
+            SPEC_ID,
+            "--stage",
+            "verify",
+            expect=1,
+        )
+        self.assertIn("Session 与实现会话相同", same_session.stdout)
+
+        self.write(
+            "docs/specs/SPEC-ORDER-001/verification.md",
+            VERIFY_TEXT + VERIFY_STRICT_SUFFIX,
+        )
+        self.run_sdd("check", "--spec", SPEC_ID, "--stage", "verify")
+        self.run_sdd(
+            "complete",
+            "--spec",
+            SPEC_ID,
+            "--evidence",
+            "验证完成",
+            expect=2,
+        )
+        self.run_sdd(
+            "complete",
+            "--spec",
+            SPEC_ID,
+            "--human",
+            "--evidence",
+            "规格验证通过",
+        )
+        self.assertEqual(self.state()["state"], "PR_READY")
 
     def test_clarification_marker_blocks_approve(self):
         self.new_spec()
@@ -712,6 +980,348 @@ class StatusTest(unittest.TestCase):
         self.run_sdd("init", "--ci", "gitlab")
         pipeline = (self.root / ".gitlab-ci.yml").read_text(encoding="utf-8")
         self.assertIn("check --all --stage ci --check-git", pipeline)
+
+    def set_config(self, **values):
+        path = self.root / "sdd" / "config.json"
+        config = json.loads(path.read_text(encoding="utf-8"))
+        config.update(values)
+        path.write_text(
+            json.dumps(config, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+    def test_gate_hash_detects_tampering(self):
+        self.new_spec()
+        self.approve_valid_spec()
+        self.complete_design()
+        self.complete_tasks()
+        self.run_sdd("complete", "--spec", SPEC_ID, "--evidence", "开始实现")
+        self.finish_implementation()
+
+        spec_path = self.root / "docs/specs/SPEC-ORDER-001/spec.md"
+        spec_path.write_text(
+            spec_path.read_text(encoding="utf-8") + "\n<!-- tampered -->\n",
+            encoding="utf-8",
+        )
+        self.set_config(
+            test_commands=["python -m unittest discover -s tests -p test_status.py"]
+        )
+        self.run_sdd("verify", "--spec", SPEC_ID)
+        self.write(
+            "docs/specs/SPEC-ORDER-001/verification.md", VERIFY_TEXT
+        )
+        result = self.run_sdd(
+            "complete", "--spec", SPEC_ID, "--evidence", "验证完成", expect=2
+        )
+        self.assertIn("已被修改", result.stderr)
+        self.assertEqual(self.state()["state"], "VERIFYING")
+
+    def test_check_failed_and_event_schema_v2(self):
+        self.new_spec()
+        self.run_sdd("check", "--spec", SPEC_ID, "--stage", "spec", expect=1)
+        events = [
+            json.loads(line)
+            for line in (
+                self.root / "docs/specs/SPEC-ORDER-001/events.jsonl"
+            ).read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self.assertTrue(events)
+        self.assertTrue(all(event.get("schema") == 2 for event in events))
+        failed = [event for event in events if event.get("event") == "check_failed"]
+        self.assertTrue(failed)
+        self.assertEqual(failed[-1]["role"], "planner")
+        self.assertTrue(failed[-1].get("session"))
+        self.assertTrue(failed[-1].get("session_source"))
+
+        self.approve_valid_spec()
+        events = [
+            json.loads(line)
+            for line in (
+                self.root / "docs/specs/SPEC-ORDER-001/events.jsonl"
+            ).read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        approval = [
+            event
+            for event in events
+            if event.get("to_state") == "SPEC_READY"
+        ][-1]
+        self.assertEqual(approval["role"], "approver")
+        self.assertTrue(approval.get("artifacts"))
+        self.assertEqual(approval["artifacts"][0]["path"].endswith("spec.md"), True)
+
+    def test_manual_gates_require_human_complete(self):
+        self.set_config(
+            gates={"G0": "human", "G1": "auto", "G2": "human", "G3": "human", "G4": "auto", "G5": "human"},
+            require_approver=True,
+        )
+        self.new_spec()
+        self.write("docs/specs/SPEC-ORDER-001/spec.md", SPEC_TEXT)
+        self.run_sdd(
+            "approve",
+            "--spec",
+            SPEC_ID,
+            "--human",
+            "--approver",
+            "张三 <zhang@example.com>",
+            "--evidence",
+            "需求已确认",
+        )
+        self.write("docs/specs/SPEC-ORDER-001/design.md", DESIGN_TEXT)
+        self.run_sdd(
+            "complete", "--spec", SPEC_ID, "--evidence", "design 完成", expect=2
+        )
+        self.run_sdd(
+            "complete",
+            "--spec",
+            SPEC_ID,
+            "--evidence",
+            "design 已评审",
+            "--human",
+            "--approver",
+            "李四 <li@example.com>",
+        )
+        self.assertEqual(self.state()["state"], "DESIGN_READY")
+        self.assertEqual(self.state()["approvals"][-1]["gate"], "G2")
+
+        self.write("docs/specs/SPEC-ORDER-001/tasks.md", TASKS_TEXT)
+        self.run_sdd(
+            "complete", "--spec", SPEC_ID, "--evidence", "tasks 完成", expect=2
+        )
+        self.run_sdd(
+            "complete",
+            "--spec",
+            SPEC_ID,
+            "--evidence",
+            "tasks 已评审",
+            "--human",
+            "--approver",
+            "李四 <li@example.com>",
+        )
+        self.assertEqual(self.state()["state"], "TASKS_READY")
+        self.assertEqual(self.state()["approvals"][-1]["gate"], "G3")
+
+        self.run_sdd("complete", "--spec", SPEC_ID, "--evidence", "开始实现")
+        self.finish_implementation()
+        self.set_config(
+            test_commands=["python -m unittest discover -s tests -p test_status.py"]
+        )
+        self.run_sdd("verify", "--spec", SPEC_ID)
+        self.write("docs/specs/SPEC-ORDER-001/verification.md", VERIFY_TEXT)
+        self.run_sdd(
+            "complete", "--spec", SPEC_ID, "--evidence", "验证完成", expect=2
+        )
+        self.run_sdd(
+            "complete",
+            "--spec",
+            SPEC_ID,
+            "--evidence",
+            "验证已确认",
+            "--human",
+            "--approver",
+            "王五 <wang@example.com>",
+        )
+        self.assertEqual(self.state()["state"], "PR_READY")
+        self.assertEqual(self.state()["approvals"][-1]["gate"], "G5")
+
+    def test_manual_approver_required_when_config_enabled(self):
+        self.set_config(require_approver=True)
+        self.new_spec()
+        self.write("docs/specs/SPEC-ORDER-001/spec.md", SPEC_TEXT)
+        env = os.environ.copy()
+        env["GIT_CONFIG_GLOBAL"] = str(self.root / "missing-global-config")
+        env["GIT_CONFIG_SYSTEM"] = str(self.root / "missing-system-config")
+        result = self.run_sdd(
+            "approve",
+            "--spec",
+            SPEC_ID,
+            "--human",
+            "--evidence",
+            "需求已确认",
+            expect=2,
+            env=env,
+        )
+        self.assertIn("--approver", result.stderr)
+        self.assertEqual(self.state()["state"], "DRAFT")
+
+    def test_last_task_manual_gate_is_retryable(self):
+        self.set_config(gates={"G4": "human"})
+        self.new_spec()
+        self.approve_valid_spec()
+        self.complete_design()
+        self.complete_tasks()
+        self.run_sdd("complete", "--spec", SPEC_ID, "--evidence", "开始实现")
+        self.write(
+            "tests/test_status.py",
+            "import unittest\n\n"
+            "class StatusTest(unittest.TestCase):\n"
+            "    def test_cancel_pending_order(self):\n"
+            "        # [AC-001-1]\n"
+            "        self.assertTrue(True)\n",
+        )
+        self.run_sdd("start", "--spec", SPEC_ID, "--task", "T-001")
+        self.run_sdd(
+            "complete",
+            "--spec",
+            SPEC_ID,
+            "--task",
+            "T-001",
+            "--commit",
+            "abc1234",
+            "--evidence",
+            "python -m unittest tests.test_status: 1 passed",
+        )
+        tasks = (self.root / "docs/specs/SPEC-ORDER-001/tasks.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("| Done |", tasks)
+        self.assertEqual(self.state()["state"], "IMPLEMENTING")
+        inbox = json.loads(self.run_sdd("inbox", "--json").stdout)
+        self.assertEqual(inbox["items"][0]["action"], "manual_gate")
+        self.assertEqual(inbox["items"][0]["gate"], "G4")
+        self.run_sdd(
+            "complete",
+            "--spec",
+            SPEC_ID,
+            "--evidence",
+            "代码评审通过",
+            "--human",
+        )
+        self.assertEqual(self.state()["state"], "VERIFYING")
+
+    def test_inbox_lists_draft_blocked_and_manual_gate(self):
+        self.new_spec()
+        inbox = json.loads(self.run_sdd("inbox", "--json").stdout)
+        self.assertEqual(inbox["items"][0]["action"], "approve_spec")
+        self.assertIn("approve", inbox["items"][0]["command"])
+
+        self.run_sdd("block", "--spec", SPEC_ID, "--reason", "缺少测试环境")
+        inbox = json.loads(self.run_sdd("inbox", "--json").stdout)
+        self.assertEqual(inbox["items"][0]["action"], "unblock")
+        self.assertEqual(inbox["items"][0]["priority"], 0)
+
+        self.run_sdd(
+            "unblock", "--spec", SPEC_ID, "--human", "--evidence", "环境已恢复"
+        )
+        self.set_config(gates={"G2": "human"})
+        self.approve_valid_spec()
+        self.write("docs/specs/SPEC-ORDER-001/design.md", DESIGN_TEXT)
+        inbox = json.loads(self.run_sdd("inbox", "--json").stdout)
+        self.assertEqual(inbox["items"][0]["action"], "manual_gate")
+        self.assertEqual(inbox["items"][0]["gate"], "G2")
+        self.assertIn("complete", inbox["items"][0]["command"])
+        self.assertIn("--human", inbox["items"][0]["command"])
+
+    def test_rewind_from_verifying_resumes_to_pr_ready(self):
+        self.new_spec()
+        self.approve_valid_spec()
+        self.complete_design()
+        self.complete_tasks()
+        self.run_sdd("complete", "--spec", SPEC_ID, "--evidence", "开始实现")
+        self.finish_implementation()
+        self.assertEqual(self.state()["state"], "VERIFYING")
+
+        design_before = (
+            self.root / "docs/specs/SPEC-ORDER-001/design.md"
+        ).read_text(encoding="utf-8")
+        result = self.run_sdd(
+            "rewind",
+            "--spec",
+            SPEC_ID,
+            "--to",
+            "DESIGN_READY",
+            "--reason",
+            "验证发现设计遗漏",
+            "--human",
+            "--approver",
+            "张三 <zhang@example.com>",
+            "--json",
+        )
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["from"], "VERIFYING")
+        self.assertEqual(payload["to"], "DESIGN_READY")
+        self.assertTrue(payload["archived"])
+        self.assertEqual(self.state()["state"], "DESIGN_READY")
+        self.assertEqual(
+            (self.root / "docs/specs/SPEC-ORDER-001/design.md").read_text(
+                encoding="utf-8"
+            ),
+            design_before,
+        )
+        self.assertIn(
+            "| Todo |",
+            (self.root / "docs/specs/SPEC-ORDER-001/tasks.md").read_text(
+                encoding="utf-8"
+            ),
+        )
+        history = self.root / "docs/specs/SPEC-ORDER-001/history"
+        self.assertTrue(any(history.rglob("manifest.json")))
+        self.assertFalse(
+            (self.root / "sdd/reports/SPEC-ORDER-001/gate3-report.md").exists()
+        )
+        events = [
+            json.loads(line)
+            for line in (
+                self.root / "docs/specs/SPEC-ORDER-001/events.jsonl"
+            ).read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self.assertEqual(events[-1]["event"], "rewind")
+        self.assertEqual(events[-1]["rewind"]["to"], "DESIGN_READY")
+
+        self.complete_tasks()
+        self.run_sdd("complete", "--spec", SPEC_ID, "--evidence", "开始实现")
+        self.finish_implementation()
+        self.finish_verification()
+        self.assertEqual(self.state()["state"], "PR_READY")
+
+        metrics = json.loads(self.run_sdd("metrics", "--json").stdout)
+        spec_metrics = metrics["specs"][0]
+        self.assertEqual(spec_metrics["reworks"], 1)
+        self.assertIn("DESIGN_READY", spec_metrics["stage_hours"])
+        self.assertGreaterEqual(spec_metrics["human_interventions"], 2)
+
+    def test_rewind_to_implementing_reopens_last_done_task(self):
+        self.new_spec()
+        self.approve_valid_spec()
+        self.complete_design()
+        self.complete_tasks()
+        self.run_sdd("complete", "--spec", SPEC_ID, "--evidence", "开始实现")
+        self.finish_implementation()
+        self.assertEqual(self.state()["state"], "VERIFYING")
+
+        self.run_sdd(
+            "rewind",
+            "--spec",
+            SPEC_ID,
+            "--to",
+            "IMPLEMENTING",
+            "--reason",
+            "返工最后一个任务",
+            "--human",
+        )
+        self.assertEqual(self.state()["state"], "IMPLEMENTING")
+        tasks = (self.root / "docs/specs/SPEC-ORDER-001/tasks.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("| Todo |", tasks)
+        self.assertEqual(self.next_action()["task"], "T-001")
+
+    def test_rewind_requires_human(self):
+        self.new_spec()
+        result = self.run_sdd(
+            "rewind",
+            "--spec",
+            SPEC_ID,
+            "--to",
+            "DRAFT",
+            "--reason",
+            "重做",
+            expect=2,
+        )
+        self.assertIn("--human", result.stderr)
+        self.assertEqual(self.state()["state"], "DRAFT")
 
 
 if __name__ == "__main__":

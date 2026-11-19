@@ -53,7 +53,7 @@ class Workspace:
         "start_new_with": "sdd start-work",
         "submit_stage_with": "sdd submit",
         "submit_task_with": "sdd submit-task",
-        "human_only": ["approve_spec", "merge_pr", "unblock"],
+        "human_only": ["approve_spec", "merge_pr", "unblock", "rewind"],
         "rule": (
             "Do not ask the developer which SDD stage the work is in. "
             "Read next.action, execute it, and submit with next.submit_with. "
@@ -91,6 +91,7 @@ class Workspace:
         project_id: str | None = None,
         allocation_root: str | Path | None = None,
         session_key: str | None = None,
+        source: str = "cli",
     ):
         self.root = Path(root).expanduser().resolve()
         if not (self.root / "sdd" / "config.json").is_file():
@@ -98,6 +99,7 @@ class Workspace:
         self.project_id = project_id or self._config_project()
         self.allocation_root = Path(allocation_root or self.root).expanduser().resolve()
         self._session_key_override = session_key
+        self.source = source
 
     def _config_project(self) -> str:
         try:
@@ -252,6 +254,7 @@ class Workspace:
                 "title": state.get("title", ""),
                 "state": state.get("state", "UNKNOWN"),
                 "work_item": state.get("work_item"),
+                "workflow": state.get("workflow"),
                 "spec_dir": directory.relative_to(self.root).as_posix(),
             }
             try:
@@ -277,6 +280,20 @@ class Workspace:
         payload["current_spec"] = current_spec
         payload["session"] = self.session_info()
         return payload
+
+    def inbox(self, stale_days: int | None = None) -> dict[str, Any]:
+        """Return the read-only list of work waiting for a human."""
+        args = ["inbox", "--json"]
+        if stale_days is not None:
+            args.extend(["--stale-days", str(stale_days)])
+        return self._json(self._run(args))
+
+    def metrics(self, since: str | None = None) -> dict[str, Any]:
+        """Return read-only lead-time, rework and intervention metrics."""
+        args = ["metrics", "--json"]
+        if since:
+            args.extend(["--since", since])
+        return self._json(self._run(args))
 
     def events(self, spec: str | None = None) -> dict[str, Any]:
         """Return the append-only audit stream for one Spec."""
@@ -390,6 +407,7 @@ class Workspace:
         risk: str = "low",
         risk_labels: Iterable[str] = (),
         product_type: str = "传统产品",
+        workflow: str | None = None,
     ) -> dict[str, Any]:
         """Start or resume a requirement from a work item in one call."""
         existing = next(
@@ -426,6 +444,7 @@ class Workspace:
             risk=risk,
             risk_labels=risk_labels,
             product_type=product_type,
+            workflow=workflow,
         )
         spec_id = str(created["spec_id"])
         spec_dir = self._spec_dir_from_status(spec_id)
@@ -599,6 +618,18 @@ class Workspace:
                     evidence="implementation started automatically by CLI",
                 )
         except SddCommandError as exc:
+            checkpoint = self._manual_gate_checkpoint(spec)
+            if checkpoint:
+                self.bind_session(spec)
+                return {
+                    "ok": True,
+                    "artifact": artifact,
+                    "stage": stage,
+                    "awaiting_human_approval": True,
+                    "human_checkpoint": checkpoint,
+                    "next": self._agent_next(spec),
+                    "session": self.session_info(),
+                }
             return {
                 "ok": False,
                 "artifact": artifact,
@@ -664,7 +695,7 @@ class Workspace:
                 "session": self.session_info(),
             }
         self.bind_session(spec)
-        return {
+        payload = {
             "ok": True,
             "task": task,
             "completed": True,
@@ -672,6 +703,12 @@ class Workspace:
             "human_checkpoint": self._human_checkpoint(spec),
             "session": self.session_info(),
         }
+        if payload["next"].get("action") == "finish_implementation":
+            checkpoint = self._manual_gate_checkpoint(spec)
+            if checkpoint:
+                payload["awaiting_human_approval"] = True
+                payload["human_checkpoint"] = checkpoint
+        return payload
 
     def status(self, spec: str | None = None) -> dict[str, Any]:
         if spec is None:
@@ -729,6 +766,7 @@ class Workspace:
         risk: str = "low",
         risk_labels: Iterable[str] = (),
         product_type: str = "传统产品",
+        workflow: str | None = None,
     ) -> dict[str, Any]:
         args = ["new"]
         if spec_id:
@@ -748,6 +786,8 @@ class Workspace:
             args.extend(["--risk-label", label])
         if product_type:
             args.extend(["--product-type", product_type])
+        if workflow:
+            args.extend(["--workflow", workflow])
         result = self._run(args)
         created = self._created_spec_id(result.stdout) or spec_id
         payload: dict[str, Any] = {
@@ -807,12 +847,18 @@ class Workspace:
         evidence: str,
         task: str | None = None,
         commit: str | None = None,
+        human: bool = False,
+        approver: str | None = None,
     ) -> dict[str, Any]:
         args = ["complete", "--spec", spec, "--evidence", evidence]
         if task:
             args.extend(["--task", task])
         if commit:
             args.extend(["--commit", commit])
+        if human:
+            args.append("--human")
+        if approver:
+            args.extend(["--approver", approver])
         result = self._run(args)
         return {
             "project": self.project_id,
@@ -867,11 +913,15 @@ class Workspace:
         result = self._run(["block", "--spec", spec, "--reason", reason])
         return {"project": self.project_id, "spec": spec, "stdout": result.stdout.strip()}
 
-    def approve(self, spec: str | None, evidence: str) -> dict[str, Any]:
+    def approve(
+        self, spec: str | None, evidence: str, approver: str | None = None
+    ) -> dict[str, Any]:
         args = ["approve"]
         if spec:
             args.extend(["--spec", spec])
         args.extend(["--human", "--evidence", evidence])
+        if approver:
+            args.extend(["--approver", approver])
         result = self._run(args)
         resolved = spec or self._resolve_current_spec()
         self.bind_session(resolved)
@@ -883,11 +933,15 @@ class Workspace:
             "session": self.session_info(),
         }
 
-    def merge(self, spec: str | None, evidence: str) -> dict[str, Any]:
+    def merge(
+        self, spec: str | None, evidence: str, approver: str | None = None
+    ) -> dict[str, Any]:
         args = ["merge"]
         if spec:
             args.extend(["--spec", spec])
         args.extend(["--human", "--evidence", evidence])
+        if approver:
+            args.extend(["--approver", approver])
         result = self._run(args)
         resolved = spec or self._resolve_current_spec()
         self.clear_session()
@@ -898,11 +952,15 @@ class Workspace:
             "session": self.session_info(),
         }
 
-    def unblock(self, spec: str | None, evidence: str) -> dict[str, Any]:
+    def unblock(
+        self, spec: str | None, evidence: str, approver: str | None = None
+    ) -> dict[str, Any]:
         args = ["unblock"]
         if spec:
             args.extend(["--spec", spec])
         args.extend(["--human", "--evidence", evidence])
+        if approver:
+            args.extend(["--approver", approver])
         result = self._run(args)
         resolved = spec or self._resolve_current_spec()
         self.bind_session(resolved)
@@ -913,6 +971,42 @@ class Workspace:
             "next": self._agent_next(resolved),
             "session": self.session_info(),
         }
+
+    def rewind(
+        self,
+        spec: str,
+        target: str,
+        reason: str,
+        approver: str | None = None,
+        force: bool = False,
+        reopen_task: str | None = None,
+        reset_tasks: bool = False,
+    ) -> dict[str, Any]:
+        """Human-only rewind to an earlier stage; delegates to sdd.py."""
+        args = [
+            "rewind",
+            "--spec",
+            spec,
+            "--to",
+            target,
+            "--reason",
+            reason,
+            "--human",
+            "--json",
+        ]
+        if approver:
+            args.extend(["--approver", approver])
+        if force:
+            args.append("--force")
+        if reopen_task:
+            args.extend(["--reopen-task", reopen_task])
+        if reset_tasks:
+            args.append("--reset-tasks")
+        result = self._run(args)
+        payload = self._json(result)
+        payload["project"] = self.project_id
+        payload["session"] = self.session_info()
+        return payload
 
     def read_artifact(self, spec: str, artifact: str) -> str:
         if artifact not in self.ARTIFACTS:
@@ -1040,6 +1134,23 @@ class Workspace:
             "message": "当前没有需要人类介入的 SDD 检查点。",
         }
 
+    def _manual_gate_checkpoint(self, spec: str) -> dict[str, Any] | None:
+        inbox = self.inbox()
+        for item in inbox.get("items", []):
+            if item.get("spec") == spec and item.get("action") == "manual_gate":
+                return {
+                    "required": True,
+                    "type": "manual_gate",
+                    "gate": item.get("gate"),
+                    "artifact": item.get("artifact"),
+                    "command": item.get("command"),
+                    "message": (
+                        "当前阶段的自动检查已通过，但 Gate 要求人工确认；"
+                        "Agent 必须停止，等人执行命令。"
+                    ),
+                }
+        return None
+
     def _loop_contract(self) -> str:
         return (
             "This is a CLI-first autopilot session. A developer gives one work "
@@ -1047,7 +1158,7 @@ class Workspace:
             "producing the requested artifact. Do not ask the developer what "
             "stage the work is in. The CLI re-validates and returns the next "
             "action. A task must be submitted with `sdd submit-task`. Never edit "
-            "state.json. approve, merge and unblock are human-only."
+            "state.json. approve, merge, unblock and rewind are human-only."
         )
 
     def _run(
@@ -1059,6 +1170,10 @@ class Workspace:
         command = [sys.executable, str(script), "--root", str(self.root), *args]
         env = os.environ.copy()
         env.setdefault("PYTHONIOENCODING", "utf-8")
+        env["SDD_SESSION_KEY"] = self.session_key
+        env["SDD_SESSION_SOURCE"] = self.session_source
+        env["SDD_SOURCE"] = self.source
+        env.setdefault("SDD_ACTOR", "agent")
         result = subprocess.run(
             command,
             cwd=self.root,
@@ -1189,6 +1304,7 @@ PROTECTED_FILES = (
 
 PROTECTED_DIRS = (
     "sdd/templates",
+    "sdd/workflows",
     "sdd/prompts",
     "sdd/ci",
     "sdd/mcp",

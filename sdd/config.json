@@ -30,6 +30,9 @@
   ],
   "test_commands": [],
   "require_commit_sha": false,
+  "require_approver": false,
+  "require_artifact_hash": false,
+  "workflow": "l2-standard",
   "risk_stop": [
     "security",
     "data_migration",

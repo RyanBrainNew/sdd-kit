@@ -95,9 +95,12 @@ DRAFT
 # 恢复 / 开始
 python -m sdd resume --json
 python -m sdd start-work --work-item srdcloud-553377 --title "订单取消" --domain ORDER --json
+python -m sdd start-work --work-item srdcloud-553377 --title "紧急修复" --workflow l2-hotfix --risk medium --json
 
 # 查看
 python -m sdd board
+python -m sdd inbox --stale-days 7
+python -m sdd metrics --json
 python -m sdd events --spec SPEC-ORDER-001
 python -m sdd current --json
 python -m sdd status --json
@@ -114,6 +117,7 @@ python -m sdd submit-task --spec SPEC-ORDER-001 --task T-001 --commit abc1234 --
 python -m sdd approve --spec SPEC-ORDER-001 --human --evidence "需求已确认"
 python -m sdd merge --spec SPEC-ORDER-001 --human --evidence "PR merged"
 python -m sdd unblock --spec SPEC-ORDER-001 --human --evidence "产品已确认"
+python -m sdd rewind --spec SPEC-ORDER-001 --to SPEC_READY --reason "设计遗漏" --human
 
 # 报告与 PR
 python -m sdd report --spec SPEC-ORDER-001 --json
@@ -124,6 +128,11 @@ python -m sdd verify-core
 python -m sdd verify-agent
 python -m sdd check --all --stage ci --check-git
 ```
+
+工作流预设只有 `l2-standard`、`l2-hotfix`、`l2-strict` 三个。Spec 创建时会把
+`sdd/workflows/<name>.json` 快照到 `docs/specs/<Spec>/workflow.json`；之后仓库
+预设升级不会改变旧 Spec。`l2-strict` 的 G0–G5 全部需要人工，且验证报告必须有
+独立审查；`l2-hotfix` 使用轻量设计并拒绝高风险。
 
 ## 6. MCP（可选）
 
@@ -137,11 +146,12 @@ python -m sdd check --all --stage ci --check-git
 | `sdd_submit_task` | 自动 start + complete 一个 Task |
 | `sdd_status` / `sdd_next` / `sdd_check` | 读取状态和校验 |
 | `sdd_board` | 查看 Spec、Task 状态和进度 |
+| `sdd_inbox` | 只读查看等待人工处理的事项 |
 | `sdd_events` | 查看 Spec 的 append-only 审计事件流 |
 | `sdd_context` / `sdd_read_artifact` | 读取上下文和工件 |
 | `sdd_report` / `sdd_pr` / `sdd_verify` | 报告、PR、验证 |
 
-不提供 `approve`、`merge`、`unblock`。
+不提供 `approve`、`merge`、`unblock`、`rewind`。
 
 本地 MCP：
 

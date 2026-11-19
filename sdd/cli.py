@@ -41,6 +41,7 @@ def _print_human(payload: dict[str, Any]) -> None:
             marker = "*" if item.get("current") else " "
             print(
                 f"{marker} {item.get('spec')}  [{item.get('state')}]  "
+                f"flow={(item.get('workflow') or {}).get('name', '-')}  "
                 f"next={next_action.get('action')}  "
                 f"tasks={counts.get('done', 0)}/{counts.get('total', 0)} done"
             )
@@ -60,6 +61,49 @@ def _print_human(payload: dict[str, Any]) -> None:
                 f"{event.get('from_state')} -> {event.get('to_state')}  "
                 f"{event.get('evidence', '')}"
             )
+        return
+    if payload.get("kind") == "inbox":
+        items = payload.get("items", [])
+        if not items:
+            print("[sdd] no human actions waiting")
+            return
+        for item in items:
+            print(
+                f"{item.get('spec')}  [{item.get('state')}]  "
+                f"{item.get('action')}  priority={item.get('priority')}  "
+                f"{item.get('reason')}"
+            )
+            if item.get("command"):
+                print(f"  {item['command']}")
+        return
+    if payload.get("kind") == "metrics":
+        for item in payload.get("specs", []):
+            lead = item.get("lead_time_hours")
+            print(
+                f"{item.get('spec')}  [{item.get('state')}]  "
+                f"lead_time={lead if lead is not None else 'running'}h  "
+                f"reworks={item.get('reworks', 0)}  "
+                f"human={item.get('human_interventions', 0)}  "
+                f"gate_failures={item.get('gate_failures', 0)}"
+            )
+        aggregate = payload.get("aggregate", {})
+        print(
+            f"[sdd] specs={aggregate.get('specs', 0)}  "
+            f"median_lead_time={aggregate.get('median_lead_time_hours')}h  "
+            f"median_reworks={aggregate.get('median_reworks', 0)}"
+        )
+        return
+    if payload.get("kind") == "rewind":
+        print(
+            f"[sdd] {payload.get('spec')} rewind "
+            f"{payload.get('from')} -> {payload.get('to')}"
+        )
+        print(
+            f"[sdd] archived={len(payload.get('archived', []))}  "
+            f"invalidated={','.join(payload.get('invalidated_gates', []))}"
+        )
+        if payload.get("reopened_tasks"):
+            print(f"[sdd] reopened={','.join(payload['reopened_tasks'])}")
         return
     if payload.get("kind") == "manifest":
         print(
@@ -151,6 +195,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--title")
     p.add_argument("--description")
     p.add_argument("--domain", default="REQ")
+    p.add_argument(
+        "--workflow",
+        default=None,
+        help="workflow preset name; default: sdd/config.json workflow",
+    )
     p.add_argument("--risk", default="low", choices=["low", "medium", "high"])
     p.add_argument("--risk-label", action="append", default=[])
     p.add_argument(
@@ -169,6 +218,7 @@ def build_parser() -> argparse.ArgumentParser:
             risk=a.risk,
             risk_labels=a.risk_label,
             product_type=a.product_type,
+            workflow=a.workflow,
         )
     )
 
@@ -232,6 +282,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=lambda a, w: w.board())
 
+    p = sub.add_parser("inbox", help="show work waiting for a human")
+    p.add_argument("--stale-days", type=int)
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=lambda a, w: w.inbox(a.stale_days))
+
+    p = sub.add_parser("metrics", help="show lead time, rework and gate metrics")
+    p.add_argument("--since", help="ISO date/datetime; default: all history")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=lambda a, w: w.metrics(a.since))
+
     p = sub.add_parser("events", help="show the append-only audit events")
     p.add_argument("--spec")
     p.add_argument("--json", action="store_true")
@@ -259,28 +319,65 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("approve", help="human approval: DRAFT -> SPEC_READY")
     p.add_argument("--spec")
     p.add_argument("--evidence", required=True)
+    p.add_argument("--approver", help="approver identity, default: git config user")
     p.add_argument("--human", action="store_true")
     p.add_argument("--json", action="store_true")
     p.set_defaults(
-        func=lambda a, w: (_require_human(a), w.approve(a.spec, a.evidence))[1]
+        func=lambda a, w: (
+            _require_human(a),
+            w.approve(a.spec, a.evidence, a.approver),
+        )[1]
     )
 
     p = sub.add_parser("merge", help="human merge: PR_READY -> MERGED")
     p.add_argument("--spec")
     p.add_argument("--evidence", required=True)
+    p.add_argument("--approver", help="approver identity, default: git config user")
     p.add_argument("--human", action="store_true")
     p.add_argument("--json", action="store_true")
     p.set_defaults(
-        func=lambda a, w: (_require_human(a), w.merge(a.spec, a.evidence))[1]
+        func=lambda a, w: (
+            _require_human(a),
+            w.merge(a.spec, a.evidence, a.approver),
+        )[1]
     )
 
     p = sub.add_parser("unblock", help="resume after a human answer")
     p.add_argument("--spec")
     p.add_argument("--evidence", default="")
+    p.add_argument("--approver", help="approver identity, default: git config user")
     p.add_argument("--human", action="store_true")
     p.add_argument("--json", action="store_true")
     p.set_defaults(
-        func=lambda a, w: (_require_human(a), w.unblock(a.spec, a.evidence))[1]
+        func=lambda a, w: (
+            _require_human(a),
+            w.unblock(a.spec, a.evidence, a.approver),
+        )[1]
+    )
+
+    p = sub.add_parser("rewind", help="human rewind to an earlier SDD stage")
+    p.add_argument("--spec")
+    p.add_argument("--to", required=True, help="target stage, e.g. VERIFYING")
+    p.add_argument("--reason", required=True)
+    p.add_argument("--approver", help="approver identity, default: git config user")
+    p.add_argument("--force", action="store_true")
+    p.add_argument("--reopen-task")
+    p.add_argument("--reset-tasks", action="store_true")
+    p.add_argument("--human", action="store_true")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(
+        func=lambda a, w: (
+            _require_human(a),
+            w.rewind(
+                a.spec or w._resolve_current_spec(),
+                a.to,
+                a.reason,
+                approver=a.approver,
+                force=a.force,
+                reopen_task=a.reopen_task,
+                reset_tasks=a.reset_tasks,
+            ),
+        )[1]
     )
 
     p = sub.add_parser("complete", help="low-level completion compatibility")
@@ -288,6 +385,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--task")
     p.add_argument("--evidence", required=True)
     p.add_argument("--commit")
+    p.add_argument("--approver", help="approver identity for a manual gate")
     p.add_argument("--human", action="store_true")
     p.add_argument("--json", action="store_true")
     p.set_defaults(
@@ -296,6 +394,8 @@ def build_parser() -> argparse.ArgumentParser:
             a.evidence,
             task=a.task,
             commit=a.commit,
+            human=a.human,
+            approver=a.approver,
         )
     )
 

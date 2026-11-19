@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "name": "l2-strict",
+  "version": 1,
+  "description": "严格路径：G0–G5 全部人工确认，并要求独立审查。",
+  "stages": [
+    "DRAFT",
+    "SPEC_READY",
+    "DESIGN_READY",
+    "TASKS_READY",
+    "IMPLEMENTING",
+    "VERIFYING",
+    "PR_READY",
+    "MERGED"
+  ],
+  "artifacts": {
+    "DRAFT": "spec.md",
+    "SPEC_READY": "design.md",
+    "DESIGN_READY": "tasks.md",
+    "IMPLEMENTING": "tasks.md",
+    "VERIFYING": "verification.md",
+    "PR_READY": "PR_BODY.md"
+  },
+  "gates": {
+    "G0": "human",
+    "G1": "human",
+    "G2": "human",
+    "G3": "human",
+    "G4": "human",
+    "G5": "human"
+  },
+  "required_gates": {
+    "DRAFT": [],
+    "SPEC_READY": ["G0", "G1"],
+    "DESIGN_READY": ["G0", "G1", "G2"],
+    "TASKS_READY": ["G0", "G1", "G2", "G3"],
+    "IMPLEMENTING": ["G0", "G1", "G2", "G3"],
+    "VERIFYING": ["G0", "G1", "G2", "G3", "G4"],
+    "PR_READY": ["G0", "G1", "G2", "G3", "G4", "G5"],
+    "MERGED": ["G0", "G1", "G2", "G3", "G4", "G5"]
+  },
+  "allow_rewind_to": [
+    "DRAFT",
+    "SPEC_READY",
+    "DESIGN_READY",
+    "TASKS_READY",
+    "IMPLEMENTING",
+    "VERIFYING"
+  ],
+  "design_mode": "full",
+  "review_required": true
+}

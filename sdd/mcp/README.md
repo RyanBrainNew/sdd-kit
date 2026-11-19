@@ -105,6 +105,7 @@ Agent 可用：
 - `sdd_session`（恢复入口）
 - `sdd_list_specs`
 - `sdd_board`（Spec/Task 看板与进度）
+- `sdd_inbox`（只读列出等待人工处理的事项）
 - `sdd_events`（append-only 状态与人工检查点审计流）
 - `sdd_submit_artifact`（阶段产物提交，自动校验/推进）
 - `sdd_submit_task`（单 Task 提交，自动 start + complete）
@@ -127,6 +128,11 @@ Agent 可用：
 - `sdd approve`
 - `sdd merge`
 - `sdd unblock`
+- `sdd rewind`
+
+`sdd_start_work` 和 `sdd_create_spec` 支持可选 `workflow` 参数
+（`l2-standard` / `l2-hotfix` / `l2-strict`）；工作流由创建 Spec 的人决定，
+MCP 不提供修改工作流的工具。
 
 ## 多人并行时的 Spec ID
 

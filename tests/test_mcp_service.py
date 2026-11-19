@@ -12,7 +12,10 @@ from sdd.mcp.service import SddService
 try:
     from test_sdd import DESIGN_TEXT, SPEC_TEXT, TASKS_TEXT, VERIFY_TEXT
 except ImportError:  # pragma: no cover - direct file execution fallback
-    DESIGN_TEXT = SPEC_TEXT = TASKS_TEXT = VERIFY_TEXT = ""
+    try:
+        from tests.test_sdd import DESIGN_TEXT, SPEC_TEXT, TASKS_TEXT, VERIFY_TEXT
+    except ImportError:
+        DESIGN_TEXT = SPEC_TEXT = TASKS_TEXT = VERIFY_TEXT = ""
 
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
@@ -98,6 +101,27 @@ class SddMcpServiceTest(unittest.TestCase):
         self.assertEqual(action["action"], "write_spec")
         spec_text = self.service.read_artifact("demo", "SPEC-ORDER-001", "spec.md")
         self.assertIn("SPEC-ORDER-001", spec_text)
+
+    def test_create_spec_with_workflow_preset(self):
+        created = self.service.create_spec(
+            "demo",
+            title="订单取消",
+            spec_id="SPEC-ORDER-001",
+            work_item="srdcloud-553377",
+            workflow="l2-strict",
+        )
+        self.assertEqual(created["spec_id"], "SPEC-ORDER-001")
+        status = self.service.status("demo", "SPEC-ORDER-001")
+        self.assertEqual(
+            status["state"]["workflow"]["name"],
+            "l2-strict",
+        )
+        self.assertTrue(
+            (
+                self.root
+                / "docs/specs/SPEC-ORDER-001/workflow.json"
+            ).is_file()
+        )
 
     def test_board_returns_spec_and_task_lanes(self):
         self.service.create_spec(
@@ -269,6 +293,22 @@ class SddMcpServiceTest(unittest.TestCase):
         self.assertEqual(design["next"]["action"], "write_tasks")
         self.assertEqual(design["next"]["state"], "DESIGN_READY")
 
+    def test_inbox_lists_human_actions_without_writing(self):
+        result = self.service.start_work(
+            "demo",
+            "srdcloud-553377",
+            title="订单取消",
+            domain="ORDER",
+        )
+        spec = result["spec_id"]
+        state_path = self.root / "docs" / "specs" / spec / "state.json"
+        before = state_path.read_text(encoding="utf-8")
+        inbox = self.service.inbox("demo")
+        self.assertTrue(inbox["ok"])
+        self.assertEqual(inbox["kind"], "inbox")
+        self.assertEqual(inbox["items"][0]["action"], "approve_spec")
+        self.assertEqual(before, state_path.read_text(encoding="utf-8"))
+
     def test_tasks_and_task_submissions_auto_advance(self):
         result = self.service.start_work(
             "demo",
@@ -310,6 +350,83 @@ class SddMcpServiceTest(unittest.TestCase):
         self.assertTrue(task["ok"])
         self.assertEqual(task["next"]["action"], "run_verification")
         self.assertEqual(task["next"]["state"], "VERIFYING")
+
+    def test_manual_gate_submission_returns_awaiting_human(self):
+        config_path = self.root / "sdd" / "config.json"
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        config["gates"] = {"G3": "human"}
+        config_path.write_text(
+            json.dumps(config, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        result = self.service.start_work(
+            "demo",
+            "srdcloud-553377",
+            title="订单取消",
+            domain="ORDER",
+        )
+        spec = result["spec_id"]
+        self.service.submit_artifact(
+            "demo", spec, "spec.md", SPEC_TEXT.replace("SPEC-ORDER-001", spec)
+        )
+        self.approve(spec)
+        self.service.submit_artifact(
+            "demo", spec, "design.md", DESIGN_TEXT.replace("SPEC-ORDER-001", spec)
+        )
+        tasks = self.service.submit_artifact(
+            "demo", spec, "tasks.md", TASKS_TEXT.replace("SPEC-ORDER-001", spec)
+        )
+        self.assertTrue(tasks["ok"])
+        self.assertTrue(tasks["awaiting_human_approval"])
+        self.assertEqual(tasks["human_checkpoint"]["type"], "manual_gate")
+        self.assertEqual(tasks["human_checkpoint"]["gate"], "G3")
+        self.assertEqual(tasks["next"]["state"], "DESIGN_READY")
+
+    def test_manual_g4_submit_task_returns_awaiting_human(self):
+        config_path = self.root / "sdd" / "config.json"
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        config["gates"] = {"G4": "human"}
+        config_path.write_text(
+            json.dumps(config, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        result = self.service.start_work(
+            "demo",
+            "srdcloud-553377",
+            title="订单取消",
+            domain="ORDER",
+        )
+        spec = result["spec_id"]
+        self.service.submit_artifact(
+            "demo", spec, "spec.md", SPEC_TEXT.replace("SPEC-ORDER-001", spec)
+        )
+        self.approve(spec)
+        self.service.submit_artifact(
+            "demo", spec, "design.md", DESIGN_TEXT.replace("SPEC-ORDER-001", spec)
+        )
+        self.service.submit_artifact(
+            "demo", spec, "tasks.md", TASKS_TEXT.replace("SPEC-ORDER-001", spec)
+        )
+        (self.root / "tests" / "test_status.py").write_text(
+            "import unittest\n\n"
+            "class StatusTest(unittest.TestCase):\n"
+            "    def test_cancel_pending_order(self):\n"
+            "        # [AC-001-1]\n"
+            "        self.assertTrue(True)\n",
+            encoding="utf-8",
+        )
+        task = self.service.submit_task(
+            "demo",
+            spec,
+            "T-001",
+            "python -m unittest tests.test_status: 1 passed",
+            "abc1234",
+        )
+        self.assertTrue(task["ok"])
+        self.assertTrue(task["awaiting_human_approval"])
+        self.assertEqual(task["human_checkpoint"]["type"], "manual_gate")
+        self.assertEqual(task["human_checkpoint"]["gate"], "G4")
+        self.assertEqual(task["next"]["action"], "finish_implementation")
 
     def test_verification_auto_runs_and_reaches_pr_ready(self):
         result = self.service.start_work(

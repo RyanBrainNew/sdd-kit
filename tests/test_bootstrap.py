@@ -31,6 +31,9 @@ class BootstrapTest(unittest.TestCase):
             self.assertIn("不要问", agents_text)
             self.assertIn("python -m sdd resume --json", agents_text)
             self.assertTrue((target / "sdd" / "manifest.json").is_file())
+            self.assertTrue(
+                (target / "sdd" / "workflows" / "l2-standard.json").is_file()
+            )
             self.assertTrue((target / "sdd" / "context" / "services").is_dir())
             self.assertIn(
                 ".sdd-allocations.json",
@@ -46,6 +49,9 @@ class BootstrapTest(unittest.TestCase):
             self.assertEqual(config["project"], "demo-service")
             self.assertEqual(config["test_commands"], ["python -m unittest"])
             self.assertEqual(config["sdd_level"], "L2")
+            self.assertTrue(config["require_approver"])
+            self.assertTrue(config["require_artifact_hash"])
+            self.assertEqual(config["workflow"], "l2-standard")
 
     def test_existing_agents_keeps_project_rules_and_merges_managed_block(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -115,6 +121,8 @@ class BootstrapTest(unittest.TestCase):
                 (target / "sdd" / "config.json").read_text(encoding="utf-8")
             )
             self.assertEqual(config["test_commands"], ["make test"])
+            self.assertTrue(config["require_approver"])
+            self.assertTrue(config["require_artifact_hash"])
 
 
 if __name__ == "__main__":
