@@ -59,7 +59,10 @@ python -m sdd manifest --write
 
 ## 5. 关键文档
 
-- `README.md`：完整接入、架构图、人类步骤、两种开发模式。
+- `README.md`：项目首页、快速接入与文档导航。
+- `docs/GUIDE.md`：完整接入、架构图、人类步骤、两种开发模式。
+- `site/`：GitHub Pages 官网静态站点，由 `.github/workflows/pages.yml` 发布。
+- `docs/GITHUB-ABOUT.md`：仓库 About 区文案、Topics 与 Homepage。
 - `sdd/README.md`：仓库内执行手册。
 - `sdd/agent-contract.md`：Agent 自动循环和人类检查点。
 - `ARCHITECTURE.md`：设计取舍。
