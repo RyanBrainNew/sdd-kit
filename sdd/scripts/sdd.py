@@ -9,8 +9,12 @@ from __future__ import annotations
 
 import argparse
 import glob
+import hashlib
 import json
+import os
 import re
+import shutil
+import statistics
 import subprocess
 import sys
 from datetime import datetime
@@ -18,7 +22,8 @@ from pathlib import Path
 from typing import Any, Iterable, Optional
 
 
-VERSION = "0.6.1"
+VERSION = "0.8.0"
+EVENT_SCHEMA = 2
 
 SPEC_SECTIONS = (
     ("元数据", "Metadata"),
@@ -101,6 +106,94 @@ GATE_AC_STATUS = {
     "G5": "VERIFIED",
 }
 
+GATE_ARTIFACTS = {
+    "G0": ("spec.md",),
+    "G1": ("spec.md",),
+    "G2": ("design.md",),
+    "G3": ("tasks.md#plan",),
+    "G4": ("tasks.md#plan",),
+    "G5": ("verification.md",),
+}
+
+TASK_PLAN_FIELDS = (
+    "id",
+    "description",
+    "acs",
+    "frs",
+    "depends",
+    "parallel",
+    "acceptance",
+    "test",
+    "command",
+)
+
+STAGE_ORDER = (
+    "DRAFT",
+    "SPEC_READY",
+    "DESIGN_READY",
+    "TASKS_READY",
+    "IMPLEMENTING",
+    "VERIFYING",
+    "PR_READY",
+    "MERGED",
+)
+
+WORKFLOW_SCHEMA = 1
+DEFAULT_WORKFLOW = "l2-standard"
+WORKFLOW_POLICIES = {"human", "auto", "auto_if_no_risk"}
+WORKFLOW_DESIGN_MODES = {"full", "lite"}
+RISK_RANK = {"low": 0, "medium": 1, "high": 2}
+LEGACY_STANDARD_GATES = {
+    "G0": "human",
+    "G1": "auto",
+    "G2": "auto_if_no_risk",
+    "G3": "auto",
+    "G4": "auto",
+    "G5": "auto",
+}
+
+DESIGN_LITE_SECTIONS = (
+    ("元数据", "Metadata"),
+    ("根因", "Root Cause"),
+    ("修复策略", "Fix Strategy"),
+    ("影响范围", "Impact"),
+    ("回滚方案", "Rollback"),
+    ("验收标准", "Acceptance Criteria"),
+)
+
+REWIND_PLANS = {
+    "DRAFT": (
+        ("spec.md", "design.md", "tasks.md", "verification.md", "PR_BODY.md"),
+        ("G0", "G1", "G2", "G3", "G4", "G5"),
+        "reset_all",
+    ),
+    "SPEC_READY": (
+        ("design.md", "tasks.md", "verification.md", "PR_BODY.md"),
+        ("G2", "G3", "G4", "G5"),
+        "reset_all",
+    ),
+    "DESIGN_READY": (
+        ("tasks.md", "verification.md", "PR_BODY.md"),
+        ("G3", "G4", "G5"),
+        "reset_all",
+    ),
+    "TASKS_READY": (
+        ("verification.md", "PR_BODY.md"),
+        ("G4", "G5"),
+        "reset_all",
+    ),
+    "IMPLEMENTING": (
+        ("verification.md", "PR_BODY.md"),
+        ("G4", "G5"),
+        "implementation",
+    ),
+    "VERIFYING": (
+        ("verification.md", "PR_BODY.md"),
+        ("G5",),
+        "keep",
+    ),
+}
+
 
 class SddError(Exception):
     """Expected user-facing error."""
@@ -138,6 +231,141 @@ def write_json(path: Path, data: dict[str, Any]) -> None:
     write_text(path, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
 
 
+def sha256_file(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def task_plan_hash(text: str) -> str:
+    plan = [
+        {field: task.get(field) for field in TASK_PLAN_FIELDS}
+        for task in parse_tasks(text)
+    ]
+    normalized = json.dumps(
+        plan, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
+def artifact_digest(
+    root: Path, directory: Path, name: str
+) -> tuple[str, str, int]:
+    if name.endswith("#plan"):
+        path = directory / name[: -len("#plan")]
+        relative = path.relative_to(root).as_posix() + "#plan"
+        if not path.is_file():
+            return relative, "MISSING", 0
+        digest = task_plan_hash(read_text(path))
+        return relative, digest, path.stat().st_size
+    path = directory / name
+    relative = path.relative_to(root).as_posix()
+    if not path.is_file():
+        return relative, "MISSING", 0
+    return relative, sha256_file(path), path.stat().st_size
+
+
+def history_meta() -> dict[str, Any]:
+    key = os.environ.get("SDD_SESSION_KEY") or "local"
+    source = os.environ.get("SDD_SESSION_SOURCE") or (
+        "SDD_SESSION_KEY" if os.environ.get("SDD_SESSION_KEY") else "repo-fallback"
+    )
+    meta: dict[str, Any] = {
+        "actor": os.environ.get("SDD_ACTOR") or "agent",
+        "session": hashlib.sha256(key.encode("utf-8")).hexdigest()[:12],
+        "session_source": source,
+        "source": os.environ.get("SDD_SOURCE") or "cli",
+    }
+    for key_name, env_name in (
+        ("role", "SDD_ROLE"),
+        ("executor", "SDD_EXECUTOR"),
+        ("model", "SDD_MODEL"),
+    ):
+        value = os.environ.get(env_name)
+        if value:
+            meta[key_name] = value
+    return meta
+
+
+def role_for_stage(stage: str) -> str:
+    return {
+        "spec": "planner",
+        "design": "designer",
+        "tasks": "planner",
+        "verify": "verifier",
+        "ci": "reviewer",
+    }.get(stage, "orchestrator")
+
+
+def git_config_value(root: Path, key: str) -> str:
+    result = subprocess.run(
+        ["git", "config", key],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    if result.returncode != 0:
+        return ""
+    return result.stdout.strip()
+
+
+def resolve_approver(root: Path, explicit: Optional[str]) -> str:
+    if explicit and explicit.strip():
+        return explicit.strip()
+    name = git_config_value(root, "user.name")
+    email = git_config_value(root, "user.email")
+    if name and email:
+        return f"{name} <{email}>"
+    return name or email or "unknown"
+
+
+def git_head_sha(root: Path) -> str:
+    result = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    if result.returncode != 0:
+        return ""
+    return result.stdout.strip()
+
+
+def append_audit_event(directory: Path, event: dict[str, Any]) -> None:
+    existing = read_event_log(directory)
+    next_seq = max((int(item.get("seq", 0)) for item in existing), default=0) + 1
+    payload = {
+        "schema": EVENT_SCHEMA,
+        "seq": next_seq,
+        "at": now(),
+        "history_index": None,
+    }
+    payload.update(event)
+    path = directory / "events.jsonl"
+    with path.open("a", encoding="utf-8", newline="\n") as handle:
+        handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
+
+
+def record_check_failure(
+    directory: Path,
+    stage: str,
+    errors: list[str],
+    gate: Optional[str] = None,
+) -> None:
+    event: dict[str, Any] = {
+        "event": "check_failed",
+        "stage": stage,
+        "errors": [str(error) for error in errors],
+        "role": role_for_stage(stage),
+    }
+    if gate:
+        event["gate"] = gate
+    event.update(history_meta())
+    append_audit_event(directory, event)
+
+
 def find_root(requested: Optional[str]) -> Path:
     if requested:
         root = Path(requested).expanduser().resolve()
@@ -168,7 +396,269 @@ def load_config(root: Path) -> dict[str, Any]:
     config.setdefault("risk_stop", [])
     config.setdefault("gates", {})
     config.setdefault("require_commit_sha", False)
+    config.setdefault("require_approver", False)
+    config.setdefault("require_artifact_hash", False)
+    config.setdefault("workflow", DEFAULT_WORKFLOW)
     return config
+
+
+def workflow_root(root: Path) -> Path:
+    return root / "sdd" / "workflows"
+
+
+def workflow_digest(preset: dict[str, Any]) -> str:
+    canonical = json.dumps(
+        preset,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def workflow_defaults() -> dict[str, list[str]]:
+    return {
+        stage: list(required_gates(stage))
+        for stage in STAGE_ORDER
+    }
+
+
+def validate_workflow_preset(
+    preset: dict[str, Any], source: str
+) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(preset, dict):
+        return [f"{source} 必须是 JSON 对象"]
+    if preset.get("schema") != WORKFLOW_SCHEMA:
+        errors.append(
+            f"{source} 的 schema 必须是 {WORKFLOW_SCHEMA}"
+        )
+    name = str(preset.get("name") or "")
+    if not re.fullmatch(r"[a-z][a-z0-9-]*", name):
+        errors.append(f"{source} 的 name 必须是小写字母、数字和短横线")
+    version = preset.get("version")
+    if not isinstance(version, int) or version < 1:
+        errors.append(f"{source} 的 version 必须是正整数")
+    stages = preset.get("stages")
+    if stages != list(STAGE_ORDER):
+        errors.append(
+            f"{source} 在 0.8.0 只支持完整阶段序列："
+            + " -> ".join(STAGE_ORDER)
+        )
+    gates = preset.get("gates")
+    if not isinstance(gates, dict):
+        errors.append(f"{source} 缺少 gates 对象")
+    else:
+        missing = [gate for gate in GATE_STAGES if gate not in gates]
+        if missing:
+            errors.append(f"{source} 缺少 Gate 策略：" + ", ".join(missing))
+        for gate, policy in gates.items():
+            if gate not in GATE_STAGES:
+                errors.append(f"{source} 包含未知 Gate：{gate}")
+            elif str(policy) not in WORKFLOW_POLICIES:
+                errors.append(
+                    f"{source} 的 {gate} 策略必须是 "
+                    + ", ".join(sorted(WORKFLOW_POLICIES))
+                )
+    required = preset.get("required_gates")
+    if not isinstance(required, dict):
+        errors.append(f"{source} 缺少 required_gates 对象")
+    else:
+        expected = workflow_defaults()
+        for stage in STAGE_ORDER:
+            actual = required.get(stage)
+            if actual != expected[stage]:
+                errors.append(
+                    f"{source} 的 required_gates.{stage} 必须是 "
+                    f"{expected[stage]}"
+                )
+    allow_rewind = preset.get("allow_rewind_to")
+    if not isinstance(allow_rewind, list):
+        errors.append(f"{source} 缺少 allow_rewind_to 列表")
+    else:
+        for stage in allow_rewind:
+            if stage not in REWIND_PLANS:
+                errors.append(
+                    f"{source} 的 allow_rewind_to 包含不支持的目标：{stage}"
+                )
+    artifacts = preset.get("artifacts")
+    if not isinstance(artifacts, dict):
+        errors.append(f"{source} 缺少 artifacts 对象")
+    else:
+        for stage, artifact in artifacts.items():
+            if stage not in STAGE_ORDER:
+                errors.append(f"{source} 的 artifacts 包含未知阶段：{stage}")
+            if not isinstance(artifact, str) or not artifact.strip():
+                errors.append(f"{source} 的 artifacts.{stage} 必须是非空文件名")
+    design_mode = str(preset.get("design_mode") or "full")
+    if design_mode not in WORKFLOW_DESIGN_MODES:
+        errors.append(
+            f"{source} 的 design_mode 必须是 full 或 lite"
+        )
+    review_required = preset.get("review_required", False)
+    if not isinstance(review_required, bool):
+        errors.append(f"{source} 的 review_required 必须是布尔值")
+    risk_policy = preset.get("risk_policy")
+    if risk_policy is not None:
+        if not isinstance(risk_policy, dict):
+            errors.append(f"{source} 的 risk_policy 必须是对象")
+        else:
+            max_risk = risk_policy.get("max_risk")
+            if max_risk is not None and max_risk not in RISK_RANK:
+                errors.append(
+                    f"{source} 的 risk_policy.max_risk 必须是 low/medium/high"
+                )
+            if "deny_risk_stop" in risk_policy and not isinstance(
+                risk_policy["deny_risk_stop"], bool
+            ):
+                errors.append(
+                    f"{source} 的 risk_policy.deny_risk_stop 必须是布尔值"
+                )
+    return errors
+
+
+def load_workflow_preset(root: Path, name: str) -> dict[str, Any]:
+    if not re.fullmatch(r"[a-z][a-z0-9-]*", name):
+        raise SddError(f"非法工作流名称：{name}")
+    path = workflow_root(root) / f"{name}.json"
+    if not path.is_file():
+        available = sorted(
+            item.stem for item in workflow_root(root).glob("*.json")
+        )
+        raise SddError(
+            f"找不到工作流预设 {name}；可选："
+            + (", ".join(available) if available else "无")
+        )
+    preset = load_json(path)
+    errors = validate_workflow_preset(preset, path.relative_to(root).as_posix())
+    if preset.get("name") != name:
+        errors.append(
+            f"{path.relative_to(root).as_posix()} 的 name 必须与文件名一致"
+        )
+    if errors:
+        raise SddError("工作流预设无效：\n- " + "\n- ".join(errors))
+    return preset
+
+
+def workflow_reference(preset: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "name": str(preset["name"]),
+        "version": int(preset["version"]),
+        "digest": workflow_digest(preset),
+        "snapshot": "workflow.json",
+    }
+
+
+def create_workflow_snapshot(
+    root: Path,
+    config: dict[str, Any],
+    directory: Path,
+    requested: Optional[str],
+) -> dict[str, Any]:
+    name = (requested or str(config.get("workflow") or DEFAULT_WORKFLOW)).strip()
+    preset = load_workflow_preset(root, name)
+    write_json(directory / "workflow.json", preset)
+    return workflow_reference(preset)
+
+
+def resolve_workflow(
+    root: Path, directory: Path, state: dict[str, Any]
+) -> dict[str, Any]:
+    reference = state.get("workflow")
+    snapshot = directory / "workflow.json"
+    if isinstance(reference, dict) and reference.get("name"):
+        if snapshot.is_file():
+            preset = load_json(snapshot)
+            errors = validate_workflow_preset(
+                preset,
+                snapshot.relative_to(root).as_posix(),
+            )
+            if errors:
+                raise SddError("工作流快照无效：\n- " + "\n- ".join(errors))
+            digest = workflow_digest(preset)
+            if reference.get("digest") and reference["digest"] != digest:
+                raise SddError(
+                    "工作流快照的 digest 与 state.json 不一致；"
+                    "Spec 目录可能被手工修改"
+                )
+            if int(reference.get("version") or 0) != int(preset["version"]):
+                raise SddError(
+                    "工作流快照的版本与 state.json 不一致；"
+                    "Spec 目录可能被手工修改"
+                )
+            return preset
+        preset = load_workflow_preset(root, str(reference["name"]))
+        expected_version = int(reference.get("version") or 0)
+        if expected_version and int(preset["version"]) != expected_version:
+            raise SddError(
+                f"Spec 固定的是 {reference['name']}@{expected_version}，"
+                f"但仓库预设已是 @{preset['version']}；"
+                "旧 Spec 需要保留快照或执行后续版本的 upgrade-workflow"
+            )
+        if (
+            reference.get("digest")
+            and reference["digest"] != workflow_digest(preset)
+        ):
+            raise SddError(
+                f"{reference['name']} 的内容已变化但 version 没有升级；"
+                "请升 version 并重新生成 manifest"
+            )
+        return preset
+
+    preset = load_workflow_preset(
+        root,
+        str(config.get("workflow") or DEFAULT_WORKFLOW),
+    )
+    return preset
+
+
+def workflow_risk_error(
+    preset: dict[str, Any],
+    risk: str,
+    risk_labels: Iterable[str],
+    config: dict[str, Any],
+) -> Optional[str]:
+    policy = preset.get("risk_policy")
+    if not isinstance(policy, dict):
+        return None
+    max_risk = str(policy.get("max_risk") or "high")
+    if RISK_RANK.get(risk, 0) > RISK_RANK.get(max_risk, 2):
+        return (
+            f"工作流 {preset['name']} 只允许 risk<={max_risk}，"
+            f"当前是 {risk}"
+        )
+    if policy.get("deny_risk_stop"):
+        labels = {str(item) for item in risk_labels}
+        stopped = labels & {str(item) for item in config.get("risk_stop", [])}
+        if stopped:
+            return (
+                f"工作流 {preset['name']} 不允许命中风险标签："
+                + ", ".join(sorted(stopped))
+            )
+    return None
+
+
+def workflow_gate_policy(
+    config: dict[str, Any], preset: dict[str, Any], gate: str
+) -> str:
+    overrides = config.get("gate_overrides")
+    if isinstance(overrides, dict) and gate in overrides:
+        policy = str(overrides[gate])
+        if policy not in WORKFLOW_POLICIES:
+            raise SddError(
+                f"config.json.gate_overrides.{gate} 必须是 "
+                + ", ".join(sorted(WORKFLOW_POLICIES))
+            )
+        return policy
+    legacy = config.get("gates")
+    if isinstance(legacy, dict) and legacy and legacy != LEGACY_STANDARD_GATES:
+        policy = str(legacy.get(gate, ""))
+        if policy in WORKFLOW_POLICIES:
+            return policy
+    gates = preset.get("gates")
+    if isinstance(gates, dict) and gate in gates:
+        return str(gates[gate])
+    return str(config.get("gates", {}).get(gate, "auto"))
 
 
 def spec_root(root: Path, config: dict[str, Any]) -> Path:
@@ -234,14 +724,17 @@ def save_state(directory: Path, state: dict[str, Any]) -> None:
 
 
 def _event_from_history(
-    seq: int, entry: dict[str, Any], from_state: Optional[str]
+    seq: int,
+    entry: dict[str, Any],
+    from_state: Optional[str],
+    history_index: Optional[int] = None,
 ) -> dict[str, Any]:
     evidence = str(entry.get("evidence") or "")
     event_name = entry.get("action") or (
         "spec_created" if evidence == "created" else "state_transition"
     )
     event: dict[str, Any] = {
-        "schema": 1,
+        "schema": EVENT_SCHEMA,
         "seq": seq,
         "at": entry.get("at"),
         "event": event_name,
@@ -249,7 +742,27 @@ def _event_from_history(
         "to_state": entry.get("state"),
         "evidence": evidence,
     }
-    for key in ("task", "commit", "pr_url", "gate", "reason", "actor", "source"):
+    if history_index is not None:
+        event["history_index"] = history_index
+    for key in (
+        "task",
+        "commit",
+        "pr_url",
+        "gate",
+        "reason",
+        "actor",
+        "source",
+        "role",
+        "session",
+        "session_source",
+        "executor",
+        "model",
+        "approver",
+        "artifacts",
+        "workflow",
+        "rewind",
+        "usage",
+    ):
         if entry.get(key) is not None:
             event[key] = entry[key]
     return event
@@ -275,10 +788,10 @@ def read_event_log(directory: Path) -> list[dict[str, Any]]:
 def derive_events(state: dict[str, Any]) -> list[dict[str, Any]]:
     events: list[dict[str, Any]] = []
     previous_state: Optional[str] = None
-    for seq, entry in enumerate(state.get("history", []), start=1):
+    for index, entry in enumerate(state.get("history", [])):
         if not isinstance(entry, dict):
             continue
-        event = _event_from_history(seq, entry, previous_state)
+        event = _event_from_history(index + 1, entry, previous_state, index)
         events.append(event)
         previous_state = entry.get("state")
     return events
@@ -288,15 +801,39 @@ def append_event_log(directory: Path, state: dict[str, Any]) -> None:
     """Append new history entries to events.jsonl without rewriting old events."""
     history = [entry for entry in state.get("history", []) if isinstance(entry, dict)]
     existing = read_event_log(directory)
-    if len(existing) >= len(history):
+    indexed = [
+        event
+        for event in existing
+        if isinstance(event.get("history_index"), int)
+    ]
+    if indexed:
+        emitted = {int(event["history_index"]) for event in indexed}
+        start = 0
+    else:
+        emitted = set()
+        start = len(
+            [event for event in existing if event.get("event") != "check_failed"]
+        )
+    if start >= len(history) and emitted >= set(range(len(history))):
         return
-    previous_state = existing[-1].get("to_state") if existing else None
+    previous_state = next(
+        (
+            event.get("to_state")
+            for event in reversed(existing)
+            if event.get("to_state") is not None
+        ),
+        None,
+    )
+    next_seq = max((int(event.get("seq", 0)) for event in existing), default=0) + 1
     path = directory / "events.jsonl"
     with path.open("a", encoding="utf-8", newline="\n") as handle:
-        for seq, entry in enumerate(history[len(existing) :], start=len(existing) + 1):
-            event = _event_from_history(seq, entry, previous_state)
+        for index, entry in enumerate(history):
+            if index < start or index in emitted:
+                continue
+            event = _event_from_history(next_seq, entry, previous_state, index)
             handle.write(json.dumps(event, ensure_ascii=False) + "\n")
             previous_state = entry.get("state")
+            next_seq += 1
 
 
 def add_history(
@@ -307,6 +844,7 @@ def add_history(
         "at": now(),
         "evidence": evidence,
     }
+    entry.update(history_meta())
     entry.update(extra)
     state.setdefault("history", []).append(entry)
 
@@ -711,7 +1249,13 @@ def check_spec(text: str, spec_id: Optional[str] = None) -> tuple[list[str], lis
     return errors, acs
 
 
-def check_design(text: str, spec_acs: list[str]) -> list[str]:
+def check_design(
+    text: str,
+    spec_acs: list[str],
+    workflow: Optional[dict[str, Any]] = None,
+) -> list[str]:
+    if workflow and str(workflow.get("design_mode") or "full") == "lite":
+        return check_design_lite(text, spec_acs)
     errors: list[str] = []
     for aliases in DESIGN_SECTIONS:
         if not has_section(text, aliases):
@@ -727,6 +1271,27 @@ def check_design(text: str, spec_acs: list[str]) -> list[str]:
         errors.append("design.md 的“依赖与风险”没有实际内容")
     if not section_has_content(text, ("回滚方案", "Rollback")):
         errors.append("design.md 的“回滚方案”没有实际内容")
+    return errors
+
+
+def check_design_lite(text: str, spec_acs: list[str]) -> list[str]:
+    errors: list[str] = []
+    for aliases in DESIGN_LITE_SECTIONS:
+        if not has_section(text, aliases):
+            errors.append(f"design.md 缺少轻量设计章节：{aliases[0]}")
+    errors.extend(placeholder_errors("design.md", text))
+    covered = set(extract_acs(text))
+    missing = sorted(set(spec_acs) - covered)
+    if missing:
+        errors.append("design.md 没有覆盖以下 AC：" + ", ".join(missing))
+    for section in (
+        ("根因", "Root Cause"),
+        ("修复策略", "Fix Strategy"),
+        ("影响范围", "Impact"),
+        ("回滚方案", "Rollback"),
+    ):
+        if not section_has_content(text, section):
+            errors.append(f"design.md 的“{section[0]}”没有实际内容")
     return errors
 
 
@@ -765,7 +1330,12 @@ def check_tasks(
     return errors
 
 
-def check_verification(text: str, spec_acs: list[str]) -> list[str]:
+def check_verification(
+    text: str,
+    spec_acs: list[str],
+    workflow: Optional[dict[str, Any]] = None,
+    state: Optional[dict[str, Any]] = None,
+) -> list[str]:
     errors: list[str] = []
     for aliases in VERIFY_SECTIONS:
         if not has_section(text, aliases):
@@ -781,6 +1351,81 @@ def check_verification(text: str, spec_acs: list[str]) -> list[str]:
     gate5 = section_body(text, ("Gate 5 结论", "Gate 5 Result"))
     if not re.search(r"(?i)\b(PASS|通过)\b", gate5):
         errors.append("verification.md 的 Gate 5 结论必须是 PASS/通过")
+    if workflow and workflow.get("review_required"):
+        errors.extend(check_independent_review(text, state or {}))
+    return errors
+
+
+def review_fields(text: str) -> dict[str, str]:
+    body = section_body(text, ("独立审查", "Independent Review"))
+    fields: dict[str, str] = {}
+    for cells in table_rows(body):
+        if len(cells) >= 2 and cells[0]:
+            fields[normalize_heading(cells[0])] = cells[1].strip()
+    for line in body.splitlines():
+        match = re.match(r"^\s*[-*]?\s*([^:：]+)[:：]\s*(.+)$", line)
+        if match:
+            fields.setdefault(
+                normalize_heading(match.group(1)),
+                match.group(2).strip(),
+            )
+    return fields
+
+
+def check_independent_review(
+    text: str, state: dict[str, Any]
+) -> list[str]:
+    errors: list[str] = []
+    if not has_section(text, ("独立审查", "Independent Review")):
+        errors.append("l2-strict 要求 verification.md 包含“独立审查”章节")
+        return errors
+    fields = review_fields(text)
+    required = {
+        "reviewer": ("Reviewer", "审查人"),
+        "session": ("Session", "会话"),
+        "model": ("Model", "模型"),
+        "findings": ("Findings", "审查发现", "问题"),
+        "blocking issues": ("Blocking issues", "Blocking Issues", "阻断问题"),
+    }
+    values: dict[str, str] = {}
+    for key, aliases in required.items():
+        value = next(
+            (
+                fields.get(normalize_heading(alias), "")
+                for alias in aliases
+                if fields.get(normalize_heading(alias))
+            ),
+            "",
+        )
+        values[key] = value
+        if is_placeholder_value(value):
+            errors.append(f"独立审查缺少有效字段：{aliases[0]}")
+    blocking = values.get("blocking issues", "")
+    if blocking and not re.fullmatch(
+        r"(?i)\s*(none|no|无|没有|0)\s*[。.]?\s*",
+        blocking,
+    ):
+        errors.append(
+            "独立审查的 Blocking issues 必须是 none/无；"
+            "有阻断问题则不能进入 PR_READY"
+        )
+    reviewer_session = values.get("session", "").strip()
+    implementer_sessions = {
+        str(entry.get("session"))
+        for entry in state.get("history", [])
+        if isinstance(entry, dict)
+        and entry.get("role") == "implementer"
+        and entry.get("session")
+    }
+    if (
+        reviewer_session
+        and not is_placeholder_value(reviewer_session)
+        and reviewer_session in implementer_sessions
+    ):
+        errors.append(
+            "独立审查的 Session 与实现会话相同；"
+            "l2-strict 要求独立 reviewer"
+        )
     return errors
 
 
@@ -961,7 +1606,16 @@ def read_gates(directory: Path) -> list[str]:
     return gates
 
 
-def required_gates(state_name: str) -> list[str]:
+def required_gates(
+    state_name: str,
+    workflow: Optional[dict[str, Any]] = None,
+) -> list[str]:
+    if workflow:
+        required = workflow.get("required_gates")
+        if isinstance(required, dict):
+            value = required.get(state_name)
+            if isinstance(value, list):
+                return [str(gate) for gate in value]
     return {
         "DRAFT": [],
         "SPEC_READY": ["G0", "G1"],
@@ -992,13 +1646,40 @@ def gate_report_status(path: Path) -> str:
     return ""
 
 
+def parse_artifact_hashes(report: str) -> list[tuple[str, str]]:
+    rows: list[tuple[str, str]] = []
+    in_section = False
+    for line in report.splitlines():
+        if re.match(r"^##\s*4\.\s*产物", line):
+            in_section = True
+            continue
+        if in_section and re.match(r"^##\s+", line):
+            break
+        if not in_section or not line.strip().startswith("|"):
+            continue
+        cells = split_table_row(line)
+        if len(cells) < 2:
+            continue
+        first = cells[0].strip().strip("`")
+        if not first or first.lower() in {"产物", "artifact"}:
+            continue
+        if set(first) <= {"-", ":", " "}:
+            continue
+        digest = cells[1].strip().strip("`")
+        if digest.upper() == "MISSING":
+            continue
+        rows.append((first, digest))
+    return rows
+
+
 def check_gates(
     root: Path, config: dict[str, Any], directory: Path, state_name: str
 ) -> list[str]:
     errors: list[str] = []
     state = load_json(directory / "state.json")
+    workflow = resolve_workflow(root, directory, state)
     spec_id = str(state.get("spec_id", directory.name))
-    for gate in required_gates(state_name):
+    for gate in required_gates(state_name, workflow):
         path = gate_report_path(root, config, spec_id, gate)
         if not path.is_file():
             errors.append(
@@ -1013,6 +1694,42 @@ def check_gates(
         report = read_text(path)
         if spec_id not in report:
             errors.append(f"{path.relative_to(root).as_posix()} 没有引用 Spec ID {spec_id}")
+            continue
+        hashes = parse_artifact_hashes(report)
+        if not hashes:
+            if config.get("require_artifact_hash"):
+                errors.append(
+                    f"{path.relative_to(root).as_posix()} 缺少产物哈希；"
+                    f"请重新记录 {gate}"
+                )
+            continue
+        expected_paths = set()
+        for name in GATE_ARTIFACTS.get(gate, ()):
+            is_plan = name.endswith("#plan")
+            artifact_name = name[: -len("#plan")] if is_plan else name
+            relative = (directory / artifact_name).relative_to(root).as_posix()
+            expected_paths.add(relative + ("#plan" if is_plan else ""))
+        reported_paths = {relative for relative, _ in hashes}
+        for missing in sorted(expected_paths - reported_paths):
+            errors.append(
+                f"{path.relative_to(root).as_posix()} 缺少产物哈希：{missing}"
+            )
+        for relative, expected in hashes:
+            is_plan = relative.endswith("#plan")
+            artifact_path = root / (relative[: -len("#plan")] if is_plan else relative)
+            if not artifact_path.is_file():
+                errors.append(f"Gate 产物不存在：{relative}")
+                continue
+            actual = (
+                task_plan_hash(read_text(artifact_path))
+                if is_plan
+                else sha256_file(artifact_path)
+            )
+            if actual != expected:
+                errors.append(
+                    f"{gate} 绑定的 {relative} 已被修改；"
+                    "请重新执行对应 Gate 或 rewind"
+                )
     return errors
 
 
@@ -1053,6 +1770,7 @@ def write_gate_report(
     evidence: str,
     checks: list[tuple[str, str, str]],
     errors: Optional[list[str]] = None,
+    approver: Optional[str] = None,
 ) -> Path:
     spec_id = str(state.get("spec_id", directory.name))
     stage, label = GATE_STAGES.get(gate, ("UNKNOWN", "未知 Gate"))
@@ -1125,17 +1843,26 @@ def write_gate_report(
             "",
             "## 4. 产物",
             "",
-            f"- `{relative_dir}/spec.md`",
-            f"- `{relative_dir}/design.md`",
-            f"- `{relative_dir}/tasks.md`",
-            f"- `{relative_dir}/verification.md`",
-            f"- `{relative_dir}/PR_BODY.md`（G5 生成）",
+            "| 产物 | SHA-256 | 字节 |",
+            "| --- | --- | --- |",
+        ]
+    )
+    for name in GATE_ARTIFACTS.get(gate, ()):
+        relative, digest, size = artifact_digest(root, directory, name)
+        if digest == "MISSING":
+            lines.append(f"| `{relative}` | MISSING | 0 |")
+        else:
+            lines.append(f"| `{relative}` | `{digest}` | {size} |")
+
+    lines.extend(
+        [
             "",
             "## 5. 证据与人工确认",
             "",
             f"- 执行证据：{evidence.strip() or 'N/A'}",
             f"- 执行模式：{mode}",
             f"- 人工确认：{'已确认' if mode == 'manual' else '无需额外人工确认'}",
+            f"- 确认人：{approver or 'N/A'}",
             "",
             "## 6. 问题与建议",
             "",
@@ -1161,6 +1888,7 @@ def record_gate(
     evidence: str,
     checks: list[tuple[str, str, str]],
     errors: Optional[list[str]] = None,
+    approver: Optional[str] = None,
 ) -> None:
     status = "FAILED" if errors else "PASS"
     append_gate(directory, gate, state_name, mode, evidence, status)
@@ -1175,24 +1903,81 @@ def record_gate(
         evidence,
         checks,
         errors,
+        approver,
     )
+    hashes: dict[str, str] = {}
+    for name in GATE_ARTIFACTS.get(gate, ()):
+        relative, digest, _ = artifact_digest(root, directory, name)
+        if digest != "MISSING":
+            hashes[relative] = digest
+    if hashes:
+        state.setdefault("artifact_hashes", {})[gate] = hashes
 
 
-def gate_mode(
-    config: dict[str, Any], gate: str, state: dict[str, Any], human: bool
-) -> str:
-    if human:
-        return "manual"
-    policy = str(config.get("gates", {}).get(gate, "auto"))
+def gate_artifact_entries(
+    root: Path, directory: Path, gate: str
+) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    for name in GATE_ARTIFACTS.get(gate, ()):
+        relative, digest, size = artifact_digest(root, directory, name)
+        if digest == "MISSING":
+            continue
+        entries.append({"path": relative, "sha256": digest, "bytes": size})
+    return entries
+
+
+def record_gate_approval(
+    root: Path,
+    directory: Path,
+    state: dict[str, Any],
+    gate: str,
+    approver: str,
+    evidence: str,
+) -> None:
+    state.setdefault("approvals", []).append(
+        {
+            "action": "manual_gate",
+            "gate": gate,
+            "approver": approver,
+            "at": now(),
+            "evidence": evidence,
+            "artifacts": gate_artifact_entries(root, directory, gate),
+        }
+    )
+    state["last_approver"] = approver
+
+
+def gate_requires_human(
+    config: dict[str, Any],
+    gate: str,
+    state: dict[str, Any],
+    workflow: Optional[dict[str, Any]] = None,
+) -> bool:
+    policy = (
+        workflow_gate_policy(config, workflow, gate)
+        if workflow
+        else str(config.get("gates", {}).get(gate, "auto"))
+    )
     if policy == "human":
-        raise SddError(f"{gate} 需要人工审批；重跑时加 --human")
+        return True
     risk_labels = set(str(item) for item in state.get("risk_labels", []))
     stop_labels = set(str(item) for item in config.get("risk_stop", []))
     is_risky = state.get("risk") == "high" or bool(risk_labels & stop_labels)
-    if policy == "auto_if_no_risk" and is_risky:
+    return policy == "auto_if_no_risk" and is_risky
+
+
+def gate_mode(
+    config: dict[str, Any],
+    gate: str,
+    state: dict[str, Any],
+    human: bool,
+    workflow: Optional[dict[str, Any]] = None,
+) -> str:
+    if human:
+        return "manual"
+    if gate_requires_human(config, gate, state, workflow):
         raise SddError(
-            f"{gate} 因 risk={state.get('risk')} labels={sorted(risk_labels)} "
-            "需要人工审批；重跑时加 --human"
+            f"{gate} 需要人工审批；重跑时加 --human"
         )
     return "auto"
 
@@ -1241,17 +2026,20 @@ def run_checks(
     design_text = read_text(directory / "design.md")
     tasks_text = read_text(directory / "tasks.md")
     verification_text = read_text(directory / "verification.md")
+    workflow = resolve_workflow(root, directory, state)
     spec_errors, spec_acs = check_spec(spec_text, spec_id)
     errors: list[str] = []
 
     if stage in {"spec", "design", "tasks", "verify", "ci"}:
         errors.extend(spec_errors)
     if stage in {"design", "tasks", "verify", "ci"}:
-        errors.extend(check_design(design_text, spec_acs))
+        errors.extend(check_design(design_text, spec_acs, workflow))
     if stage in {"tasks", "verify", "ci"}:
         errors.extend(check_tasks(tasks_text, spec_acs, config))
     if stage in {"verify", "ci"}:
-        errors.extend(check_verification(verification_text, spec_acs))
+        errors.extend(
+            check_verification(verification_text, spec_acs, workflow, state)
+        )
         errors.extend(check_test_coverage(root, config, spec_acs))
     if stage == "ci":
         if state.get("state") not in {"PR_READY", "MERGED"}:
@@ -1260,6 +2048,18 @@ def run_checks(
         errors.extend(
             check_gates(root, config, directory, str(state.get("state", "DRAFT")))
         )
+        if config.get("require_approver"):
+            approvals = [
+                item
+                for item in state.get("approvals", [])
+                if isinstance(item, dict)
+                and str(item.get("approver") or "").strip().lower()
+                not in {"", "unknown"}
+            ]
+            if not approvals:
+                errors.append(
+                    "require_approver=true，但 state.json 没有有效审批人记录"
+                )
         errors.extend(check_prd_index(root, config, state, spec_text))
         errors.extend(check_duplicate_spec_files(root, config))
         if check_git_trailer:
@@ -1277,6 +2077,11 @@ def build_next_action(
     base: dict[str, Any] = {
         "spec": spec_id,
         "state": state_name,
+        "workflow": (
+            state.get("workflow")
+            if isinstance(state.get("workflow"), dict)
+            else None
+        ),
         "spec_dir": relative_dir,
         "step_id": f"{spec_id}:{state_name}",
         "kind": "state",
@@ -1457,6 +2262,20 @@ def command_new(args: argparse.Namespace, root: Path, config: dict[str, Any]) ->
             "工作项 ID 格式应类似 srdcloud-553377（字母/数字/点/下划线/短横线，末尾为数字）"
         )
 
+    workflow_name = (
+        getattr(args, "workflow", None)
+        or str(config.get("workflow") or DEFAULT_WORKFLOW)
+    ).strip()
+    workflow = load_workflow_preset(root, workflow_name)
+    risk_error = workflow_risk_error(
+        workflow,
+        str(args.risk or "low"),
+        args.risk_label or [],
+        config,
+    )
+    if risk_error:
+        raise SddError(risk_error)
+
     if args.spec_id:
         spec_id = args.spec_id
         if not SPEC_ID_RE.match(spec_id):
@@ -1493,8 +2312,25 @@ def command_new(args: argparse.Namespace, root: Path, config: dict[str, Any]) ->
         "AUTHOR": args.author or "SDD Agent",
     }
     directory.mkdir(parents=True, exist_ok=False)
-    for name in ("spec.md", "design.md", "tasks.md", "verification.md"):
-        write_text(directory / name, render_template(root, name, context))
+    design_template = (
+        "design-lite.md"
+        if str(workflow.get("design_mode") or "full") == "lite"
+        else "design.md"
+    )
+    verification_template = (
+        "verification-strict.md"
+        if workflow.get("review_required")
+        else "verification.md"
+    )
+    for name in ("spec.md", design_template, "tasks.md", verification_template):
+        target_name = {
+            "design-lite.md": "design.md",
+            "verification-strict.md": "verification.md",
+        }.get(name, name)
+        write_text(
+            directory / target_name,
+            render_template(root, name, context),
+        )
     write_text(directory / "gates.md", render_template(root, "gates.md", context))
     write_text(directory / "decisions.md", render_template(root, "decisions.md", context))
     (directory / "adrs").mkdir(exist_ok=True)
@@ -1507,6 +2343,12 @@ def command_new(args: argparse.Namespace, root: Path, config: dict[str, Any]) ->
         "product_type": product_type,
         "risk": args.risk,
         "risk_labels": args.risk_label or [],
+        "workflow": create_workflow_snapshot(
+            root,
+            config,
+            directory,
+            workflow_name,
+        ),
         "state": "DRAFT",
         "created_at": now(),
         "updated_at": now(),
@@ -1516,6 +2358,7 @@ def command_new(args: argparse.Namespace, root: Path, config: dict[str, Any]) ->
                 "state": "DRAFT",
                 "at": now(),
                 "evidence": "created",
+                "role": "planner",
             }
         ],
     }
@@ -1523,6 +2366,7 @@ def command_new(args: argparse.Namespace, root: Path, config: dict[str, Any]) ->
     ensure_prd_index(root, config, spec_id, work_item, args.title, args.issue)
     print(f"[sdd] created {directory.relative_to(root)}")
     print(f"[sdd] work item: {work_item}")
+    print(f"[sdd] workflow: {workflow_name}@{workflow['version']}")
     print("[sdd] next: python -m sdd next --spec " + spec_id)
     return 0
 
@@ -1539,6 +2383,11 @@ def command_status(
     print(f"Title:  {state.get('title', '')}")
     print(f"State:  {state.get('state')}")
     print(f"Risk:   {state.get('risk', 'low')}")
+    workflow = state.get("workflow") or {}
+    if workflow.get("name"):
+        print(
+            f"Flow:   {workflow.get('name')}@{workflow.get('version')}"
+        )
     print(f"Dir:    {directory.relative_to(root)}")
     print(f"Next:   {action['action']}")
     if action.get("task"):
@@ -1639,6 +2488,7 @@ def command_board(args: argparse.Namespace, root: Path, config: dict[str, Any]) 
                 "spec": spec_id,
                 "title": state.get("title", ""),
                 "state": state.get("state", "UNKNOWN"),
+                "workflow": state.get("workflow"),
                 "next": action,
                 "events_count": len(events),
                 "last_event": events[-1] if events else None,
@@ -1685,6 +2535,398 @@ def command_board(args: argparse.Namespace, root: Path, config: dict[str, Any]) 
     return 0
 
 
+def parse_timestamp(value: Any) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=datetime.now().astimezone().tzinfo)
+    return parsed
+
+
+def spec_events(directory: Path, state: dict[str, Any]) -> list[dict[str, Any]]:
+    events = read_event_log(directory)
+    history_count = len(
+        [entry for entry in state.get("history", []) if isinstance(entry, dict)]
+    )
+    if len(events) < history_count:
+        events = derive_events(state)
+    return events
+
+
+def latest_event_at(directory: Path, state: dict[str, Any]) -> str:
+    events = spec_events(directory, state)
+    if events:
+        return str(events[-1].get("at") or state.get("updated_at") or state.get("created_at") or "")
+    return str(state.get("updated_at") or state.get("created_at") or "")
+
+
+def pending_manual_gate(
+    root: Path, config: dict[str, Any], directory: Path, state: dict[str, Any]
+) -> Optional[str]:
+    workflow = resolve_workflow(root, directory, state)
+    state_name = str(state.get("state", ""))
+    tasks: list[dict[str, Any]] = []
+    if state_name == "SPEC_READY":
+        gate, stage = "G2", "design"
+    elif state_name == "DESIGN_READY":
+        gate, stage = "G3", "tasks"
+    elif state_name == "IMPLEMENTING":
+        tasks = parse_tasks(read_text(directory / "tasks.md"))
+        if not tasks or not all(task["done"] for task in tasks):
+            return None
+        gate, stage = "G4", "tasks"
+    elif state_name == "VERIFYING":
+        gate, stage = "G5", "verify"
+    else:
+        return None
+
+    if not gate_requires_human(config, gate, state, workflow):
+        return None
+
+    errors, _ = run_checks(root, config, directory, state, stage)
+    if state_name == "VERIFYING":
+        errors.extend(check_gates(root, config, directory, "VERIFYING"))
+    if state_name == "IMPLEMENTING":
+        verification_text = read_text(directory / "verification.md")
+        missing = [task["id"] for task in tasks if task["id"] not in verification_text]
+        if missing:
+            errors.append("以下 Task 没有验证证据：" + ", ".join(missing))
+    return gate if not errors else None
+
+
+def build_inbox_item(
+    root: Path,
+    config: dict[str, Any],
+    directory: Path,
+    state: dict[str, Any],
+    stale_days: Optional[int],
+) -> Optional[dict[str, Any]]:
+    spec_id = str(state.get("spec_id", directory.name))
+    state_name = str(state.get("state", "UNKNOWN"))
+    since = latest_event_at(directory, state) or str(state.get("created_at") or "")
+    item: Optional[dict[str, Any]] = None
+
+    if state_name == "BLOCKED":
+        item = {
+            "spec": spec_id,
+            "state": state_name,
+            "priority": 0,
+            "action": "unblock",
+            "reason": str(state.get("blocked_reason") or "阻塞等待人工处理"),
+            "since": since,
+            "artifact": None,
+            "command": (
+                f"python -m sdd unblock --spec {spec_id} --human "
+                '--evidence "阻塞已解除"'
+            ),
+        }
+    elif state_name == "PR_READY":
+        item = {
+            "spec": spec_id,
+            "state": state_name,
+            "priority": 10,
+            "action": "merge_pr",
+            "reason": "PR 已就绪，等待人工合并",
+            "since": since,
+            "artifact": f"{directory.relative_to(root).as_posix()}/PR_BODY.md",
+            "command": (
+                f"python -m sdd merge --spec {spec_id} --human "
+                '--evidence "PR merged"'
+            ),
+        }
+    elif state_name == "DRAFT":
+        item = {
+            "spec": spec_id,
+            "state": state_name,
+            "priority": 20,
+            "action": "approve_spec",
+            "reason": "G0 等待人工确认需求",
+            "since": since,
+            "artifact": f"{directory.relative_to(root).as_posix()}/spec.md",
+            "command": (
+                f"python -m sdd approve --spec {spec_id} --human "
+                '--evidence "需求已确认"'
+            ),
+        }
+    else:
+        gate = pending_manual_gate(root, config, directory, state)
+        if gate:
+            artifact_name = {
+                "G2": "design.md",
+                "G3": "tasks.md",
+                "G4": "tasks.md",
+                "G5": "verification.md",
+            }.get(gate)
+            item = {
+                "spec": spec_id,
+                "state": state_name,
+                "priority": 30,
+                "action": "manual_gate",
+                "gate": gate,
+                "reason": f"{gate} 等待人工确认",
+                "since": since,
+                "artifact": (
+                    f"{directory.relative_to(root).as_posix()}/{artifact_name}"
+                    if artifact_name
+                    else None
+                ),
+                "command": (
+                    f"python -m sdd complete --spec {spec_id} --human "
+                    '--evidence "人工 Gate 已确认"'
+                ),
+            }
+
+    if item is None and stale_days is not None:
+        since_dt = parse_timestamp(since)
+        if since_dt is not None:
+            age_days = (datetime.now().astimezone() - since_dt).total_seconds() / 86400
+            if age_days > stale_days:
+                item = {
+                    "spec": spec_id,
+                    "state": state_name,
+                    "priority": 40,
+                    "action": "stale",
+                    "reason": f"{int(age_days)} 天没有新事件",
+                    "since": since,
+                    "artifact": None,
+                    "command": None,
+                }
+    return item
+
+
+def command_inbox(args: argparse.Namespace, root: Path, config: dict[str, Any]) -> int:
+    base = spec_root(root, config)
+    directories = (
+        sorted(
+            item
+            for item in base.iterdir()
+            if item.is_dir() and (item / "state.json").is_file()
+        )
+        if base.exists()
+        else []
+    )
+    items: list[dict[str, Any]] = []
+    for directory in directories:
+        state = load_json(directory / "state.json")
+        item = build_inbox_item(
+            root, config, directory, state, args.stale_days
+        )
+        if item:
+            items.append(item)
+    items.sort(
+        key=lambda item: (
+            int(item["priority"]),
+            parse_timestamp(item.get("since")) or datetime.now().astimezone(),
+        )
+    )
+    payload = {
+        "ok": True,
+        "kind": "inbox",
+        "generated_at": now(),
+        "items": items,
+    }
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0
+    if not items:
+        print("[sdd] no human actions waiting")
+        return 0
+    for item in items:
+        print(
+            f"{item['spec']}  [{item['state']}]  {item['action']}  "
+            f"priority={item['priority']}  {item['reason']}"
+        )
+        if item.get("command"):
+            print(f"  {item['command']}")
+    return 0
+
+
+def compute_spec_metrics(
+    root: Path,
+    directory: Path,
+    state: dict[str, Any],
+    since: Optional[datetime],
+) -> Optional[dict[str, Any]]:
+    events = spec_events(directory, state)
+    if since is not None:
+        events = [
+            event
+            for event in events
+            if (parse_timestamp(event.get("at")) or since) >= since
+        ]
+        if not events:
+            return None
+
+    spec_id = str(state.get("spec_id", directory.name))
+    transition_events = [event for event in events if event.get("to_state")]
+    first_at = (
+        parse_timestamp(transition_events[0].get("at"))
+        if transition_events
+        else parse_timestamp(state.get("created_at"))
+    )
+    merged_at = parse_timestamp(
+        state.get("merged_at")
+        or next(
+            (
+                event.get("at")
+                for event in reversed(events)
+                if event.get("to_state") == "MERGED"
+            ),
+            None,
+        )
+    )
+    lead_time_hours = (
+        round((merged_at - first_at).total_seconds() / 3600, 2)
+        if merged_at and first_at
+        else None
+    )
+
+    stage_hours: dict[str, float] = {}
+    previous_at: Optional[datetime] = None
+    previous_state: Optional[str] = None
+    for event in transition_events:
+        at = parse_timestamp(event.get("at"))
+        if previous_at and previous_state and at:
+            stage_hours[previous_state] = round(
+                stage_hours.get(previous_state, 0.0)
+                + (at - previous_at).total_seconds() / 3600,
+                2,
+            )
+        previous_at = at
+        previous_state = str(event.get("to_state"))
+
+    task_starts: dict[str, datetime] = {}
+    task_hours: dict[str, float] = {}
+    for event in events:
+        task = str(event.get("task") or "")
+        at = parse_timestamp(event.get("at"))
+        if not task or at is None:
+            continue
+        if event.get("event") == "task_start":
+            task_starts[task] = at
+        elif event.get("event") == "task_done" and task in task_starts:
+            task_hours[task] = round(
+                (at - task_starts[task]).total_seconds() / 3600, 2
+            )
+
+    spec_text = read_text(directory / "spec.md")
+    _, spec_acs = check_spec(spec_text, spec_id)
+    verification_text = read_text(directory / "verification.md")
+    covered = sum(1 for ac in spec_acs if ac in verification_text)
+
+    artifacts: dict[str, set[str]] = {}
+    for event in events:
+        for artifact in event.get("artifacts", []) or []:
+            if not isinstance(artifact, dict):
+                continue
+            path = str(artifact.get("path") or "")
+            digest = str(artifact.get("sha256") or "")
+            if path and digest:
+                artifacts.setdefault(path, set()).add(digest)
+
+    return {
+        "spec": spec_id,
+        "title": state.get("title", ""),
+        "state": state.get("state", "UNKNOWN"),
+        "lead_time_hours": lead_time_hours,
+        "stage_hours": stage_hours,
+        "reworks": sum(1 for event in events if event.get("event") == "rewind"),
+        "human_interventions": sum(
+            1
+            for event in events
+            if event.get("actor") == "human"
+            and event.get("event") != "spec_created"
+        ),
+        "gate_failures": sum(
+            1 for event in events if event.get("event") == "check_failed"
+        ),
+        "task_hours": task_hours,
+        "ac_coverage": (
+            round(covered / len(spec_acs), 4) if spec_acs else None
+        ),
+        "artifact_changes": sum(
+            1 for hashes in artifacts.values() if len(hashes) > 1
+        ),
+    }
+
+
+def command_metrics(
+    args: argparse.Namespace, root: Path, config: dict[str, Any]
+) -> int:
+    since = parse_timestamp(args.since)
+    if args.since and since is None:
+        raise SddError("--since 需要 ISO 日期或日期时间，例如 2026-11-01")
+    base = spec_root(root, config)
+    directories = (
+        sorted(
+            item
+            for item in base.iterdir()
+            if item.is_dir() and (item / "state.json").is_file()
+        )
+        if base.exists()
+        else []
+    )
+    specs: list[dict[str, Any]] = []
+    for directory in directories:
+        item = compute_spec_metrics(
+            root, directory, load_json(directory / "state.json"), since
+        )
+        if item:
+            specs.append(item)
+
+    lead_times = [
+        item["lead_time_hours"]
+        for item in specs
+        if item["lead_time_hours"] is not None
+    ]
+    reworks = [item["reworks"] for item in specs]
+    payload = {
+        "ok": True,
+        "kind": "metrics",
+        "since": args.since,
+        "specs": specs,
+        "aggregate": {
+            "specs": len(specs),
+            "median_lead_time_hours": (
+                round(statistics.median(lead_times), 2) if lead_times else None
+            ),
+            "median_reworks": (
+                round(statistics.median(reworks), 2) if reworks else 0.0
+            ),
+            "human_interventions": sum(
+                item["human_interventions"] for item in specs
+            ),
+            "gate_failures": sum(item["gate_failures"] for item in specs),
+        },
+    }
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0
+    if not specs:
+        print("[sdd] no specs found")
+        return 0
+    for item in specs:
+        lead = item["lead_time_hours"]
+        print(
+            f"{item['spec']}  [{item['state']}]  "
+            f"lead_time={lead if lead is not None else 'running'}h  "
+            f"reworks={item['reworks']}  "
+            f"human={item['human_interventions']}  "
+            f"gate_failures={item['gate_failures']}"
+        )
+    aggregate = payload["aggregate"]
+    print(
+        f"[sdd] specs={aggregate['specs']}  "
+        f"median_lead_time={aggregate['median_lead_time_hours']}h  "
+        f"median_reworks={aggregate['median_reworks']}"
+    )
+    return 0
+
+
 def command_check(
     args: argparse.Namespace, root: Path, config: dict[str, Any]
 ) -> int:
@@ -1726,6 +2968,8 @@ def command_check(
                 args.stage,
                 args.check_git,
             )
+            if errors:
+                record_check_failure(directory, resolved_stage, errors)
             results.append(
                 {
                     "spec": spec_id,
@@ -1761,6 +3005,8 @@ def command_check(
     errors, resolved_stage = run_checks(
         root, config, directory, state, args.stage, args.check_git
     )
+    if errors:
+        record_check_failure(directory, resolved_stage, errors)
     if args.json:
         print(
             json.dumps(
@@ -1786,16 +3032,23 @@ def command_approve(
     args: argparse.Namespace, root: Path, config: dict[str, Any]
 ) -> int:
     spec_id, directory, state = resolve_spec(root, config, args.spec)
+    workflow = resolve_workflow(root, directory, state)
     if state.get("state") != "DRAFT":
         raise SddError(f"只有 DRAFT 状态可以 approve，当前是 {state.get('state')}")
     if not args.human:
         raise SddError("approve 需要 --human；agent 不允许代替人类确认需求")
+    approver = resolve_approver(root, getattr(args, "approver", None))
+    if config.get("require_approver") and approver == "unknown":
+        raise SddError(
+            "require_approver=true；请用 --approver 提供审批人"
+        )
     errors, _ = run_checks(root, config, directory, state, "spec")
     spec_text = read_text(directory / "spec.md")
     errors.extend(check_prd_index(root, config, state, spec_text))
     if errors:
         for error in errors:
             eprint(f"- {error}")
+        record_check_failure(directory, "spec", errors, gate="G0")
         record_gate(
             root,
             config,
@@ -1807,9 +3060,21 @@ def command_approve(
             args.evidence or "requirement confirmed by human",
             [("需求侧准入", "FAILED", "spec 或 prd-index 校验未通过")],
             errors,
+            approver,
         )
         raise SddError("spec 校验失败，不能 approve")
     evidence = args.evidence or "requirement confirmed by human"
+    spec_path = directory / "spec.md"
+    state.setdefault("approvals", []).append(
+        {
+            "action": "approve_spec",
+            "approver": approver,
+            "at": now(),
+            "artifact": spec_path.relative_to(root).as_posix(),
+            "sha256": sha256_file(spec_path) if spec_path.is_file() else "",
+        }
+    )
+    state["last_approver"] = approver
     record_gate(
         root,
         config,
@@ -1825,7 +3090,16 @@ def command_approve(
             ("澄清标记清零", "PASS", "[NEEDS CLARIFICATION] = 0"),
             ("范围声明", "PASS", "In-Scope / Out-of-Scope 已填写"),
         ],
+        approver=approver,
     )
+    try:
+        g1_mode = gate_mode(config, "G1", state, False, workflow)
+    except SddError:
+        g1_mode = "manual"
+    if g1_mode == "manual":
+        record_gate_approval(
+            root, directory, state, "G1", approver, "spec check passed"
+        )
     record_gate(
         root,
         config,
@@ -1833,7 +3107,7 @@ def command_approve(
         state,
         "G1",
         "SPEC_READY",
-        "auto",
+        g1_mode,
         "spec check passed",
         [
             ("Spec 章节齐备", "PASS", "核心 1–10 章存在"),
@@ -1841,8 +3115,18 @@ def command_approve(
             ("AC 可测试性", "PASS", "Given/When/Then + 执行路径"),
             ("占位符/澄清标记", "PASS", "TODO、占位符、NEEDS CLARIFICATION 均为 0"),
         ],
+        approver=approver if g1_mode == "manual" else None,
     )
-    transition(state, "SPEC_READY", evidence, gate="G0/G1")
+    transition(
+        state,
+        "SPEC_READY",
+        evidence,
+        gate="G0/G1",
+        actor="human",
+        role="approver",
+        approver=approver,
+        artifacts=gate_artifact_entries(root, directory, "G1"),
+    )
     save_state(directory, state)
     print(f"[sdd] {spec_id} approved -> SPEC_READY")
     return 0
@@ -1934,9 +3218,20 @@ def command_complete(
     args: argparse.Namespace, root: Path, config: dict[str, Any]
 ) -> int:
     spec_id, directory, state = resolve_spec(root, config, args.spec)
+    workflow = resolve_workflow(root, directory, state)
     evidence = args.evidence.strip()
     if not evidence:
         raise SddError("complete 需要 --evidence，记录实际做了什么/检查了什么")
+    approver = (
+        resolve_approver(root, getattr(args, "approver", None))
+        if args.human
+        else None
+    )
+    actor = "human" if args.human else "agent"
+    if args.human and config.get("require_approver") and approver == "unknown":
+        raise SddError(
+            "require_approver=true；请用 --approver 提供审批人"
+        )
 
     if args.task:
         if state.get("state") != "IMPLEMENTING":
@@ -1965,10 +3260,34 @@ def command_complete(
             raise SddError(f"找不到任务：{args.task}")
         write_text(directory / "tasks.md", updated)
         append_verification_evidence(directory, f"Task {args.task}", evidence)
-        add_history(state, "IMPLEMENTING", evidence, action="task_done", task=args.task)
+        add_history(
+            state,
+            "IMPLEMENTING",
+            evidence,
+            action="task_done",
+            task=args.task,
+            commit=args.commit,
+            role="implementer",
+        )
         tasks = parse_tasks(updated)
+        save_state(directory, state)
+        if (
+            tasks
+            and all(task["done"] for task in tasks)
+            and gate_requires_human(config, "G4", state, workflow)
+            and not args.human
+        ):
+            print(
+                f"[sdd] {spec_id} task {args.task} completed; "
+                f"G4 awaits human approval"
+            )
+            print(
+                f"[sdd] next: python -m sdd complete --spec {spec_id} "
+                '--human --evidence "代码评审通过"'
+            )
+            return 0
         if tasks and all(task["done"] for task in tasks):
-            mode = gate_mode(config, "G4", state, args.human)
+            mode = gate_mode(config, "G4", state, args.human, workflow)
             verification_text = read_text(directory / "verification.md")
             missing_evidence = [
                 task["id"] for task in tasks if task["id"] not in verification_text
@@ -1982,6 +3301,7 @@ def command_complete(
                 read_text(directory / "spec.md"), spec_id
             )[1], config))
             if errors:
+                record_check_failure(directory, "tasks", errors, gate="G4")
                 record_gate(
                     root,
                     config,
@@ -1993,11 +3313,16 @@ def command_complete(
                     evidence,
                     [("Task 完成与证据", "FAILED", "见问题清单")],
                     errors,
+                    approver,
                 )
                 for error in errors:
                     eprint(f"- {error}")
                 save_state(directory, state)
                 raise SddError("Gate 4 校验失败")
+            if mode == "manual" and approver:
+                record_gate_approval(
+                    root, directory, state, "G4", approver, evidence
+                )
             record_gate(
                 root,
                 config,
@@ -2012,8 +3337,18 @@ def command_complete(
                     ("Task 验证证据", "PASS", "verification.md 已记录每个 Task"),
                     ("Task 测试映射", "PASS", "每个 Task 有测试类/方法和命令"),
                 ],
+                approver=approver if mode == "manual" else None,
             )
-            transition(state, "VERIFYING", "all tasks completed", gate="G4")
+            transition(
+                state,
+                "VERIFYING",
+                "all tasks completed",
+                gate="G4",
+                actor=actor,
+                role="implementer",
+                approver=approver,
+                artifacts=gate_artifact_entries(root, directory, "G4"),
+            )
         save_state(directory, state)
         print(f"[sdd] {spec_id} task {args.task} completed -> {state['state']}")
         return 0
@@ -2026,10 +3361,15 @@ def command_complete(
     if current == "SPEC_READY":
         spec_text = read_text(directory / "spec.md")
         _, spec_acs = check_spec(spec_text, spec_id)
-        errors = check_design(read_text(directory / "design.md"), spec_acs)
+        errors = check_design(
+            read_text(directory / "design.md"),
+            spec_acs,
+            workflow,
+        )
         if errors:
             for error in errors:
                 eprint(f"- {error}")
+            record_check_failure(directory, "design", errors, gate="G2")
             record_gate(
                 root,
                 config,
@@ -2041,9 +3381,12 @@ def command_complete(
                 evidence,
                 [("Design 完整性", "FAILED", "见问题清单")],
                 errors,
+                approver,
             )
             raise SddError("design 校验失败")
-        mode = gate_mode(config, "G2", state, args.human)
+        mode = gate_mode(config, "G2", state, args.human, workflow)
+        if mode == "manual" and approver:
+            record_gate_approval(root, directory, state, "G2", approver, evidence)
         record_gate(
             root,
             config,
@@ -2058,14 +3401,25 @@ def command_complete(
                 ("AC 设计覆盖", "PASS", "全部 AC 在 design.md 中有落点"),
                 ("方案与回滚", "PASS", "方案、风险、回滚章节已填写"),
             ],
+            approver=approver if mode == "manual" else None,
         )
-        transition(state, "DESIGN_READY", evidence, gate="G2")
+        transition(
+            state,
+            "DESIGN_READY",
+            evidence,
+            gate="G2",
+            actor=actor,
+            role="designer",
+            approver=approver,
+            artifacts=gate_artifact_entries(root, directory, "G2"),
+        )
     elif current == "DESIGN_READY":
         _, spec_acs = check_spec(read_text(directory / "spec.md"), spec_id)
         errors = check_tasks(read_text(directory / "tasks.md"), spec_acs, config)
         if errors:
             for error in errors:
                 eprint(f"- {error}")
+            record_check_failure(directory, "tasks", errors, gate="G3")
             record_gate(
                 root,
                 config,
@@ -2077,9 +3431,12 @@ def command_complete(
                 evidence,
                 [("Tasks 完整性", "FAILED", "见问题清单")],
                 errors,
+                approver,
             )
             raise SddError("tasks 校验失败")
-        mode = gate_mode(config, "G3", state, args.human)
+        mode = gate_mode(config, "G3", state, args.human, workflow)
+        if mode == "manual" and approver:
+            record_gate_approval(root, directory, state, "G3", approver, evidence)
         record_gate(
             root,
             config,
@@ -2095,21 +3452,38 @@ def command_complete(
                 ("依赖无环", "PASS", "依赖 DAG 校验通过"),
                 ("测试映射", "PASS", "每个 Task 有测试类和命令"),
             ],
+            approver=approver if mode == "manual" else None,
         )
-        transition(state, "TASKS_READY", evidence, gate="G3")
+        transition(
+            state,
+            "TASKS_READY",
+            evidence,
+            gate="G3",
+            actor=actor,
+            role="planner",
+            approver=approver,
+            artifacts=gate_artifact_entries(root, directory, "G3"),
+        )
     elif current == "TASKS_READY":
         _, spec_acs = check_spec(read_text(directory / "spec.md"), spec_id)
         errors = check_tasks(read_text(directory / "tasks.md"), spec_acs, config)
         if errors:
             for error in errors:
                 eprint(f"- {error}")
+            record_check_failure(directory, "tasks", errors, gate="G3")
             raise SddError("tasks 校验失败")
-        transition(state, "IMPLEMENTING", evidence)
+        transition(
+            state,
+            "IMPLEMENTING",
+            evidence,
+            actor=actor,
+            role="implementer",
+        )
     elif current == "IMPLEMENTING":
         tasks = parse_tasks(read_text(directory / "tasks.md"))
         if not tasks or not all(task["done"] for task in tasks):
             raise SddError("还有未完成的 task；用 `sdd complete --task T-xxx` 逐个完成")
-        mode = gate_mode(config, "G4", state, args.human)
+        mode = gate_mode(config, "G4", state, args.human, workflow)
         verification_text = read_text(directory / "verification.md")
         missing_evidence = [
             task["id"] for task in tasks if task["id"] not in verification_text
@@ -2119,6 +3493,7 @@ def command_complete(
         if missing_evidence:
             errors.append("以下 Task 没有验证证据：" + ", ".join(missing_evidence))
         if errors:
+            record_check_failure(directory, "tasks", errors, gate="G4")
             record_gate(
                 root,
                 config,
@@ -2130,10 +3505,13 @@ def command_complete(
                 evidence,
                 [("Task 完成与证据", "FAILED", "见问题清单")],
                 errors,
+                approver,
             )
             for error in errors:
                 eprint(f"- {error}")
             raise SddError("Gate 4 校验失败")
+        if mode == "manual" and approver:
+            record_gate_approval(root, directory, state, "G4", approver, evidence)
         record_gate(
             root,
             config,
@@ -2148,11 +3526,26 @@ def command_complete(
                 ("Task 验证证据", "PASS", "verification.md 已记录每个 Task"),
                 ("Task 测试映射", "PASS", "每个 Task 有测试类/方法和命令"),
             ],
+            approver=approver if mode == "manual" else None,
         )
-        transition(state, "VERIFYING", evidence, gate="G4")
+        transition(
+            state,
+            "VERIFYING",
+            evidence,
+            gate="G4",
+            actor=actor,
+            role="implementer",
+            approver=approver,
+            artifacts=gate_artifact_entries(root, directory, "G4"),
+        )
     elif current == "VERIFYING":
         _, spec_acs = check_spec(read_text(directory / "spec.md"), spec_id)
-        errors = check_verification(read_text(directory / "verification.md"), spec_acs)
+        errors = check_verification(
+            read_text(directory / "verification.md"),
+            spec_acs,
+            workflow,
+            state,
+        )
         errors.extend(check_test_coverage(root, config, spec_acs))
         errors.extend(
             check_gates(root, config, directory, "VERIFYING")
@@ -2160,6 +3553,7 @@ def command_complete(
         if errors:
             for error in errors:
                 eprint(f"- {error}")
+            record_check_failure(directory, "verify", errors, gate="G5")
             record_gate(
                 root,
                 config,
@@ -2171,9 +3565,12 @@ def command_complete(
                 evidence,
                 [("规格验证", "FAILED", "见问题清单")],
                 errors,
+                approver,
             )
             raise SddError("verification 校验失败")
-        mode = gate_mode(config, "G5", state, args.human)
+        mode = gate_mode(config, "G5", state, args.human, workflow)
+        if mode == "manual" and approver:
+            record_gate_approval(root, directory, state, "G5", approver, evidence)
         record_gate(
             root,
             config,
@@ -2189,9 +3586,19 @@ def command_complete(
                 ("Gate 5 结论", "PASS", "verification.md 明确 PASS"),
                 ("G0–G4 报告", "PASS", "Gate 报告齐备且为 PASS"),
             ],
+            approver=approver if mode == "manual" else None,
         )
         write_report(root, directory, state)
-        transition(state, "PR_READY", evidence, gate="G5")
+        transition(
+            state,
+            "PR_READY",
+            evidence,
+            gate="G5",
+            actor=actor,
+            role="verifier",
+            approver=approver,
+            artifacts=gate_artifact_entries(root, directory, "G5"),
+        )
     elif current == "PR_READY":
         raise SddError("PR_READY 之后必须由人类运行 `sdd merge --human --evidence ...`")
     elif current == "MERGED":
@@ -2253,6 +3660,12 @@ def command_verify(
         if result.returncode != 0:
             failed = True
             eprint(f"[sdd] command failed ({result.returncode}): {command}")
+            record_check_failure(
+                directory,
+                "verify",
+                [f"测试命令失败（exit {result.returncode}）：{command}"],
+                gate="G5",
+            )
     print(f"[sdd] {spec_id} verify {'failed' if failed else 'passed'}")
     return 1 if failed else 0
 
@@ -2364,7 +3777,13 @@ def command_pr(
         raise SddError("只有 PR_READY/MERGED 状态可以记录 PR")
     if args.url:
         state["pr_url"] = args.url
-        add_history(state, str(state.get("state")), "PR recorded", pr_url=args.url)
+        add_history(
+            state,
+            str(state.get("state")),
+            "PR recorded",
+            pr_url=args.url,
+            role="orchestrator",
+        )
         save_state(directory, state)
         print(f"[sdd] {spec_id} PR: {args.url}")
     else:
@@ -2390,7 +3809,7 @@ def command_block(
         raise SddError("已经是 BLOCKED")
     state["blocked_from"] = state.get("state")
     state["blocked_reason"] = args.reason
-    add_history(state, "BLOCKED", args.reason)
+    add_history(state, "BLOCKED", args.reason, role="orchestrator")
     state["state"] = "BLOCKED"
     decisions = read_text(directory / "decisions.md")
     if not decisions:
@@ -2410,13 +3829,255 @@ def command_unblock(
         raise SddError("只有 BLOCKED 状态可以 unblock")
     if not args.human:
         raise SddError("unblock 需要 --human；agent 不允许代替人类解除阻塞")
+    approver = resolve_approver(root, getattr(args, "approver", None))
+    if config.get("require_approver") and approver == "unknown":
+        raise SddError(
+            "require_approver=true；请用 --approver 提供审批人"
+        )
+    state.setdefault("approvals", []).append(
+        {
+            "action": "unblock",
+            "approver": approver,
+            "at": now(),
+        }
+    )
+    state["last_approver"] = approver
     previous = state.get("blocked_from") or "TASKS_READY"
     state["state"] = previous
     state.pop("blocked_from", None)
     state.pop("blocked_reason", None)
-    add_history(state, previous, args.evidence or "unblocked")
+    add_history(
+        state,
+        previous,
+        args.evidence or "unblocked",
+        actor="human",
+        role="approver",
+        approver=approver,
+    )
     save_state(directory, state)
     print(f"[sdd] {spec_id} unblocked -> {previous}")
+    return 0
+
+
+def dirty_spec_paths(root: Path, directory: Path) -> list[str]:
+    if not (root / ".git").exists():
+        return []
+    relative = directory.relative_to(root).as_posix()
+    result = subprocess.run(
+        ["git", "status", "--porcelain", "--", relative],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    if result.returncode != 0:
+        return []
+    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+
+
+def unique_history_dir(directory: Path) -> Path:
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    candidate = directory / "history" / stamp
+    index = 1
+    while candidate.exists():
+        candidate = directory / "history" / f"{stamp}-{index}"
+        index += 1
+    return candidate
+
+
+def command_rewind(
+    args: argparse.Namespace, root: Path, config: dict[str, Any]
+) -> int:
+    spec_id, directory, state = resolve_spec(root, config, args.spec)
+    workflow = resolve_workflow(root, directory, state)
+    current = str(state.get("state", "UNKNOWN"))
+    target = str(args.to)
+    reason = str(args.reason or "").strip()
+
+    if not args.human:
+        raise SddError("rewind 需要 --human；agent 不允许回退阶段")
+    if not reason:
+        raise SddError("rewind 需要 --reason，记录为什么回退")
+    if current == "MERGED":
+        raise SddError("MERGED 不能 rewind")
+    if current == "BLOCKED":
+        raise SddError("BLOCKED 状态先 unblock，再 rewind")
+    if current not in STAGE_ORDER or target not in STAGE_ORDER:
+        raise SddError(f"未知阶段：{current} -> {target}")
+    if target == current:
+        raise SddError("已经在目标状态，不需要 rewind")
+    if STAGE_ORDER.index(target) > STAGE_ORDER.index(current):
+        raise SddError("rewind 只能回到更早阶段，不能去未来")
+    if target not in REWIND_PLANS:
+        raise SddError(f"不支持回退到 {target}；可选目标是更早的 DRAFT 到 VERIFYING")
+    allowed_targets = [
+        str(item) for item in workflow.get("allow_rewind_to", [])
+    ]
+    if allowed_targets and target not in allowed_targets:
+        raise SddError(
+            f"工作流 {workflow.get('name')} 不允许回退到 {target}；"
+            "可选：" + ", ".join(allowed_targets)
+        )
+    if args.reopen_task and target != "IMPLEMENTING":
+        raise SddError("--reopen-task 只能用于回退到 IMPLEMENTING")
+    if args.reset_tasks and target != "IMPLEMENTING":
+        raise SddError("--reset-tasks 只能用于回退到 IMPLEMENTING")
+    if args.reopen_task and args.reset_tasks:
+        raise SddError("--reopen-task 与 --reset-tasks 不能同时使用")
+
+    approver = resolve_approver(root, getattr(args, "approver", None))
+    if config.get("require_approver") and approver == "unknown":
+        raise SddError("require_approver=true；请用 --approver 提供审批人")
+
+    dirty = dirty_spec_paths(root, directory)
+    if dirty and not args.force:
+        raise SddError(
+            "Spec 目录有未提交改动；先提交，或加 --force 继续：\n- "
+            + "\n- ".join(dirty)
+        )
+
+    archived_names, invalidated_gates, task_mode = REWIND_PLANS[target]
+    history_dir = unique_history_dir(directory)
+    manifest: dict[str, Any] = {
+        "at": now(),
+        "from": current,
+        "to": target,
+        "reason": reason,
+        "approver": approver,
+        "files": [],
+    }
+    archived: list[str] = []
+    for name in archived_names:
+        source = directory / name
+        if not source.is_file():
+            continue
+        destination = history_dir / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+        archived.append(destination.relative_to(root).as_posix())
+        manifest["files"].append(
+            {
+                "kind": "artifact",
+                "source": source.relative_to(root).as_posix(),
+                "archived": destination.relative_to(root).as_posix(),
+                "sha256": sha256_file(destination),
+                "bytes": destination.stat().st_size,
+            }
+        )
+
+    report_history = (
+        report_root(root, config) / spec_id / "history" / history_dir.name
+    )
+    for gate in invalidated_gates:
+        source = gate_report_path(root, config, spec_id, gate)
+        if not source.is_file():
+            continue
+        destination = report_history / source.name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(source), str(destination))
+        archived.append(destination.relative_to(root).as_posix())
+        manifest["files"].append(
+            {
+                "kind": "gate_report",
+                "gate": gate,
+                "source": source.relative_to(root).as_posix(),
+                "archived": destination.relative_to(root).as_posix(),
+            }
+        )
+
+    if manifest["files"]:
+        write_json(history_dir / "manifest.json", manifest)
+
+    tasks_text = read_text(directory / "tasks.md")
+    tasks = parse_tasks(tasks_text)
+    reopened: list[str] = []
+    if task_mode == "reset_all":
+        reopened = [str(task["id"]) for task in tasks]
+    elif task_mode == "implementation":
+        if args.reset_tasks:
+            reopened = [str(task["id"]) for task in tasks]
+        elif args.reopen_task:
+            if not any(str(task["id"]) == args.reopen_task for task in tasks):
+                raise SddError(f"找不到 Task：{args.reopen_task}")
+            reopened = [args.reopen_task]
+        else:
+            reopened = [
+                str(task["id"])
+                for task in tasks
+                if str(task.get("status", "")).lower() == "in progress"
+            ]
+            if not reopened and tasks and all(task["done"] for task in tasks):
+                reopened = [str(tasks[-1]["id"])]
+    for task_id in reopened:
+        tasks_text, _ = mark_task_status(tasks_text, task_id, "Todo")
+    if reopened:
+        write_text(directory / "tasks.md", tasks_text)
+
+    for gate in invalidated_gates:
+        append_gate(directory, gate, target, "rewind", reason, "SUPERSEDED")
+
+    hashes = state.get("artifact_hashes", {})
+    if isinstance(hashes, dict):
+        for gate in invalidated_gates:
+            hashes.pop(gate, None)
+
+    rework = {
+        "from": current,
+        "to": target,
+        "reason": reason,
+        "at": now(),
+        "approver": approver,
+        "archived": archived,
+        "invalidated_gates": list(invalidated_gates),
+        "tasks_reset": bool(reopened),
+        "reopened_tasks": reopened,
+    }
+    state.setdefault("reworks", []).append(rework)
+    state.setdefault("approvals", []).append(
+        {
+            "action": "rewind",
+            "approver": approver,
+            "at": now(),
+            "from": current,
+            "to": target,
+            "reason": reason,
+        }
+    )
+    state["last_approver"] = approver
+    transition(
+        state,
+        target,
+        reason,
+        action="rewind",
+        actor="human",
+        role="approver",
+        approver=approver,
+        reason=reason,
+        rewind=rework,
+    )
+    save_state(directory, state)
+
+    payload = {
+        "ok": True,
+        "kind": "rewind",
+        "spec": spec_id,
+        "from": current,
+        "to": target,
+        "archived": archived,
+        "invalidated_gates": list(invalidated_gates),
+        "tasks_reset": bool(reopened),
+        "reopened_tasks": reopened,
+        "next": build_next_action(root, directory, state),
+    }
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0
+    print(f"[sdd] {spec_id} rewind {current} -> {target}")
+    print(f"[sdd] archived {len(archived)} file(s); invalidated: {', '.join(invalidated_gates)}")
+    if reopened:
+        print(f"[sdd] reopened tasks: {', '.join(reopened)}")
+    print(f"[sdd] next: {payload['next'].get('action')}")
     return 0
 
 
@@ -2428,13 +4089,37 @@ def command_merge(
         raise SddError("只有 PR_READY 状态可以 merge")
     if not args.human:
         raise SddError("merge 需要 --human；agent 不允许自己合并")
+    approver = resolve_approver(root, getattr(args, "approver", None))
+    if config.get("require_approver") and approver == "unknown":
+        raise SddError(
+            "require_approver=true；请用 --approver 提供审批人"
+        )
     errors, _ = run_checks(root, config, directory, state, "ci")
     if errors:
         for error in errors:
             eprint(f"- {error}")
         raise SddError("CI 检查未通过，不能登记合并")
+    pr_body = directory / "PR_BODY.md"
+    state.setdefault("approvals", []).append(
+        {
+            "action": "merge_pr",
+            "approver": approver,
+            "at": now(),
+            "artifact": pr_body.relative_to(root).as_posix(),
+            "sha256": sha256_file(pr_body) if pr_body.is_file() else "",
+            "head_sha": git_head_sha(root),
+        }
+    )
+    state["last_approver"] = approver
     state["merged_at"] = now()
-    transition(state, "MERGED", args.evidence)
+    transition(
+        state,
+        "MERGED",
+        args.evidence,
+        actor="human",
+        role="approver",
+        approver=approver,
+    )
     save_state(directory, state)
     print(f"[sdd] {spec_id} -> MERGED")
     return 0
@@ -2451,7 +4136,14 @@ def command_start(
     if not found:
         raise SddError(f"找不到任务：{args.task}")
     write_text(directory / "tasks.md", updated)
-    add_history(state, "IMPLEMENTING", "task started", action="task_start", task=args.task)
+    add_history(
+        state,
+        "IMPLEMENTING",
+        "task started",
+        action="task_start",
+        task=args.task,
+        role="implementer",
+    )
     save_state(directory, state)
     print(f"[sdd] {spec_id} {args.task} -> In Progress")
     return 0
@@ -2728,6 +4420,11 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["传统产品", "AI辅助·L2", "AI增强·L3", "AI原生·L4"],
     )
     p.add_argument("--author", default="SDD Agent")
+    p.add_argument(
+        "--workflow",
+        default=None,
+        help="workflow preset name; default: sdd/config.json workflow",
+    )
     p.add_argument("--risk", default="low", choices=["low", "medium", "high"])
     p.add_argument(
         "--risk-label",
@@ -2750,6 +4447,16 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("board", help="show specs and task statuses")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=command_board)
+
+    p = sub.add_parser("inbox", help="show work waiting for a human")
+    p.add_argument("--stale-days", type=int, default=None)
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=command_inbox)
+
+    p = sub.add_parser("metrics", help="show lead time, rework and gate metrics")
+    p.add_argument("--since", default=None)
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=command_metrics)
 
     p = sub.add_parser("events", help="show the append-only audit events for a Spec")
     add_spec_option(p)
@@ -2775,6 +4482,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("approve", help="human approval: DRAFT -> SPEC_READY")
     add_spec_option(p)
     p.add_argument("--evidence", default="requirement confirmed by human")
+    p.add_argument("--approver", help="approver identity, default: git config user")
     p.add_argument("--human", action="store_true")
     p.set_defaults(func=command_approve)
 
@@ -2783,6 +4491,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--task", help="mark T-xxx done")
     p.add_argument("--evidence", required=True)
     p.add_argument("--commit", help="fill Commit SHA for the task")
+    p.add_argument("--approver", help="approver identity for a manual gate")
     p.add_argument("--human", action="store_true", help="manual approval for a human gate")
     p.set_defaults(func=command_complete)
 
@@ -2813,12 +4522,26 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("unblock", help="resume after a human answer")
     add_spec_option(p)
     p.add_argument("--evidence", default="")
+    p.add_argument("--approver", help="approver identity, default: git config user")
     p.add_argument("--human", action="store_true")
     p.set_defaults(func=command_unblock)
+
+    p = sub.add_parser("rewind", help="human rewind to an earlier SDD stage")
+    add_spec_option(p)
+    p.add_argument("--to", required=True)
+    p.add_argument("--reason", required=True)
+    p.add_argument("--approver", help="approver identity, default: git config user")
+    p.add_argument("--force", action="store_true")
+    p.add_argument("--reopen-task", default=None)
+    p.add_argument("--reset-tasks", action="store_true")
+    p.add_argument("--human", action="store_true")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=command_rewind)
 
     p = sub.add_parser("merge", help="human merge: PR_READY -> MERGED")
     add_spec_option(p)
     p.add_argument("--evidence", required=True)
+    p.add_argument("--approver", help="approver identity, default: git config user")
     p.add_argument("--human", action="store_true")
     p.set_defaults(func=command_merge)
 

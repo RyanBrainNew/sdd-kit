@@ -122,6 +122,10 @@ def bootstrap(args: argparse.Namespace) -> int:
     config.update(existing_config)
     config["project"] = args.project
     config["sdd_level"] = "L2"
+    if not existing_config:
+        config["require_approver"] = True
+        config["require_artifact_hash"] = True
+        config["workflow"] = "l2-standard"
     if args.test_command:
         config["test_commands"] = args.test_command
     config_path.write_text(

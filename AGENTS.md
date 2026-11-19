@@ -8,7 +8,7 @@
 - `sdd/scripts/sdd.py` 是唯一状态机；不要在其他地方复制阶段规则。
 - `sdd/core.py` 负责会话指针和 CLI 高层编排；必须继续通过子进程调用 `sdd.py`。
 - `sdd/mcp/` 只是薄适配器；MCP 工具不得包含独立的 Gate 或状态规则。
-- `approve`、`merge`、`unblock` 是人工动作；CLI 强制 `--human`，MCP 不暴露。
+- `approve`、`merge`、`unblock`、`rewind` 是人工动作；CLI 强制 `--human`，MCP 不暴露。
 - `sdd/agent-block.md` 只能通过 `python -m sdd sync-agent` 合并进 `AGENTS.md`；
   不要生成 `AGENTS.sdd.md`。
 
@@ -20,6 +20,7 @@ sdd/core.py            # Workspace、会话指针、submit/report 编排
 sdd/cli.py             # python -m sdd
 sdd/agents.py          # AGENTS.md 托管块
 sdd/templates/         # 公司六个骨架
+sdd/workflows/         # 命名工作流预设
 sdd/prompts/           # Agent 方法层
 sdd/context/           # 多微服务上下文模板
 sdd/mcp/               # 可选 MCP 适配器
@@ -75,8 +76,9 @@ python -m sdd manifest --write
 - 所有命令都在仓库根目录执行。
 - 唯一状态机是 `sdd/scripts/sdd.py`。不要手改 `state.json` 或 `events.jsonl`。
 - 不要跳过 `submit` / `submit-task`；`ok=false` 时按 `errors` 修复后重试。
-- `approve`、`merge`、`unblock` 只能由人执行，Agent 不得代替。
-- 正常流程只有两个人工检查点：Spec 确认、PR 合并。
+- `approve`、`merge`、`unblock`、`rewind` 只能由人执行，Agent 不得代替。
+- `l2-standard` 正常流程只有两个人工检查点：Spec 确认、PR 合并；
+  `l2-strict` 的 G0–G5 全部需要人工确认。
 - 首次接入由平台团队执行一次 `bootstrap.py`；开发者 clone 后不需要初始化。
 
 ## 1. 每次会话先恢复
@@ -102,6 +104,9 @@ python -m sdd start-work --work-item <work-item> --issue-url "<url>" --json
 python -m sdd resume --spec <spec> --json
 ```
 
+需要紧急修复或严格流程时，由创建需求的人加 `--workflow l2-hotfix` 或
+`--workflow l2-strict`；Agent 不要自行选择或修改工作流。
+
 ## 2. 自动循环
 
 1. 读取 `next.action`、`next.step_id`、`next.kind`、`next.prompt_file`、
@@ -118,12 +123,23 @@ python -m sdd resume --spec <spec> --json
 7. `human_checkpoint.required=true`：停止，并告诉人类执行 `human_checkpoint.command`。
 8. 否则继续读取新的 `next.action`，直到 `done` 或人工检查点。
 
-## 3. 人类检查点
+## 3. 人类检查点与例外动作
+
+正常流程只有两个人工检查点：
 
 1. Spec 确认：人执行
    `python -m sdd approve --spec <spec> --human --evidence "需求已确认"`。
 2. PR 合并：人执行
    `python -m sdd merge --spec <spec> --human --evidence "PR merged"`。
+
+例外动作：
+
+- 回退/返工：人执行
+   `python -m sdd rewind --spec <spec> --to <stage> --reason "..." --human`。
+- 解除阻塞：人执行
+   `python -m sdd unblock --spec <spec> --human --evidence "..."`。
+
+人可以用 `python -m sdd inbox --json` 查看所有等待处理的事项；Agent 不消费该命令。
 
 ## 4. 优先级
 

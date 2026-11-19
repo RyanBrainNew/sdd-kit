@@ -6,9 +6,10 @@
 - 任何能读仓库文件、能执行 shell 的 Agent 都能接入，不绑定 Kiro、Cursor 或某个 IDE；
 - 开发者只说一次工作项，Agent 按 `next.action` 自动调研、写工件、推进阶段；
 - 正常流程只有两个人类检查点：**Spec 确认**和 **PR 合并**；
+- 可选命名工作流预设：`l2-standard`、`l2-hotfix`、`l2-strict`，Spec 创建时固定版本；
 - MCP 是可选适配器；没有 MCP，`AGENTS.md + CLI + Git Hook + CI` 也能跑完整流程。
 
-当前版本：`0.6.1`。
+当前版本：`0.8.0`。
 
 ---
 
@@ -125,14 +126,15 @@ MCP 只是把同一套 CLI 能力包装成结构化工具，方便 Agent 调用�
 | `sdd_submit_task` | 自动 start + complete 一个实现任务 |
 | `sdd_status` / `sdd_next` / `sdd_check` | 读取状态、下一步、校验结果 |
 | `sdd_list_specs` | 列出所有 Spec |
-| `sdd_board` | 看所有 Spec 的 Task 状态、进度和下一步 |
+| `sdd_board` | 看所有 Spec 的 Task 状态、进度和下一步（文本/JSON 看板） |
+| `sdd_inbox` | 只读列出等待人工处理的事项，不执行任何动作 |
 | `sdd_events` | 读取某个 Spec 的 append-only 审计事件流 |
 | `sdd_reserve_spec_id` / `sdd_create_spec` | 并行开发时分配 Spec ID、创建 Spec |
 | `sdd_verify` / `sdd_report` / `sdd_pr` | 验证、生成 PR 正文、记录 PR |
 | `sdd_block` | 记录阻塞 |
 | `sdd_read_artifact` / `sdd_context` | 读取工件、服务卡、契约、ADR |
 
-**故意不提供** `approve`、`merge`、`unblock`。这三个永远由人执行。
+**故意不提供** `approve`、`merge`、`unblock`、`rewind`。这些永远由人执行。
 
 初期建议只用 CLI；等需要统一版本、统一上下文、统一审计入口时，再部署一个共享 MCP server。
 
@@ -389,11 +391,52 @@ python -m sdd check --all --stage ci --check-git
 | 内容 | 位置 |
 |---|---|
 | 技术栈、目录、构建、测试、代码风格 | 现有 `AGENTS.md` 其他章节 |
-| `test_commands`、`spec_root`、Gate 策略 | `sdd/config.json` |
+| `test_commands`、`spec_root`、默认工作流、Gate 覆盖 | `sdd/config.json` |
 | 服务卡、契约、ADR、术语 | `sdd/context/` |
 | 当前需求范围、AC、设计 | `docs/specs/<Spec ID>/` |
 
+0.7.0 新增两个默认关闭、`bootstrap.py` 对新仓库默认开启的配置：
+
+| 配置 | 作用 |
+|---|---|
+| `require_approver` | CI 要求 `state.json` 中至少有一条带有效审批人的记录；人工命令可加 `--approver` |
+| `require_artifact_hash` | Gate 报告必须包含产物哈希；旧报告在升级期只告警 |
+
+0.8.0 新增 `workflow` 配置和三个命名预设；`bootstrap.py` 对新仓库写入
+`l2-standard`。需要项目级覆盖单个 Gate 时使用 `gate_overrides`，不要改预设文件。
+
 不要编造项目事实。Agent 无法从仓库确认时，应先检查代码和配置；仍无法确认，再问一个具体问题。
+
+### 5.4 工作流预设
+
+0.8.0 只支持仓库内固定的命名预设，不允许用户画任意 DAG。每个 Spec 在创建时
+把预设快照写入 `docs/specs/<Spec>/workflow.json`，之后修改 `sdd/workflows/`
+不会改变旧 Spec。
+
+| 预设 | 适用场景 | 关键差异 |
+|---|---|---|
+| `l2-standard` | 默认 L2 需求 | G0 人工；G2 高风险时人工；其余自动 |
+| `l2-hotfix` | 紧急修复，低/中风险 | 仍写 `design.md`，但使用轻量设计模板；G2 自动；高风险和 `risk_stop` 标签直接拒绝 |
+| `l2-strict` | 安全、数据迁移、破坏性变更 | G0–G5 全部人工；`verification.md` 必须有独立审查，且 reviewer session 不能等于实现 session |
+
+```powershell
+# 默认使用 config.json 的 workflow，当前是 l2-standard
+python -m sdd start-work --work-item srdcloud-553377 --title "订单取消"
+
+# 紧急修复
+python -m sdd start-work --work-item srdcloud-553377 --title "订单取消" `
+  --workflow l2-hotfix --risk medium
+
+# 严格变更
+python -m sdd new SPEC-PAY-002 --title "支付数据迁移" `
+  --work-item srdcloud-600001 --workflow l2-strict --risk high `
+  --risk-label data_migration
+```
+
+优先级是：`sdd/config.json.gate_overrides` > 旧版 `config.json.gates`（仅当整份
+`gates` 已偏离标准默认）> 预设 `gates` > 代码默认值。旧 Spec 没有 `workflow`
+字段时按 `l2-standard@1` 处理。
+0.8.0 暂未提供 `upgrade-workflow` 命令；需要换预设时重新建 Spec 或等后续版本。
 
 ---
 
@@ -515,6 +558,53 @@ python -m sdd merge --spec SPEC-ORDER-001 --human --evidence "PR #1 已合并"
 ```
 
 没有 `--human` 会被拒绝。合并前 CLI 会再跑一次 CI 级校验。
+
+### 6.9 证据绑定与审计
+
+每次记录 Gate 时，CLI 会把绑定产物的 SHA-256 写进 Gate 报告和
+`state.json.artifact_hashes`。`check --stage ci` 会重新计算并比对：
+
+- G0/G1 绑定 `spec.md`；
+- G2 绑定 `design.md`；
+- G3/G4 绑定 `tasks.md` 的任务计划字段（状态和 commit 变化不算篡改）；
+- G5 绑定 `verification.md`。
+
+批准后如果文件被修改，CI 会报“已被修改；请重新执行对应 Gate 或 rewind”。
+
+人工命令支持 `--approver "张三 <zhang@example.com>"`；不传时取
+`git config user.name` / `user.email`。`--human` 只表示“这是人工动作”，
+不提供身份认证；真正的硬控制仍是分支保护、CODEOWNERS 和 PR review。
+
+`events.jsonl` 从 0.7.0 起写入 `schema: 2`，新增 `role`、`session`、
+`session_source`、`artifacts`、`approver` 等字段，并记录 `check_failed`
+事件。旧事件保持原样，不回写。
+
+### 6.10 待办、回退与指标
+
+```powershell
+# 所有等人处理的事项：DRAFT、PR_READY、BLOCKED、人工 Gate、长期无事件
+python -m sdd inbox --json
+python -m sdd inbox --stale-days 7
+
+# 人工回退到更早阶段；只允许人执行
+python -m sdd rewind --spec SPEC-ORDER-001 --to SPEC_READY `
+  --reason "验证发现设计遗漏" --human --approver "张三 <zhang@example.com>"
+
+# 只读指标：lead time、阶段耗时、返工、人工介入、Gate 失败、AC 覆盖
+python -m sdd metrics --json
+python -m sdd metrics --since 2026-11-01 --json
+```
+
+`rewind` 的规则：
+
+- 只回到更早阶段，不能去未来；`MERGED` 和 `BLOCKED` 不能直接回退。
+- 工件先复制到 `docs/specs/<Spec>/history/<时间戳>/`，原文件保留。
+- 被作废的 Gate 报告移到 `sdd/reports/<Spec>/history/<时间戳>/`。
+- `gates.md` 追加 `SUPERSEDED`，`state.json.reworks` 和 `events.jsonl` 记录原因与审批人。
+- `--to DESIGN_READY` 保留已批准的 `design.md`，只作废 G3–G5；要重写设计，用 `--to SPEC_READY`。
+
+`sdd board` 目前仍是文本/JSON 看板，没有 HTML 面板。单文件 HTML 运行视图
+（`sdd view --html`）在 `DESIGN-NEXT.md` 中列为 0.9.0 能力，尚未实现。
 
 ---
 
@@ -890,7 +980,7 @@ Windows 下 Hook 由 Git Bash 执行。不要用 `--no-verify` 绕过。
 
 ### 14.8 Agent 想 `approve` / `merge` / `unblock`
 
-拒绝。这三个是人工动作，CLI 强制 `--human`，MCP 不暴露。
+拒绝。这些是人工动作，CLI 强制 `--human`，MCP 不暴露。
 
 ### 14.9 共享 MCP 能不能直接改我本地 clone？
 

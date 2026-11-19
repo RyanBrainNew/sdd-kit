@@ -12,6 +12,9 @@ Agent 不应向开发者询问当前阶段，只应询问一次工作项，然�
 python -m sdd start-work --work-item srdcloud-553377 --issue-url "https://..." --json
 ```
 
+需要非默认流程时加 `--workflow l2-hotfix` 或 `--workflow l2-strict`。工作流由
+创建 Spec 的人决定；Agent 不要自行改工作流。
+
 恢复当前会话：
 
 ```powershell
@@ -37,14 +40,34 @@ python -m sdd resume --json
 
 ## 3. 人类检查点
 
-正常 L2 流程只有两个人类停止点：
+`l2-standard` 正常流程只有两个人类停止点：
 
 | 检查点 | 谁做 | 命令 |
 |---|---|---|
 | Spec 确认 | 人 | `python -m sdd approve --spec <spec> --human --evidence "需求已确认"` |
 | PR 合并 | 人 | `python -m sdd merge --spec <spec> --human --evidence "PR merged"` |
 
-`approve`、`merge`、`unblock` 只能由人执行；MCP 不暴露这三个工具。
+`l2-hotfix` 仍是两个停止点，但 G2 自动通过，设计使用轻量模板；高风险或命中
+`risk_stop` 的需求不允许使用该预设。`l2-strict` 的 G0–G5 全部需要人工确认，
+`verification.md` 还必须有独立审查章节，reviewer session 不能等于实现 session。
+
+`approve`、`merge`、`unblock`、`rewind` 只能由人执行；MCP 不暴露这些工具。
+人工命令可加 `--approver "张三 <zhang@example.com>"`；不传时取 Git 配置。
+Agent 不传 `--approver`，也不得代替人执行这些命令。
+
+当当前阶段的自动检查通过、但 Gate 要求人工时，`submit` / `submit-task` 会返回
+`awaiting_human_approval=true` 和 `human_checkpoint`。Agent 必须停止，
+不要继续调用 `complete`。人可以运行 `python -m sdd inbox --json` 查看所有待办。
+
+`rewind` 只允许回到更早阶段，并且必须带 `--reason`。它会归档被作废的工件、
+移动 Gate 报告、重置相关 Task，并在 `events.jsonl` 记录 `rewind` 事件。
+
+Gate 报告会绑定当前产物的 SHA-256。批准后修改 `spec.md`、`design.md`、
+`tasks.md` 的任务计划或 `verification.md`，CI 会失败并要求重新过 Gate 或回退。
+任务执行导致的 `status`、`commit`、`done` 变化不在 `tasks.md` 哈希范围内。
+
+Spec 创建时会把工作流预设快照到 `docs/specs/<Spec>/workflow.json`；后续修改
+`sdd/workflows/` 不会影响旧 Spec。Agent 不得手工编辑该快照或 `state.json.workflow`。
 
 ## 4. 强制边界
 

@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "name": "l2-standard",
+  "version": 1,
+  "description": "公司 L2 默认路径：Spec 人工确认，设计按风险决定是否人工。",
+  "stages": [
+    "DRAFT",
+    "SPEC_READY",
+    "DESIGN_READY",
+    "TASKS_READY",
+    "IMPLEMENTING",
+    "VERIFYING",
+    "PR_READY",
+    "MERGED"
+  ],
+  "artifacts": {
+    "DRAFT": "spec.md",
+    "SPEC_READY": "design.md",
+    "DESIGN_READY": "tasks.md",
+    "IMPLEMENTING": "tasks.md",
+    "VERIFYING": "verification.md",
+    "PR_READY": "PR_BODY.md"
+  },
+  "gates": {
+    "G0": "human",
+    "G1": "auto",
+    "G2": "auto_if_no_risk",
+    "G3": "auto",
+    "G4": "auto",
+    "G5": "auto"
+  },
+  "required_gates": {
+    "DRAFT": [],
+    "SPEC_READY": ["G0", "G1"],
+    "DESIGN_READY": ["G0", "G1", "G2"],
+    "TASKS_READY": ["G0", "G1", "G2", "G3"],
+    "IMPLEMENTING": ["G0", "G1", "G2", "G3"],
+    "VERIFYING": ["G0", "G1", "G2", "G3", "G4"],
+    "PR_READY": ["G0", "G1", "G2", "G3", "G4", "G5"],
+    "MERGED": ["G0", "G1", "G2", "G3", "G4", "G5"]
+  },
+  "allow_rewind_to": [
+    "DRAFT",
+    "SPEC_READY",
+    "DESIGN_READY",
+    "TASKS_READY",
+    "IMPLEMENTING",
+    "VERIFYING"
+  ],
+  "design_mode": "full",
+  "review_required": false
+}

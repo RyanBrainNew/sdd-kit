@@ -48,6 +48,7 @@ class SddService:
             project.path,
             project_id=project.id,
             allocation_root=self.registry.workspace_root,
+            source="mcp",
         )
 
     def _mcp(self, value: Any) -> Any:
@@ -82,6 +83,9 @@ class SddService:
     def board(self, project_id: str) -> dict[str, Any]:
         return self._workspace(project_id).board()
 
+    def inbox(self, project_id: str, stale_days: int | None = None) -> dict[str, Any]:
+        return self._workspace(project_id).inbox(stale_days)
+
     def events(
         self, project_id: str, spec: str | None = None
     ) -> dict[str, Any]:
@@ -106,6 +110,7 @@ class SddService:
         risk: str = "low",
         risk_labels: Iterable[str] = (),
         product_type: str = "传统产品",
+        workflow: str | None = None,
     ) -> dict[str, Any]:
         return self._mcp(
             self._workspace(project_id).start_work(
@@ -117,6 +122,7 @@ class SddService:
                 risk=risk,
                 risk_labels=risk_labels,
                 product_type=product_type,
+                workflow=workflow,
             )
         )
 
@@ -168,6 +174,7 @@ class SddService:
         risk: str = "low",
         risk_labels: Iterable[str] = (),
         product_type: str = "传统产品",
+        workflow: str | None = None,
     ) -> dict[str, Any]:
         return self._workspace(project_id).create_spec(
             title=title,
@@ -178,6 +185,7 @@ class SddService:
             risk=risk,
             risk_labels=risk_labels,
             product_type=product_type,
+            workflow=workflow,
         )
 
     def reserve_spec_id(self, project_id: str, domain: str) -> dict[str, Any]:

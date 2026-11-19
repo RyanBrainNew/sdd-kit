@@ -71,6 +71,43 @@
 - **dsh 不复制规则**：只做 session 注入、斜杠命令、commit/finish hook。
 - **CI 不信任 Agent**：直接检查文件和 Git 历史。
 - **人保留两个开关**：`approve`、`merge`。
+- **审批绑定证据**：Gate 报告记录产物 SHA-256，批准后改动会被 CI 拦住。
+
+### 3.1 0.7.0 的证据基础
+
+0.7.0 不改变阶段图，只补“可证明”能力：
+
+| 能力 | 实现 |
+|---|---|
+| 事件可追溯 | `events.jsonl` 写入 `schema: 2`、角色、会话、执行器和审批人 |
+| 失败可统计 | `check_failed` 作为独立事件立即追加，不混入状态迁移 |
+| 审批绑产物 | Gate 报告与 `state.json.artifact_hashes` 双写 SHA-256 |
+| 任务计划稳定 | G3/G4 哈希只覆盖 Task 计划字段，排除 `status` / `commit` / `done` |
+| 升级兼容 | 旧 Gate 报告没有哈希时，按 `require_artifact_hash` 决定告警或阻断 |
+| 人工待办 | `inbox` 只读汇总 DRAFT、PR_READY、BLOCKED、人工 Gate 和长期无事件 |
+| 可回退 | `rewind` 由人执行，归档工件、移动 Gate 报告、重置相关 Task |
+| 可度量 | `metrics` 从事件流计算 lead time、阶段耗时、返工和人工介入 |
+
+哈希只证明“审批的是这份文件”，不证明“执行命令的人是谁”。身份责任仍靠
+`--approver` 记录，以及分支保护、CODEOWNERS、PR review 等外部控制。
+
+### 3.2 0.8.0 的命名工作流
+
+0.8.0 不引入自由 DAG。阶段序列仍然固定，预设只能声明：
+
+- 每个 Gate 的默认策略；
+- 设计校验用完整模板还是轻量模板；
+- 是否要求独立审查；
+- 允许回退到哪些更早阶段；
+- 对新 Spec 的风险限制。
+
+预设放在 `sdd/workflows/`，与模板、脚本一起进 manifest。Spec 创建时把完整预设
+复制到 `docs/specs/<Spec>/workflow.json`，`state.json` 只保存名称、版本和摘要。
+这样旧 Spec 不随仓库预设升级而漂移；预设内容变化但不升 `version` 会被摘要校验发现。
+
+项目级 `gate_overrides` 可以覆盖单个 Gate；旧版 `gates` 只有在整份已偏离标准
+默认时才作为显式覆盖。这样做是为了避免 `l2-strict` 被旧仓库里一份通用的
+`gates` 配置悄悄降级。
 
 ## 4. 和 aidlc / Trellis / Matt skills 的关系
 
