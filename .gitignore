@@ -4,5 +4,6 @@ __pycache__/
 .mypy_cache/
 .venv/
 venv/
+.sdd/
 .sdd-allocations.json
 .sdd-allocations.lock

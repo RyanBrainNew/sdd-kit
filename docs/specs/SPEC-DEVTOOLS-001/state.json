@@ -1,0 +1,140 @@
+{
+  "spec_id": "SPEC-DEVTOOLS-001",
+  "title": "GitHub Pages 官网与开源 README",
+  "work_item": "SDD-GH-001",
+  "issue": null,
+  "product_type": "传统产品",
+  "risk": "low",
+  "risk_labels": [],
+  "state": "PR_READY",
+  "created_at": "2026-11-19T15:50:33+08:00",
+  "updated_at": "2026-11-19T16:24:09+08:00",
+  "pr_url": null,
+  "history": [
+    {
+      "state": "DRAFT",
+      "at": "2026-11-19T15:50:33+08:00",
+      "evidence": "created"
+    },
+    {
+      "state": "SPEC_READY",
+      "at": "2026-11-19T15:54:12+08:00",
+      "evidence": "需求已确认",
+      "gate": "G0/G1"
+    },
+    {
+      "state": "DESIGN_READY",
+      "at": "2026-11-19T15:55:47+08:00",
+      "evidence": "design.md submitted via CLI and checked",
+      "gate": "G2"
+    },
+    {
+      "state": "TASKS_READY",
+      "at": "2026-11-19T15:57:20+08:00",
+      "evidence": "tasks.md submitted via CLI and checked",
+      "gate": "G3"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-19T15:57:22+08:00",
+      "evidence": "implementation started automatically by CLI"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-19T16:01:43+08:00",
+      "evidence": "task started",
+      "action": "task_start",
+      "task": "T-001"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-19T16:01:44+08:00",
+      "evidence": "python -m unittest tests.test_site.SiteStructureTests tests.test_site.SiteStyleTests -v -> Ran 10 tests, OK; 站点骨架 site/index.html styles.css assets 已交付",
+      "action": "task_done",
+      "task": "T-001"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-19T16:09:39+08:00",
+      "evidence": "task started",
+      "action": "task_start",
+      "task": "T-002"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-19T16:09:39+08:00",
+      "evidence": "python -m unittest tests.test_site -v -> Ran 13 tests OK; Playwright 360/390/768/1280/1440 无横向溢出、无 console error；复制按钮写入剪贴板并显示已复制；移动菜单 aria-expanded 与 Escape 正常；reduced-motion 下 opacity=1 animation=none",
+      "action": "task_done",
+      "task": "T-002"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-19T16:10:54+08:00",
+      "evidence": "task started",
+      "action": "task_start",
+      "task": "T-003"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-19T16:10:55+08:00",
+      "evidence": "python -m unittest tests.test_site.PagesWorkflowTests -v -> Ran 4 tests OK; .github/workflows/pages.yml 仅上传 ./site，权限 contents:read/pages:write/id-token:write；gh api POST pages 返回 422 'current plan does not support GitHub Pages for this repository'，部署需仓库转公开或升级计划后由人启用",
+      "action": "task_done",
+      "task": "T-003"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-19T16:13:20+08:00",
+      "evidence": "task started",
+      "action": "task_start",
+      "task": "T-004"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-19T16:13:21+08:00",
+      "evidence": "python -m unittest tests.test_site.ReadmeTests -v -> Ran 5 tests OK; README.md 重写为 200 行首页结构，含 tests/version/python/site 4 个徽章、Quickstart、命令表、目录结构、9 个文档入口、许可证状态；新增 .github/workflows/tests.yml 支撑 CI 徽章",
+      "action": "task_done",
+      "task": "T-004"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-19T16:14:39+08:00",
+      "evidence": "task started",
+      "action": "task_start",
+      "task": "T-005"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-19T16:14:39+08:00",
+      "evidence": "python -m unittest tests.test_site.GuideTests tests.test_site.LinkTests -v -> Ran 3 tests OK; docs/GUIDE.md 939 行，正文与 HEAD:README.md 逐字一致（21078 chars, equal=True），16 个一级章节与抽样命令全部保留；README 与 GUIDE 相对链接全部可解析",
+      "action": "task_done",
+      "task": "T-005"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-19T16:22:17+08:00",
+      "evidence": "task started",
+      "action": "task_start",
+      "task": "T-006"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-19T16:22:18+08:00",
+      "evidence": "python -m unittest discover -s tests -v -> Ran 74 tests, OK (skipped=2); python -m sdd verify-core -> passed; python -m sdd verify-agent -> passed; gh repo edit 已写入 description/homepage/topics，gh repo view 确认 homepageUrl=https://ryanbrainnew.github.io/sdd-kit/；docs/GITHUB-ABOUT.md 已交付",
+      "action": "task_done",
+      "task": "T-006"
+    },
+    {
+      "state": "VERIFYING",
+      "at": "2026-11-19T16:22:18+08:00",
+      "evidence": "all tasks completed",
+      "gate": "G4"
+    },
+    {
+      "state": "PR_READY",
+      "at": "2026-11-19T16:24:09+08:00",
+      "evidence": "verification.md submitted via CLI and checked",
+      "gate": "G5"
+    }
+  ],
+  "previous_state": "VERIFYING"
+}
