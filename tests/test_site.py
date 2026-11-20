@@ -86,6 +86,16 @@ class SiteStructureTests(unittest.TestCase):
         ):
             self.assertNotIn(forbidden, self.html)
 
+    def test_roadmap_issues(self):
+        """公开路线图必须能跳到对应 Issue。"""
+        self.assertIn('id="roadmap"', self.html)
+        self.assertIn('href="#roadmap"', self.html)
+        for number in ("1", "2", "3", "7", "8"):
+            self.assertIn(
+                f"https://github.com/RyanBrainNew/sdd-kit/issues/{number}",
+                self.html,
+            )
+
 
 class SiteStyleTests(unittest.TestCase):
     def setUp(self):
@@ -241,7 +251,30 @@ class ReadmeTests(unittest.TestCase):
         self.assertNotIn("license-MIT", self.text)
 
     def test_readme_is_a_front_page(self):
-        self.assertLess(len(self.lines), 260)
+        self.assertLess(len(self.lines), 320)
+
+    def test_docs_directory_map(self):
+        """README 必须解释 docs/ 与生成工件的位置。"""
+        for expected in (
+            "docs/",
+            "docs/GUIDE.md",
+            "docs/specs/<Spec ID>/",
+            "docs/prd-index.md",
+            "sdd/reports/<Spec ID>/",
+            "workflow.json",
+            "state.json",
+            "events.jsonl",
+        ):
+            self.assertIn(expected, self.text)
+
+    def test_issue_roadmap(self):
+        """未开发能力必须能从 README 跳到对应 Issue。"""
+        for number in ("1", "2", "3", "7", "8"):
+            self.assertIn(
+                f"https://github.com/RyanBrainNew/sdd-kit/issues/{number}",
+                self.text,
+            )
+        self.assertIn("未开发", self.text)
 
 
 class GuideTests(unittest.TestCase):

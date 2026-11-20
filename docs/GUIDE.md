@@ -904,6 +904,12 @@ Matt 的方法
 
 ```text
 AGENTS.md                     # 项目规则 + SDD 托管块
+README.md                     # 首页：定位、接入、目录和路线图
+ARCHITECTURE.md               # 设计取舍
+DESIGN-NEXT.md                # 后续版本设计
+ADOPTION.md                   # 推广步骤
+LANDSCAPE.md                  # 开源方案对照
+bootstrap.py                  # 业务仓库接入
 sdd/
   VERSION                     # 核心版本
   manifest.json               # 受保护文件哈希
@@ -920,6 +926,9 @@ sdd/
   ci/                         # GitHub / GitLab 模板
   mcp/                        # 可选 MCP 适配器
 docs/
+  GUIDE.md                    # 完整指南
+  GITHUB-ABOUT.md             # 仓库 About 文案与 Homepage
+  assets/site-preview.png     # 官网首屏截图
   prd-index.md
   specs/
     SPEC-ORDER-001/
@@ -929,17 +938,36 @@ docs/
       verification.md
       gates.md
       decisions.md
+      context.md
+      unknowns.md
+      workflow.json
       state.json
+      events.jsonl
       PR_BODY.md
 sdd/reports/
   SPEC-ORDER-001/
     gate0-report.md
     ...
     gate5-report.md
+site/                         # GitHub Pages 官网，只发布这个目录
+ci/                           # 本仓库测试工作流
+tests/                        # 单元、CLI、站点与集成测试
+deploy/                       # 共享 MCP 部署示例
+dsh/                          # dsh / harness 薄适配约定
 .sdd/runtime/sessions/        # 本地会话指针，已 gitignore
 ```
 
-`deploy/` 和 `dsh/` 只留在 `sdd-kit` 源仓库，不复制到业务仓库。
+`docs/specs/<Spec>/` 是每次需求的 SDD 审计面：`spec.md`、`design.md`、`tasks.md`
+和 `verification.md` 由 Agent 产出并经 CLI 校验；`gates.md`、`state.json` 和
+`events.jsonl` 只能由 CLI 写；`PR_BODY.md` 由 `sdd report` 生成。
+
+`docs/` 与 `site/` 刻意分离：Pages 工作流只上传 `site/`，不会发布 Spec、Gate 报告
+或业务上下文。`deploy/`、`dsh/`、`site/`、`ci/` 和 `tests/` 只留在 `sdd-kit`
+源仓库，不复制到业务仓库。
+
+未开发能力以 GitHub Issues 为准：`sdd view`、外部 runner 契约、`upgrade-workflow`、
+审批版本绑定、`change-set` / `impact`、全量 commit 审计和 `trace` 见
+[Issues](https://github.com/RyanBrainNew/sdd-kit/issues)。
 
 ---
 

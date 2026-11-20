@@ -5,7 +5,7 @@
 
 ## Description
 
-把公司 SDD-L2 流程装进仓库：一个 CLI、一套状态机、任何 Agent 都能接入。
+把公司 SDD-L2 流程装进仓库：一个 CLI、一套状态机、任何 Agent 都能接入，证据随 Git 可追溯。
 
 ## Topics
 
@@ -28,6 +28,15 @@ code-review
 https://ryanbrainnew.github.io/sdd-kit/
 ```
 
+## Links
+
+```text
+官网              https://ryanbrainnew.github.io/sdd-kit/
+GitHub            https://github.com/RyanBrainNew/sdd-kit
+Issues / 路线图    https://github.com/RyanBrainNew/sdd-kit/issues
+完整指南          https://github.com/RyanBrainNew/sdd-kit/blob/main/docs/GUIDE.md
+```
+
 ## License
 
 ```text
@@ -40,7 +49,7 @@ Apache-2.0
 
 ```powershell
 gh repo edit RyanBrainNew/sdd-kit `
-  --description "把公司 SDD-L2 流程装进仓库：一个 CLI、一套状态机、任何 Agent 都能接入。" `
+  --description "把公司 SDD-L2 流程装进仓库：一个 CLI、一套状态机、任何 Agent 都能接入，证据随 Git 可追溯。" `
   --homepage "https://ryanbrainnew.github.io/sdd-kit/" `
   --add-topic sdd `
   --add-topic spec-driven-development `
