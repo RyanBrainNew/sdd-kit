@@ -43,9 +43,9 @@ python -m sdd resume --spec <spec> --json
 ## 2. 自动循环
 
 1. 读取 `next.action`、`next.step_id`、`next.kind`、`next.prompt_file`、
-   `next.artifact`、`next.done_when` 和 `next.submit_with`。
-2. 调研代码、测试、契约、ADR 和 `sdd/context/`；把事实写进 `context.md`，
-   把未决问题写进 `unknowns.md`。
+   `next.artifact`、`next.done_when`、`next.submit_with` 和 `next.context_bundle`。
+2. 按 `context_bundle` 的 FR/AC、Design 章节、契约、约束、`allowed_paths` 和
+   `exclude` 调研代码与测试；把事实写进 `context.md`，把未决问题写进 `unknowns.md`。
 3. 产出 `next.artifact` 要求的内容。
 4. 调用 `next.submit_with` 提交：
    - 阶段产物：`python -m sdd submit --artifact <name> --file <path> --json`
@@ -55,6 +55,9 @@ python -m sdd resume --spec <spec> --json
 6. `decision_required=true`：停止，只把 `question` 和 `options` 交给人类。
 7. `human_checkpoint.required=true`：停止，并告诉人类执行 `human_checkpoint.command`。
 8. 否则继续读取新的 `next.action`，直到 `done` 或人工检查点。
+
+G5 只接受 `sdd verify` 写入的结构化命令证据；手写 `PASS`、空 `test_commands`、
+非 0 退出码、无法定位的测试名或函数体外的 AC 标签都不能放行。
 
 ## 3. 人类检查点与例外动作
 

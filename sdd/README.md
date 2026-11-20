@@ -51,7 +51,8 @@ Agent 不需要知道 `DRAFT`、`SPEC_READY` 等状态名，只读 `next.action`
 1. 读取 `next.action`、`next.step_id`、`next.kind`、`next.prompt_file`、
    `next.artifact`、`next.done_when`；`decision_required=true` 时停止并把
    `question` / `options` 交给人类；
-2. 调研代码、测试、契约、ADR 和 `sdd/context/`；
+2. 读取 `next.context_bundle`：Task、FR/AC、Design 章节、契约、约束、
+   `allowed_paths` 和 `exclude`；只在这个范围内调研，不扩大到其他 Spec；
 3. 把事实写进当前 Spec 的 `context.md`，未决问题写进 `unknowns.md`；
 4. 生成 `next.artifact`；
 5. 用 `next.submit_with` 提交：
@@ -175,6 +176,7 @@ PR 审核时看：
 
 - `PR_BODY.md` 四要素是否齐全；
 - 每条 AC 是否有测试或证据；
+- `verification.md` 是否有 `Exit: 0` 的结构化命令证据；
 - 是否有未解释的 diff；
 - CI 的 `verify-core` / `verify-agent` / `check` 是否通过；
 - 高风险变更是否有对应 Gate 记录。
@@ -201,6 +203,8 @@ Agent 在写 Spec/Design 前先读：
 | 有 `[NEEDS CLARIFICATION]` | 停下问一个具体问题 |
 | Hook 不生效 | `git config core.hooksPath .githooks` |
 | 测试命令为空 | 配置 `sdd/config.json` 的 `test_commands` |
+| G5 提示 `manual/unverified` | 配置 `test_commands` 并运行 `sdd verify`；手写 PASS 不能放行 |
+| 测试名无法定位 / AC 未覆盖 | Task 表写真实测试类/方法；AC 标签放在 `def test_*` 函数体内 |
 | Agent 想改 `state.json` | 拒绝；改用 `submit` / `submit-task` / `block` |
 | Agent 想 approve/merge | 拒绝；这是人类动作 |
 | `verify-core` 失败 | 恢复平台发布版本，或由平台团队重新生成 manifest |

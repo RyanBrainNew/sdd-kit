@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any, Iterable, Optional
 
 
-VERSION = "0.8.0"
+VERSION = "0.9.0"
 EVENT_SCHEMA = 2
 
 SPEC_SECTIONS = (
@@ -569,7 +569,7 @@ def validate_workflow_preset(
     stages = preset.get("stages")
     if stages != list(STAGE_ORDER):
         errors.append(
-            f"{source} 在 0.8.0 只支持完整阶段序列："
+            f"{source} 在当前版本只支持完整阶段序列："
             + " -> ".join(STAGE_ORDER)
         )
     gates = preset.get("gates")

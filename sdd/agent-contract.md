@@ -27,9 +27,11 @@ python -m sdd resume --json
 ## 2. 自动循环
 
 1. 读取 `next.action`、`next.step_id`、`next.kind`、`next.prompt_file`、
-   `next.artifact` 和 `next.done_when`。`decision_required=true` 时必须停止，
+   `next.artifact`、`next.done_when` 和 `next.context_bundle`。
+   `decision_required=true` 时必须停止，
    把 `question` / `options` 交给人类。
-2. 调研代码、测试、接口契约、ADR 和服务卡，写入 `context.md` 和 `unknowns.md`。
+2. 按 `context_bundle` 的 FR/AC、Design 章节、契约、约束、`allowed_paths`
+   和 `exclude` 调研，写入 `context.md` 和 `unknowns.md`；范围为空时不要自行扩大。
 3. 生成 `next.artifact` 要求的内容。
 4. 调用 `next.submit_with`：
    - 阶段产物：`python -m sdd submit --artifact <name> --file <path> --json`
@@ -75,6 +77,8 @@ Spec 创建时会把工作流预设快照到 `docs/specs/<Spec>/workflow.json`�
 - 不手工编辑 `events.jsonl`；它是由 `sdd` 自动追加的审计流。
 - 不跳过 `sdd submit` 的校验。
 - 不伪造测试结果。
+- 不手写 `PASS` 绕过 G5；必须由 `sdd verify` 写入 Command/CWD/Exit/Head/Plan-Hash/At。
+- AC 标签必须位于 `def test_*` 函数体内；任务表测试名必须能在测试文件中定位。
 - 一次只做一个实现任务。
 - 每个代码 Commit 只关联一个 Task，并带 `Spec-Id` / `Task-Id` trailer。
 - CI 必须通过 `python -m sdd check --all --stage ci --check-git`。
