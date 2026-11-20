@@ -21,6 +21,7 @@ SPEC_TEXT = """# 订单取消规格说明书（Spec）
 |---|---|
 | Spec ID | SPEC-ORDER-001 |
 | 工作项 ID | srdcloud-553377 |
+| FEAT ID | FEAT-001 |
 | 原始需求来源 | https://example.invalid/item/553377 |
 | 作者 | SDD Agent |
 | 创建日期 | 2026-11-14 |
@@ -554,6 +555,7 @@ class SddFlowTest(SddFlowBase):
         self.run_sdd("check", "--spec", SPEC_ID, "--stage", "spec", expect=1)
 
         self.write("docs/specs/SPEC-ORDER-001/spec.md", SPEC_TEXT)
+        self.run_sdd("index", "--spec", SPEC_ID)
         self.run_sdd("check", "--spec", SPEC_ID, "--stage", "spec")
         self.run_sdd(
             "approve",
@@ -1382,6 +1384,104 @@ class CheckRegistryTests(SddFlowBase):
             self.root / "sdd/reports/SPEC-ORDER-001/gate1-report.md"
         ).read_text(encoding="utf-8")
         self.assertIn("| 总体结果 | PASS |", g1)
+
+
+class FeatTraceTests(SddFlowBase):
+    def config(self):
+        return json.loads(
+            (self.root / "sdd" / "config.json").read_text(encoding="utf-8")
+        )
+
+    def prepare_feat_spec(self):
+        self.new_spec()
+        self.write("docs/specs/SPEC-ORDER-001/spec.md", SPEC_TEXT)
+        self.run_sdd("index", "--spec", SPEC_ID)
+        return (
+            self.root / "docs/specs/SPEC-ORDER-001/spec.md"
+        ).read_text(encoding="utf-8")
+
+    def test_feat_metadata_must_match_index(self):
+        spec_text = self.prepare_feat_spec()
+        self.assertEqual(
+            engine.feat_identity_errors(
+                self.root, self.config(), self.state(), spec_text
+            ),
+            [],
+        )
+        self.assertEqual(
+            engine.feat_coverage_errors(
+                self.root, self.config(), self.state(), spec_text
+            ),
+            [],
+        )
+        mismatched = spec_text.replace("| FEAT ID | FEAT-001 |", "| FEAT ID | FEAT-999 |")
+        errors = engine.feat_identity_errors(
+            self.root, self.config(), self.state(), mismatched
+        )
+        self.assertTrue(any("不一致" in error for error in errors))
+        missing = spec_text.replace("| FEAT ID | FEAT-001 |\n", "")
+        errors = engine.feat_identity_errors(
+            self.root, self.config(), self.state(), missing
+        )
+        self.assertTrue(any("缺少有效 FEAT ID" in error for error in errors))
+
+    def test_duplicate_feat_is_blocked(self):
+        spec_text = self.prepare_feat_spec()
+        index = self.root / "docs" / "prd-index.md"
+        text = index.read_text(encoding="utf-8")
+        marker = text.index("## FEAT 映射")
+        duplicate = (
+            "| srdcloud-999999 | N/A | current | FEAT-001 | SPEC-ORDER-002 | 重复 | 0 |\n"
+        )
+        index.write_text(text[:marker] + duplicate + "\n" + text[marker:], encoding="utf-8")
+        errors = engine.feat_identity_errors(
+            self.root, self.config(), self.state(), spec_text
+        )
+        self.assertTrue(any("被多个 Spec 使用" in error for error in errors))
+
+    def test_orphan_fr_ac_is_blocked(self):
+        spec_text = self.prepare_feat_spec()
+        index = self.root / "docs" / "prd-index.md"
+        text = index.read_text(encoding="utf-8")
+        text = text.replace(
+            "| FR-001 | AC-001-1 |",
+            "| FR-001 | AC-001-2 |",
+        )
+        index.write_text(text, encoding="utf-8")
+        errors = engine.feat_coverage_errors(
+            self.root, self.config(), self.state(), spec_text
+        )
+        self.assertTrue(any("缺少 AC：AC-001-1" in error for error in errors))
+        self.assertTrue(any("不存在的 AC：AC-001-2" in error for error in errors))
+
+    def test_body_only_feat_is_not_registered(self):
+        spec_text = self.prepare_feat_spec()
+        index = self.root / "docs" / "prd-index.md"
+        text = index.read_text(encoding="utf-8")
+        marker = text.index("## FEAT 映射")
+        body_only = text[:marker] + "正文提到 FEAT-001 / SPEC-ORDER-001 / FR-001 / AC-001-1。\n"
+        index.write_text(body_only, encoding="utf-8")
+        errors = engine.feat_coverage_errors(
+            self.root, self.config(), self.state(), spec_text
+        )
+        self.assertTrue(any("缺少当前 Spec 的 FEAT 映射表行" in error for error in errors))
+
+    def test_merged_legacy_spec_skips_feat_mapping(self):
+        self.new_spec()
+        legacy_spec = SPEC_TEXT.replace("| FEAT ID | FEAT-001 |\n", "")
+        legacy_state = dict(self.state())
+        legacy_state["state"] = "MERGED"
+        self.assertEqual(
+            engine.check_feat_trace(
+                self.root, self.config(), legacy_state, legacy_spec
+            ),
+            [],
+        )
+        self.assertTrue(
+            engine.check_feat_trace(
+                self.root, self.config(), self.state(), legacy_spec
+            )
+        )
 
 
 if __name__ == "__main__":

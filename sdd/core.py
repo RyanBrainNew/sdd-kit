@@ -557,6 +557,8 @@ class Workspace:
         if self.root.resolve() not in path.parents:
             raise ValueError("artifact path escapes the project root")
         path.write_text(content, encoding="utf-8")
+        if artifact == "spec.md":
+            self.index(spec)
 
         verification = None
         if artifact == "verification.md" and run_commands:
@@ -755,6 +757,10 @@ class Workspace:
         payload = self._json(result)
         payload["exit_code"] = result.returncode
         return payload
+
+    def index(self, spec: str) -> dict[str, Any]:
+        result = self._run(["index", "--spec", spec, "--json"])
+        return self._json(result)
 
     def create_spec(
         self,

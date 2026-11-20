@@ -6,6 +6,7 @@
 |---|---|
 | Spec ID | {{SPEC_ID}} |
 | 工作项 ID | {{WORK_ITEM}} |
+| FEAT ID | {{FEAT_ID}} |
 | 原始需求来源 | {{ISSUE}} |
 | 作者 | {{AUTHOR}} |
 | 创建日期 | {{DATE}} |

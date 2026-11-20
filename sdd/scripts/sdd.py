@@ -170,6 +170,26 @@ CHECK_REGISTRY = (
         "owner": "planner",
     },
     {
+        "id": "G0-04",
+        "gate": "G0",
+        "name": "FEAT 已登记且唯一",
+        "level": "required",
+        "trigger": "approve",
+        "waivable": False,
+        "evidence": "spec.md FEAT ID 与 docs/prd-index.md 一致且不重复",
+        "owner": "planner",
+    },
+    {
+        "id": "G0-05",
+        "gate": "G0",
+        "name": "FEAT 映射覆盖全部 FR/AC",
+        "level": "required",
+        "trigger": "approve",
+        "waivable": False,
+        "evidence": "## FEAT 映射 表覆盖 Spec 的全部 FR/AC，无孤儿项",
+        "owner": "planner",
+    },
+    {
         "id": "G0-06",
         "gate": "G0",
         "name": "范围声明可判定",
@@ -177,6 +197,16 @@ CHECK_REGISTRY = (
         "trigger": "approve",
         "waivable": False,
         "evidence": "spec.md 的 In-Scope / Out-of-Scope 已填写",
+        "owner": "planner",
+    },
+    {
+        "id": "G0-07",
+        "gate": "G0",
+        "name": "历史 Spec 兼容标注",
+        "level": "advisory",
+        "trigger": "approve",
+        "waivable": True,
+        "evidence": "MERGED 历史 Spec 使用 legacy 校验并在报告标注",
         "owner": "planner",
     },
     {
@@ -1603,6 +1633,8 @@ def prd_index_rows(text: str) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     for line in text.splitlines():
         stripped = line.strip()
+        if re.match(r"^##\s*(FEAT\s*映射|FEAT\s*Mapping)\s*$", stripped, re.I):
+            break
         if not stripped.startswith("|") or not stripped.endswith("|"):
             continue
         cells = split_table_row(stripped)
@@ -1625,6 +1657,51 @@ def prd_index_source(text: str) -> str:
     return match.group(1).lower() if match else ""
 
 
+def parse_feat_map(text: str) -> list[dict[str, str]]:
+    body = section_body(text, ("FEAT 映射", "FEAT Mapping"))
+    if not body:
+        return []
+    header_index: Optional[dict[str, int]] = None
+    rows: list[dict[str, str]] = []
+    for line in body.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("|") or not stripped.endswith("|"):
+            continue
+        cells = split_table_row(stripped)
+        if not cells:
+            continue
+        normalized = {normalize_column(cell): index for index, cell in enumerate(cells)}
+        if "feat" in normalized and "specid" in normalized:
+            header_index = normalized
+            continue
+        if header_index is None:
+            continue
+
+        def cell(*aliases: str) -> str:
+            for alias in aliases:
+                index = header_index.get(normalize_column(alias))
+                if index is not None and index < len(cells):
+                    return cells[index].strip()
+            return ""
+
+        row = {
+            "feat": cell("FEAT"),
+            "work_item": cell("工作项 ID", "工作项"),
+            "spec": cell("Spec ID", "Spec"),
+            "fr": cell("FR"),
+            "acs": cell("AC", "ACS"),
+        }
+        if any(row.values()):
+            rows.append(row)
+    return rows
+
+
+def allocate_feat(root: Path, config: dict[str, Any]) -> str:
+    text = read_text(prd_index_path(root, config))
+    numbers = [int(match.group(1)) for match in re.finditer(r"\bFEAT-([0-9]{3})\b", text)]
+    return f"FEAT-{max(numbers, default=0) + 1:03d}"
+
+
 def ensure_prd_index(
     root: Path,
     config: dict[str, Any],
@@ -1632,6 +1709,7 @@ def ensure_prd_index(
     work_item: str,
     title: str,
     issue: Optional[str],
+    feat: Optional[str] = None,
 ) -> Path:
     path = prd_index_path(root, config)
     text = read_text(path)
@@ -1646,11 +1724,7 @@ def ensure_prd_index(
             "| --- | --- | --- | --- | --- | --- | --- |\n"
         )
     if spec_id not in text:
-        numbers = [
-            int(match.group(1))
-            for match in re.finditer(r"\bFEAT-([0-9]{3})\b", text)
-        ]
-        feat = f"FEAT-{max(numbers, default=0) + 1:03d}"
+        feat = feat or allocate_feat(root, config)
         safe_title = " ".join(title.split()).replace("|", "\\|")
         link = (issue or "N/A").replace("|", "\\|")
         text += (
@@ -1745,6 +1819,195 @@ def check_prd_index(
     return errors
 
 
+def feat_metadata(spec_text: str) -> str:
+    return metadata_value(spec_text, "FEAT ID", "FEATID", "FEAT")
+
+
+def is_legacy_feat_spec(state: dict[str, Any], spec_text: str) -> bool:
+    return state.get("state") == "MERGED" and not feat_metadata(spec_text)
+
+
+def feat_identity_errors(
+    root: Path,
+    config: dict[str, Any],
+    state: dict[str, Any],
+    spec_text: str,
+) -> list[str]:
+    if not config.get("require_prd_index"):
+        return []
+    if is_legacy_feat_spec(state, spec_text):
+        return []
+    errors: list[str] = []
+    declared = feat_metadata(spec_text)
+    if not re.fullmatch(r"FEAT-\d{3}", declared or ""):
+        errors.append("spec.md 元数据缺少有效 FEAT ID（格式 FEAT-xxx）")
+    spec_id = str(state.get("spec_id", ""))
+    rows = prd_index_rows(read_text(prd_index_path(root, config)))
+    spec_rows = [row for row in rows if row.get("specid") == spec_id]
+    if spec_id and not spec_rows:
+        errors.append(f"docs/prd-index.md 没有登记 Spec {spec_id} 的 FEAT 行")
+    row_feats = {
+        row.get("feat", "")
+        for row in spec_rows
+        if re.fullmatch(r"FEAT-\d{3}", row.get("feat", "") or "")
+    }
+    if declared and row_feats and declared not in row_feats:
+        errors.append(
+            f"spec.md FEAT ID={declared} 与 docs/prd-index.md 的 "
+            f"{', '.join(sorted(row_feats))} 不一致"
+        )
+    feat_to_specs: dict[str, set[str]] = {}
+    for row in rows:
+        row_feat = row.get("feat", "")
+        row_spec = row.get("specid", "")
+        if re.fullmatch(r"FEAT-\d{3}", row_feat or "") and row_spec:
+            feat_to_specs.setdefault(row_feat, set()).add(row_spec)
+    for row_feat, specs in sorted(feat_to_specs.items()):
+        if len(specs) > 1:
+            errors.append(
+                f"FEAT {row_feat} 被多个 Spec 使用：" + ", ".join(sorted(specs))
+            )
+    return errors
+
+
+def feat_coverage_errors(
+    root: Path,
+    config: dict[str, Any],
+    state: dict[str, Any],
+    spec_text: str,
+) -> list[str]:
+    if not config.get("require_prd_index"):
+        return []
+    if is_legacy_feat_spec(state, spec_text):
+        return []
+    errors: list[str] = []
+    declared = feat_metadata(spec_text)
+    spec_id = str(state.get("spec_id", ""))
+    work_item = str(state.get("work_item") or "")
+    rows = [
+        row
+        for row in parse_feat_map(read_text(prd_index_path(root, config)))
+        if row.get("spec") == spec_id
+    ]
+    if not rows:
+        errors.append(
+            "docs/prd-index.md 缺少当前 Spec 的 FEAT 映射表行；"
+            "请在 ## FEAT 映射 下登记 FR/AC"
+        )
+        return errors
+    mapped_frs: set[str] = set()
+    mapped_acs: set[str] = set()
+    for row in rows:
+        if declared and row.get("feat") and row.get("feat") != declared:
+            errors.append(
+                f"FEAT 映射行的 FEAT={row.get('feat')} 与 spec.md 的 {declared} 不一致"
+            )
+        if work_item and row.get("work_item") and row.get("work_item") != work_item:
+            errors.append(
+                f"FEAT 映射行的工作项={row.get('work_item')} 与 state.work_item={work_item} 不一致"
+            )
+        mapped_frs.update(extract_frs(row.get("fr", "")))
+        mapped_acs.update(extract_acs(row.get("acs", "")))
+    spec_frs = set(extract_frs(spec_text))
+    spec_acs = set(extract_acs(spec_text))
+    orphan_frs = sorted(spec_frs - mapped_frs)
+    orphan_acs = sorted(spec_acs - mapped_acs)
+    if orphan_frs:
+        errors.append("FEAT 映射缺少 FR：" + ", ".join(orphan_frs))
+    if orphan_acs:
+        errors.append("FEAT 映射缺少 AC：" + ", ".join(orphan_acs))
+    unknown_frs = sorted(mapped_frs - spec_frs)
+    unknown_acs = sorted(mapped_acs - spec_acs)
+    if unknown_frs:
+        errors.append("FEAT 映射包含 Spec 中不存在的 FR：" + ", ".join(unknown_frs))
+    if unknown_acs:
+        errors.append("FEAT 映射包含 Spec 中不存在的 AC：" + ", ".join(unknown_acs))
+    return errors
+
+
+def check_feat_trace(
+    root: Path,
+    config: dict[str, Any],
+    state: dict[str, Any],
+    spec_text: str,
+) -> list[str]:
+    errors: list[str] = []
+    errors.extend(feat_identity_errors(root, config, state, spec_text))
+    errors.extend(feat_coverage_errors(root, config, state, spec_text))
+    return errors
+
+
+def render_feat_map(rows: list[dict[str, str]]) -> str:
+    lines = [
+        "## FEAT 映射",
+        "",
+        "| FEAT | 工作项 ID | Spec ID | FR | AC |",
+        "| --- | --- | --- | --- | --- |",
+    ]
+    for row in rows:
+        cells = [
+            str(row.get("feat") or ""),
+            str(row.get("work_item") or ""),
+            str(row.get("spec") or ""),
+            str(row.get("fr") or ""),
+            str(row.get("acs") or ""),
+        ]
+        safe = [" ".join(cell.split()).replace("|", "\\|") for cell in cells]
+        lines.append("| " + " | ".join(safe) + " |")
+    return "\n".join(lines)
+
+
+def sync_feat_map(
+    root: Path,
+    config: dict[str, Any],
+    state: dict[str, Any],
+    spec_text: str,
+) -> str:
+    if not config.get("require_prd_index"):
+        return "prd-index disabled"
+    if is_legacy_feat_spec(state, spec_text):
+        return "legacy spec: FEAT mapping skipped"
+    feat = feat_metadata(spec_text)
+    if not re.fullmatch(r"FEAT-\d{3}", feat or ""):
+        return "skipped: spec.md missing valid FEAT ID"
+    spec_id = str(state.get("spec_id", ""))
+    work_item = metadata_value(spec_text, "工作项 ID", "工作项ID") or str(
+        state.get("work_item") or ""
+    )
+    frs = sorted(set(extract_frs(spec_text)))
+    acs = sorted(set(extract_acs(spec_text)))
+    new_rows: list[dict[str, str]] = []
+    for fr in frs:
+        suffix = fr[3:]
+        fr_acs = [ac for ac in acs if ac.startswith(f"AC-{suffix}-")]
+        new_rows.append(
+            {
+                "feat": feat,
+                "work_item": work_item,
+                "spec": spec_id,
+                "fr": fr,
+                "acs": ", ".join(fr_acs),
+            }
+        )
+    path = prd_index_path(root, config)
+    text = read_text(path)
+    existing = parse_feat_map(text)
+    kept = [row for row in existing if row.get("spec") != spec_id]
+    section = render_feat_map(kept + new_rows)
+    marker = re.search(r"(?im)^##\s*(FEAT\s*映射|FEAT\s*Mapping)\s*$", text)
+    if marker:
+        tail = text[marker.end():]
+        next_heading = re.search(r"(?m)^##\s+", tail)
+        end = marker.end() + (next_heading.start() if next_heading else len(tail))
+        new_text = text[: marker.start()] + section + "\n"
+        if end < len(text):
+            new_text += "\n" + text[end:].lstrip("\n")
+    else:
+        new_text = text.rstrip() + "\n\n" + section + "\n"
+    write_text(path, new_text)
+    return f"feat={feat}; rows={len(new_rows)}"
+
+
 def validate_check_registry(
     registry: tuple[dict[str, Any], ...] = CHECK_REGISTRY,
 ) -> list[str]:
@@ -1831,6 +2094,27 @@ def gate_g0_clarify(ctx: dict[str, Any]) -> tuple[list[str], str]:
     return errors, "clarification markers = 0"
 
 
+def gate_g0_feat_identity(ctx: dict[str, Any]) -> tuple[list[str], str]:
+    errors = feat_identity_errors(
+        ctx["root"], ctx["config"], ctx["state"], ctx["spec_text"]
+    )
+    declared = feat_metadata(ctx["spec_text"])
+    return errors, f"feat={declared or '(missing)'}"
+
+
+def gate_g0_feat_coverage(ctx: dict[str, Any]) -> tuple[list[str], str]:
+    errors = feat_coverage_errors(
+        ctx["root"], ctx["config"], ctx["state"], ctx["spec_text"]
+    )
+    return errors, f"{len(ctx['spec_acs'])} AC mapped"
+
+
+def gate_g0_feat_legacy(ctx: dict[str, Any]) -> tuple[list[str], str]:
+    if is_legacy_feat_spec(ctx["state"], ctx["spec_text"]):
+        return [], "legacy spec: FEAT mapping not enforced"
+    return [], "strict FEAT mapping"
+
+
 def gate_g0_scope(ctx: dict[str, Any]) -> tuple[list[str], str]:
     errors = spec_scope_errors(ctx["spec_text"])
     return errors, "In-Scope / Out-of-Scope"
@@ -1860,7 +2144,10 @@ GATE_CHECK_FUNCS = {
     "G0-01": gate_g0_work_item,
     "G0-02": gate_g0_structure,
     "G0-03": gate_g0_clarify,
+    "G0-04": gate_g0_feat_identity,
+    "G0-05": gate_g0_feat_coverage,
     "G0-06": gate_g0_scope,
+    "G0-07": gate_g0_feat_legacy,
     "G1-01": gate_g1_sections,
     "G1-02": gate_g1_fr_ac,
     "G1-03": gate_g1_testability,
@@ -2662,10 +2949,12 @@ def command_new(args: argparse.Namespace, root: Path, config: dict[str, Any]) ->
         "AI增强·L3": "核心骨架＋AI扩展",
         "AI原生·L4": "核心骨架＋AI扩展＋AI原生扩展",
     }.get(product_type, "核心骨架")
+    feat_id = allocate_feat(root, config)
     context = {
         "SPEC_ID": spec_id,
         "TITLE": args.title,
         "WORK_ITEM": work_item,
+        "FEAT_ID": feat_id,
         "ISSUE": args.issue or "N/A",
         "DATE": now(),
         "PRODUCT_TYPE": product_type,
@@ -2724,7 +3013,9 @@ def command_new(args: argparse.Namespace, root: Path, config: dict[str, Any]) ->
         ],
     }
     save_state(directory, state)
-    ensure_prd_index(root, config, spec_id, work_item, args.title, args.issue)
+    ensure_prd_index(
+        root, config, spec_id, work_item, args.title, args.issue, feat=feat_id
+    )
     print(f"[sdd] created {directory.relative_to(root)}")
     print(f"[sdd] work item: {work_item}")
     print(f"[sdd] workflow: {workflow_name}@{workflow['version']}")
@@ -3389,6 +3680,25 @@ def command_check(
     return 1 if errors else 0
 
 
+def command_index(
+    args: argparse.Namespace, root: Path, config: dict[str, Any]
+) -> int:
+    spec_id, directory, state = resolve_spec(root, config, args.spec)
+    spec_text = read_text(directory / "spec.md")
+    message = sync_feat_map(root, config, state, spec_text)
+    if args.json:
+        print(
+            json.dumps(
+                {"ok": True, "kind": "index", "spec": spec_id, "message": message},
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+    else:
+        print(f"[sdd] {spec_id} index synced: {message}")
+    return 0
+
+
 def command_approve(
     args: argparse.Namespace, root: Path, config: dict[str, Any]
 ) -> int:
@@ -3404,6 +3714,7 @@ def command_approve(
             "require_approver=true；请用 --approver 提供审批人"
         )
     evidence = args.evidence or "requirement confirmed by human"
+    sync_feat_map(root, config, state, read_text(directory / "spec.md"))
     ctx = gate_context(root, config, directory, state)
     g0_rows = run_gate_checks("G0", ctx)
     g1_rows = run_gate_checks("G1", ctx)
@@ -4822,6 +5133,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=command_check)
+
+    p = sub.add_parser("index", help="sync FEAT mapping rows into docs/prd-index.md")
+    add_spec_option(p)
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=command_index)
 
     p = sub.add_parser("approve", help="human approval: DRAFT -> SPEC_READY")
     add_spec_option(p)

@@ -111,6 +111,9 @@ def _print_human(payload: dict[str, Any]) -> None:
             f"(version {payload.get('version')}, {len(payload.get('files', {}))} files)"
         )
         return
+    if payload.get("kind") == "index":
+        print(f"[sdd] {payload.get('spec')} index synced: {payload.get('message')}")
+        return
     if payload.get("kind") == "sync_agent":
         if payload.get("changed"):
             print("[sdd] updated the SDD managed block in AGENTS.md")
@@ -314,6 +317,13 @@ def build_parser() -> argparse.ArgumentParser:
             check_git=a.check_git,
             all_specs=a.all,
         )
+    )
+
+    p = sub.add_parser("index", help="sync FEAT mapping rows into docs/prd-index.md")
+    p.add_argument("--spec")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(
+        func=lambda a, w: w.index(a.spec or w._resolve_current_spec())
     )
 
     p = sub.add_parser("approve", help="human approval: DRAFT -> SPEC_READY")
