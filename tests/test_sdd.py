@@ -280,7 +280,7 @@ TASKS_TEXT = """# 订单取消任务清单（Tasks）
 
 | Task ID | 任务描述 | 关联FR/AC | 依赖Task | 并行标识 | 验收标准 | 单元测试类/方法 | 单Task测试命令 | 状态 | Commit SHA |
 |---|---|---|---|---|---|---|---|---|---|
-| T-001 | 实现订单取消接口和状态校验 | FR-001；AC-001-1 | None | P | 待支付订单可取消，其他状态拒绝 | `OrderServiceTest#testCancelPendingOrder` | `python -m unittest tests.test_status` | Todo | — |
+| T-001 | 实现订单取消接口和状态校验 | FR-001；AC-001-1 | None | P | 待支付订单可取消，其他状态拒绝 | `StatusTest#test_cancel_pending_order` | `python -m unittest tests.test_status` | Todo | — |
 
 字段规则：
 
@@ -291,7 +291,7 @@ TASKS_TEXT = """# 订单取消任务清单（Tasks）
 
 | AC ID | 覆盖Task | 测试类/方法 | 测试命令/选择器 | 预期结果 | Gate 4实际结果 |
 |---|---|---|---|---|---|
-| AC-001-1 | T-001 | `OrderServiceTest#testCancelPendingOrder` | `python -m unittest tests.test_status` | 订单状态变为已取消 | 未执行 |
+| AC-001-1 | T-001 | `StatusTest#test_cancel_pending_order` | `python -m unittest tests.test_status` | 订单状态变为已取消 | 未执行 |
 
 ## 4. 依赖图
 
@@ -1584,6 +1584,116 @@ class EvidenceTests(SddFlowBase):
         path.write_text(
             json.dumps(config, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
+        )
+
+
+class TestCoverageTests(SddFlowBase):
+    def config(self):
+        return json.loads(
+            (self.root / "sdd" / "config.json").read_text(encoding="utf-8")
+        )
+
+    def workflow(self):
+        return json.loads(
+            (self.root / "sdd" / "workflows" / "l2-standard.json").read_text(
+                encoding="utf-8"
+            )
+        )
+
+    def write_status_test(self, tag_inside=True):
+        tag = "        # [AC-001-1]\n" if tag_inside else ""
+        self.write(
+            "tests/test_status.py",
+            "import unittest\n\n\n"
+            "class StatusTest(unittest.TestCase):\n"
+            "    def test_cancel_pending_order(self):\n"
+            f"{tag}"
+            "        self.assertTrue(True)\n",
+        )
+
+    def test_task_test_name_must_exist(self):
+        self.write_status_test()
+        tasks = engine.parse_tasks(TASKS_TEXT)
+        self.assertEqual(
+            engine.task_test_name_errors(self.root, self.config(), tasks), []
+        )
+        missing = TASKS_TEXT.replace(
+            "StatusTest#test_cancel_pending_order",
+            "MissingTest#test_not_written",
+        )
+        errors = engine.task_test_name_errors(
+            self.root, self.config(), engine.parse_tasks(missing)
+        )
+        self.assertTrue(
+            any("测试名无法定位" in error for error in errors)
+        )
+        self.assertTrue(any("test_not_written" in error for error in errors))
+
+    def test_bare_ac_tag_does_not_count(self):
+        self.write("tests/test_bare.py", "# [AC-001-1]\n")
+        errors = engine.check_test_coverage(
+            self.root, self.config(), ["AC-001-1"]
+        )
+        self.assertTrue(any("函数体内" in error for error in errors))
+
+        self.write(
+            "tests/test_bare.py",
+            "import unittest\n\n\n"
+            "class BareTest(unittest.TestCase):\n"
+            "    def test_ac(self):\n"
+            "        # [AC-001-1]\n"
+            "        self.assertTrue(True)\n",
+        )
+        self.assertEqual(
+            engine.check_test_coverage(
+                self.root, self.config(), ["AC-001-1"]
+            ),
+            [],
+        )
+
+    def test_medium_risk_requires_review(self):
+        state = {"risk": "medium", "risk_labels": [], "history": []}
+        errors = engine.check_verification(
+            VERIFY_TEXT,
+            ["AC-001-1"],
+            self.workflow(),
+            state,
+            self.config(),
+        )
+        self.assertTrue(
+            any("独立审查" in error for error in errors)
+        )
+        errors = engine.check_verification(
+            VERIFY_TEXT + VERIFY_STRICT_SUFFIX,
+            ["AC-001-1"],
+            self.workflow(),
+            state,
+            self.config(),
+        )
+        self.assertFalse(
+            any("独立审查" in error for error in errors)
+        )
+
+    def test_low_risk_flow_unchanged(self):
+        state = {"risk": "low", "risk_labels": [], "history": []}
+        workflow = self.workflow()
+        self.assertEqual(
+            engine.check_verification(
+                VERIFY_TEXT,
+                ["AC-001-1"],
+                workflow,
+                state,
+                self.config(),
+            ),
+            [],
+        )
+        self.assertEqual(
+            engine.gate_mode(self.config(), "G4", state, False, workflow),
+            "auto",
+        )
+        self.assertEqual(
+            engine.gate_mode(self.config(), "G5", state, False, workflow),
+            "auto",
         )
 
 

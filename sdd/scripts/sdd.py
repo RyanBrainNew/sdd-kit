@@ -8,6 +8,7 @@ No third-party dependencies; Python 3.9+.
 from __future__ import annotations
 
 import argparse
+import ast
 import glob
 import hashlib
 import json
@@ -1448,7 +1449,10 @@ def check_design_lite(text: str, spec_acs: list[str]) -> list[str]:
 
 
 def check_tasks(
-    text: str, spec_acs: list[str], config: Optional[dict[str, Any]] = None
+    text: str,
+    spec_acs: list[str],
+    config: Optional[dict[str, Any]] = None,
+    root: Optional[Path] = None,
 ) -> list[str]:
     errors: list[str] = []
     required = (
@@ -1470,6 +1474,8 @@ def check_tasks(
         errors.append("tasks.md 没有任务；请填写公司任务表格")
         return errors
     errors.extend(task_table_error(tasks, spec_acs, config or {}))
+    if root is not None:
+        errors.extend(task_test_name_errors(root, config or {}, tasks))
 
     mapping = section_body(
         text, ("AC—Task—单元测试映射", "AC-Task-单元测试映射", "AC Coverage")
@@ -1580,6 +1586,29 @@ def verification_evidence_errors(
     return errors
 
 
+def requires_independent_review(
+    config: dict[str, Any],
+    state: dict[str, Any],
+    workflow: Optional[dict[str, Any]],
+) -> bool:
+    if workflow and workflow.get("review_required"):
+        return True
+    risk = str(state.get("risk") or "low").strip().lower()
+    if risk in {"medium", "high", "critical"}:
+        return True
+    labels = {
+        str(item).strip().lower()
+        for item in state.get("risk_labels", [])
+        if str(item).strip()
+    }
+    stops = {
+        str(item).strip().lower()
+        for item in config.get("risk_stop", [])
+        if str(item).strip()
+    }
+    return bool(labels & stops)
+
+
 def check_verification(
     text: str,
     spec_acs: list[str],
@@ -1603,7 +1632,8 @@ def check_verification(
     if not re.search(r"(?i)\b(PASS|通过)\b", gate5):
         errors.append("verification.md 的 Gate 5 结论必须是 PASS/通过")
     errors.extend(verification_evidence_errors(text, config or {}, state or {}))
-    if workflow and workflow.get("review_required"):
+    legacy = str((state or {}).get("state") or "") == "MERGED"
+    if not legacy and requires_independent_review(config or {}, state or {}, workflow):
         errors.extend(check_independent_review(text, state or {}))
     return errors
 
@@ -1629,7 +1659,9 @@ def check_independent_review(
 ) -> list[str]:
     errors: list[str] = []
     if not has_section(text, ("独立审查", "Independent Review")):
-        errors.append("l2-strict 要求 verification.md 包含“独立审查”章节")
+        errors.append(
+            "中高风险或 l2-strict 要求 verification.md 包含“独立审查”章节"
+        )
         return errors
     fields = review_fields(text)
     required = {
@@ -1676,7 +1708,7 @@ def check_independent_review(
     ):
         errors.append(
             "独立审查的 Session 与实现会话相同；"
-            "l2-strict 要求独立 reviewer"
+            "要求独立 reviewer"
         )
     return errors
 
@@ -1699,16 +1731,175 @@ def collect_test_files(root: Path, config: dict[str, Any]) -> list[Path]:
     return sorted(found)
 
 
+def parse_test_reference(reference: str) -> dict[str, str]:
+    value = reference.strip().strip("`")
+    file_hint = ""
+    class_name = ""
+    method = ""
+    if "::" in value:
+        pieces = [piece for piece in value.split("::") if piece]
+        if len(pieces) >= 3:
+            file_hint = pieces[0]
+            class_name = pieces[-2]
+            method = pieces[-1]
+        elif len(pieces) == 2:
+            file_hint, method = pieces
+        elif pieces:
+            method = pieces[0]
+    elif "#" in value:
+        left, method = value.split("#", 1)
+        parts = [part for part in left.replace("/", ".").split(".") if part]
+        if parts and parts[-1][:1].isupper():
+            class_name = parts[-1]
+            module = parts[:-1]
+        else:
+            module = parts
+        if module:
+            file_hint = "/".join(module) + ".py"
+    else:
+        parts = [part for part in value.split(".") if part]
+        if parts:
+            method = parts[-1]
+            if len(parts) >= 2 and parts[-2][:1].isupper():
+                class_name = parts[-2]
+                module = parts[:-2]
+            else:
+                module = parts[:-1]
+            if module:
+                file_hint = "/".join(module) + ".py"
+    return {
+        "file": file_hint.replace("\\", "/"),
+        "class": class_name,
+        "method": method,
+    }
+
+
+def task_test_references(value: str) -> list[str]:
+    refs = re.findall(r"`([^`]+)`", value)
+    if not refs:
+        refs = [part for part in re.split(r"[、,，;\s]+", value) if part]
+    resolved: list[str] = []
+    base = ""
+    for ref in refs:
+        cleaned = ref.strip()
+        if not cleaned:
+            continue
+        if cleaned.startswith("#") and base:
+            cleaned = base + cleaned
+        elif "#" in cleaned:
+            base = cleaned.split("#", 1)[0]
+        resolved.append(cleaned)
+    return resolved
+
+
+def locate_test_reference(
+    root: Path, config: dict[str, Any], reference: str
+) -> bool:
+    parsed = parse_test_reference(reference)
+    method = parsed["method"]
+    if not method:
+        return False
+    files = collect_test_files(root, config)
+    if parsed["file"]:
+        relative = parsed["file"].lstrip("./")
+        files = [
+            path
+            for path in files
+            if path.relative_to(root).as_posix().endswith(relative)
+        ]
+    class_pattern = (
+        re.compile(rf"^\s*class\s+{re.escape(parsed['class'])}\b", re.M)
+        if parsed["class"]
+        else None
+    )
+    method_pattern = re.compile(
+        rf"^\s*(?:async\s+)?def\s+{re.escape(method)}\s*\(", re.M
+    )
+    for path in files:
+        text = read_text(path)
+        if class_pattern is not None and not class_pattern.search(text):
+            continue
+        if method_pattern.search(text):
+            return True
+    return False
+
+
+def task_test_name_errors(
+    root: Path, config: dict[str, Any], tasks: list[dict[str, Any]]
+) -> list[str]:
+    if not collect_test_files(root, config):
+        return ["没有找到测试文件；请按 config.json 的 test_globs 添加测试"]
+    errors: list[str] = []
+    for task in tasks:
+        for reference in task_test_references(str(task.get("test") or "")):
+            if not locate_test_reference(root, config, reference):
+                errors.append(
+                    f"{task['id']} 的测试名无法定位：{reference}"
+                )
+    return errors
+
+
+def fallback_test_function_acs(text: str) -> dict[str, set[str]]:
+    results: dict[str, set[str]] = {}
+    current: Optional[str] = None
+    indent = 0
+    body: list[str] = []
+    for line in text.splitlines():
+        match = re.match(
+            r"^(?P<indent>[ \t]*)(?:async\s+)?def\s+(?P<name>test_\w+)\s*\(",
+            line,
+        )
+        if match:
+            if current:
+                results[current] = set(extract_acs("\n".join(body)))
+            current = match.group("name")
+            indent = len(match.group("indent").expandtabs(8))
+            body = []
+            continue
+        if current is None:
+            continue
+        stripped = line.strip()
+        current_indent = len(line) - len(line.lstrip())
+        if stripped and current_indent <= indent:
+            results[current] = set(extract_acs("\n".join(body)))
+            current = None
+            body = []
+        else:
+            body.append(line)
+    if current:
+        results[current] = set(extract_acs("\n".join(body)))
+    return results
+
+
+def test_function_acs(text: str) -> dict[str, set[str]]:
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return fallback_test_function_acs(text)
+    results: dict[str, set[str]] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if not node.name.startswith("test_"):
+            continue
+        segment = ast.get_source_segment(text, node) or ""
+        results[node.name] = set(extract_acs(segment))
+    return results
+
+
 def check_test_coverage(root: Path, config: dict[str, Any], spec_acs: list[str]) -> list[str]:
     files = collect_test_files(root, config)
     if not files:
         return ["没有找到测试文件；请按 config.json 的 test_globs 添加测试"]
     covered: set[str] = set()
     for path in files:
-        covered.update(extract_acs(read_text(path)))
+        for acs in test_function_acs(read_text(path)).values():
+            covered.update(acs)
     missing = sorted(set(spec_acs) - covered)
     if missing:
-        return ["测试文件没有关联以下 AC：" + ", ".join(missing)]
+        return [
+            "测试函数的函数体内没有关联以下 AC：" + ", ".join(missing)
+        ]
     return []
 
 
@@ -2776,6 +2967,7 @@ def run_checks(
     workflow = resolve_workflow(root, directory, state)
     ctx = gate_context(root, config, directory, state)
     spec_acs = ctx["spec_acs"]
+    legacy_merged = str(state.get("state") or "") == "MERGED"
     errors: list[str] = []
 
     if stage in {"spec", "design", "tasks", "verify", "ci"}:
@@ -2784,14 +2976,26 @@ def run_checks(
     if stage in {"design", "tasks", "verify", "ci"}:
         errors.extend(check_design(design_text, spec_acs, workflow))
     if stage in {"tasks", "verify", "ci"}:
-        errors.extend(check_tasks(tasks_text, spec_acs, config))
+        errors.extend(
+            check_tasks(
+                tasks_text,
+                spec_acs,
+                config,
+                (
+                    root
+                    if stage in {"verify", "ci"} and not legacy_merged
+                    else None
+                ),
+            )
+        )
     if stage in {"verify", "ci"}:
         errors.extend(
             check_verification(
                 verification_text, spec_acs, workflow, state, config
             )
         )
-        errors.extend(check_test_coverage(root, config, spec_acs))
+        if not legacy_merged:
+            errors.extend(check_test_coverage(root, config, spec_acs))
     if stage == "ci":
         if state.get("state") not in {"PR_READY", "MERGED"}:
             errors.append("CI 检查要求状态为 PR_READY 或 MERGED")
@@ -4521,6 +4725,7 @@ def command_complete(
         ]
         _, spec_acs = check_spec(read_text(directory / "spec.md"), spec_id)
         errors = task_table_error(tasks, spec_acs, config)
+        errors.extend(task_test_name_errors(root, config, tasks))
         if missing_evidence:
             errors.append("以下 Task 没有验证证据：" + ", ".join(missing_evidence))
         if errors:
