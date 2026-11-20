@@ -12,9 +12,9 @@
     "digest": "ae89c532988018c3f6d3c222c4a66da2a44981f33c8401d62a632bef66a8e910",
     "snapshot": "workflow.json"
   },
-  "state": "PR_READY",
+  "state": "MERGED",
   "created_at": "2026-11-20T17:23:51+08:00",
-  "updated_at": "2026-11-20T18:21:59+08:00",
+  "updated_at": "2026-11-20T22:46:04+08:00",
   "pr_url": "https://github.com/RyanBrainNew/sdd-kit/pull/10",
   "history": [
     {
@@ -288,6 +288,17 @@
       "source": "cli",
       "pr_url": "https://github.com/RyanBrainNew/sdd-kit/pull/10",
       "role": "orchestrator"
+    },
+    {
+      "state": "MERGED",
+      "at": "2026-11-20T22:46:04+08:00",
+      "evidence": "PR merged",
+      "actor": "human",
+      "session": "43521a906ffe",
+      "session_source": "repo-fallback",
+      "source": "cli",
+      "role": "approver",
+      "approver": "linjinlong <fflinjinlong@chinatelecom.cn>"
     }
   ],
   "approvals": [
@@ -297,6 +308,14 @@
       "at": "2026-11-20T17:30:46+08:00",
       "artifact": "docs/specs/SPEC-DEVTOOLS-002/spec.md",
       "sha256": "4ba6e8d31bae441f5d2dfd8b258fdd10ddfb3815e2e3064680c62e4389c06eb6"
+    },
+    {
+      "action": "merge_pr",
+      "approver": "linjinlong <fflinjinlong@chinatelecom.cn>",
+      "at": "2026-11-20T22:46:04+08:00",
+      "artifact": "docs/specs/SPEC-DEVTOOLS-002/PR_BODY.md",
+      "sha256": "4cd0b2ec05d23238976d51abf9ff75a62d021c6f9bcfd5dda92d6921c7bd7616",
+      "head_sha": "e8c9e4902eac39ee7a373e2dd193c5ef60698801"
     }
   ],
   "last_approver": "linjinlong <fflinjinlong@chinatelecom.cn>",
@@ -320,5 +339,6 @@
       "docs/specs/SPEC-DEVTOOLS-002/verification.md": "342152cb3aedd07a3c7c15b7251f822ac66abbc0c32a36d0bf1a395aecd0cb48"
     }
   },
-  "previous_state": "VERIFYING"
+  "previous_state": "PR_READY",
+  "merged_at": "2026-11-20T22:46:04+08:00"
 }
