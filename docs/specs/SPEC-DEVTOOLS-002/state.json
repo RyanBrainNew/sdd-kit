@@ -1,0 +1,313 @@
+{
+  "spec_id": "SPEC-DEVTOOLS-002",
+  "title": "SDD-L2 内核 P0：标准符合性、上下文包与可复验证据",
+  "work_item": "SDD-EPIC-007",
+  "issue": "https://github.com/RyanBrainNew/sdd-kit/issues/7",
+  "product_type": "传统产品",
+  "risk": "low",
+  "risk_labels": [],
+  "workflow": {
+    "name": "l2-standard",
+    "version": 1,
+    "digest": "ae89c532988018c3f6d3c222c4a66da2a44981f33c8401d62a632bef66a8e910",
+    "snapshot": "workflow.json"
+  },
+  "state": "PR_READY",
+  "created_at": "2026-11-20T17:23:51+08:00",
+  "updated_at": "2026-11-20T18:21:07+08:00",
+  "pr_url": null,
+  "history": [
+    {
+      "state": "DRAFT",
+      "at": "2026-11-20T17:23:51+08:00",
+      "evidence": "created",
+      "role": "planner"
+    },
+    {
+      "state": "SPEC_READY",
+      "at": "2026-11-20T17:30:46+08:00",
+      "evidence": "需求已确认",
+      "actor": "human",
+      "session": "43521a906ffe",
+      "session_source": "repo-fallback",
+      "source": "cli",
+      "gate": "G0/G1",
+      "role": "approver",
+      "approver": "linjinlong <fflinjinlong@chinatelecom.cn>",
+      "artifacts": [
+        {
+          "path": "docs/specs/SPEC-DEVTOOLS-002/spec.md",
+          "sha256": "4ba6e8d31bae441f5d2dfd8b258fdd10ddfb3815e2e3064680c62e4389c06eb6",
+          "bytes": 21475
+        }
+      ]
+    },
+    {
+      "state": "DESIGN_READY",
+      "at": "2026-11-20T17:33:49+08:00",
+      "evidence": "design.md submitted via CLI and checked",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "gate": "G2",
+      "role": "designer",
+      "approver": null,
+      "artifacts": [
+        {
+          "path": "docs/specs/SPEC-DEVTOOLS-002/design.md",
+          "sha256": "c4ca0d0224eaeb12aedfb303513415df46ed34f9ce15bb98b41117767fa099e2",
+          "bytes": 16058
+        }
+      ]
+    },
+    {
+      "state": "TASKS_READY",
+      "at": "2026-11-20T17:34:27+08:00",
+      "evidence": "tasks.md submitted via CLI and checked",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "gate": "G3",
+      "role": "planner",
+      "approver": null,
+      "artifacts": [
+        {
+          "path": "docs/specs/SPEC-DEVTOOLS-002/tasks.md#plan",
+          "sha256": "1089d8891f7694f14426cadfe7e874a11b93ce7287a6878304c0326e13ee1d9b",
+          "bytes": 13015
+        }
+      ]
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-20T17:34:28+08:00",
+      "evidence": "implementation started automatically by CLI",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-20T17:38:58+08:00",
+      "evidence": "task started",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_start",
+      "task": "T-001",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-20T17:38:58+08:00",
+      "evidence": "python -m unittest tests.test_sdd -v -> Ran 28 tests OK; CheckRegistryTests 4 tests OK; G0/G1 报告含稳定检查 ID，required 失败总体 FAILED",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_done",
+      "task": "T-001",
+      "commit": "73fc60d",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-20T17:47:59+08:00",
+      "evidence": "task started",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_start",
+      "task": "T-002",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-20T17:48:00+08:00",
+      "evidence": "python -m unittest tests.test_sdd.FeatTraceTests -v -> Ran 5 tests OK; tests.test_sdd/test_cli/test_mcp_service 全通过；FEAT 元数据、结构化映射、G0-04/G0-05、legacy 分支已生效",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_done",
+      "task": "T-002",
+      "commit": "acb5181",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-20T17:53:37+08:00",
+      "evidence": "task started",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_start",
+      "task": "T-003",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-20T17:53:37+08:00",
+      "evidence": "python -m unittest tests.test_sdd.ContextBundleTests -v -> Ran 5 tests OK; test_sdd/test_cli/test_mcp_service 全通过；next.context_bundle 九字段、非 Task 空结构、只读、范围派生与其他 Spec 排除已验证",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_done",
+      "task": "T-003",
+      "commit": "f5a1bcc",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-20T17:57:42+08:00",
+      "evidence": "task started",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_start",
+      "task": "T-004",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-20T17:57:42+08:00",
+      "evidence": "python -m unittest tests.test_sdd.EvidenceTests -v -> Ran 7 tests OK; test_sdd/test_cli/test_mcp_service 全通过；verify 写入 Command/CWD/Exit/Head/Plan-Hash/At，空 test_commands 与非 0 退出码均阻断，MERGED legacy 跳过",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_done",
+      "task": "T-004",
+      "commit": "e0bbda0",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-20T18:04:40+08:00",
+      "evidence": "task started",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_start",
+      "task": "T-005",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-20T18:04:40+08:00",
+      "evidence": "python -m unittest tests.test_sdd.TestCoverageTests -v -> Ran 4 tests OK; test_sdd/test_cli/test_mcp_service 全通过；Task 测试名可定位、AC 只认 test_* 函数体、中风险缺 review 阻断、低风险 G4/G5 保持 auto",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_done",
+      "task": "T-005",
+      "commit": "8e6d2ad",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-20T18:12:25+08:00",
+      "evidence": "task started",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_start",
+      "task": "T-006",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-20T18:12:25+08:00",
+      "evidence": "python -m unittest discover -s tests -v -> Ran 120 tests OK (skipped=2); tests.test_standard_conformance -> 3 OK; python -m sdd verify-core -> passed; python -m sdd verify-agent -> passed; version=0.9.0, manifest 42 files",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_done",
+      "task": "T-006",
+      "commit": "89da3c8",
+      "role": "implementer"
+    },
+    {
+      "state": "VERIFYING",
+      "at": "2026-11-20T18:12:25+08:00",
+      "evidence": "all tasks completed",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "gate": "G4",
+      "role": "implementer",
+      "approver": null,
+      "artifacts": [
+        {
+          "path": "docs/specs/SPEC-DEVTOOLS-002/tasks.md#plan",
+          "sha256": "1089d8891f7694f14426cadfe7e874a11b93ce7287a6878304c0326e13ee1d9b",
+          "bytes": 12914
+        }
+      ]
+    },
+    {
+      "state": "PR_READY",
+      "at": "2026-11-20T18:21:07+08:00",
+      "evidence": "verification.md submitted via CLI and checked",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "gate": "G5",
+      "role": "verifier",
+      "approver": null,
+      "artifacts": [
+        {
+          "path": "docs/specs/SPEC-DEVTOOLS-002/verification.md",
+          "sha256": "342152cb3aedd07a3c7c15b7251f822ac66abbc0c32a36d0bf1a395aecd0cb48",
+          "bytes": 40413
+        }
+      ]
+    }
+  ],
+  "approvals": [
+    {
+      "action": "approve_spec",
+      "approver": "linjinlong <fflinjinlong@chinatelecom.cn>",
+      "at": "2026-11-20T17:30:46+08:00",
+      "artifact": "docs/specs/SPEC-DEVTOOLS-002/spec.md",
+      "sha256": "4ba6e8d31bae441f5d2dfd8b258fdd10ddfb3815e2e3064680c62e4389c06eb6"
+    }
+  ],
+  "last_approver": "linjinlong <fflinjinlong@chinatelecom.cn>",
+  "artifact_hashes": {
+    "G0": {
+      "docs/specs/SPEC-DEVTOOLS-002/spec.md": "4ba6e8d31bae441f5d2dfd8b258fdd10ddfb3815e2e3064680c62e4389c06eb6"
+    },
+    "G1": {
+      "docs/specs/SPEC-DEVTOOLS-002/spec.md": "4ba6e8d31bae441f5d2dfd8b258fdd10ddfb3815e2e3064680c62e4389c06eb6"
+    },
+    "G2": {
+      "docs/specs/SPEC-DEVTOOLS-002/design.md": "c4ca0d0224eaeb12aedfb303513415df46ed34f9ce15bb98b41117767fa099e2"
+    },
+    "G3": {
+      "docs/specs/SPEC-DEVTOOLS-002/tasks.md#plan": "1089d8891f7694f14426cadfe7e874a11b93ce7287a6878304c0326e13ee1d9b"
+    },
+    "G4": {
+      "docs/specs/SPEC-DEVTOOLS-002/tasks.md#plan": "1089d8891f7694f14426cadfe7e874a11b93ce7287a6878304c0326e13ee1d9b"
+    },
+    "G5": {
+      "docs/specs/SPEC-DEVTOOLS-002/verification.md": "342152cb3aedd07a3c7c15b7251f822ac66abbc0c32a36d0bf1a395aecd0cb48"
+    }
+  },
+  "previous_state": "VERIFYING"
+}
