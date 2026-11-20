@@ -480,7 +480,7 @@ class SddMcpServiceTest(unittest.TestCase):
             verification["ok"],
             msg=str(verification.get("errors")),
         )
-        self.assertEqual(verification["next"]["action"], "open_pr")
+        self.assertEqual(verification["next"]["action"], "confirm_merge")
         self.assertEqual(verification["next"]["state"], "PR_READY")
         self.assertEqual(verification["verification"]["stdout"].count("run:"), 1)
         self.assertTrue(

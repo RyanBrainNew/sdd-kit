@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from sdd.core import Workspace
 from sdd.scripts import sdd as engine
 
 
@@ -612,16 +613,29 @@ class SddFlowTest(SddFlowBase):
             (self.root / "sdd/reports/SPEC-ORDER-001/gate5-report.md").is_file()
         )
         self.run_sdd("check", "--spec", SPEC_ID, "--stage", "ci")
-        self.run_sdd("pr", "--spec", SPEC_ID, "--url", "https://example.invalid/pr/1")
+        self.assertEqual(self.next_action()["action"], "confirm_merge")
         self.run_sdd(
             "merge",
             "--spec",
             SPEC_ID,
             "--human",
             "--evidence",
-            "PR #1 merged",
+            "交付已确认",
         )
         self.assertEqual(self.state()["state"], "MERGED")
+        self.assertIsNone(self.state().get("pr_url"))
+        test_file = self.root / "tests" / "test_status.py"
+        original_test = test_file.read_text(encoding="utf-8")
+        test_file.write_text(
+            original_test.replace("# [AC-001-1]", ""), encoding="utf-8"
+        )
+        self.run_sdd("check", "--spec", SPEC_ID, "--stage", "ci", expect=1)
+        test_file.write_text(original_test, encoding="utf-8")
+        self.assertEqual(self.next_action()["action"], "open_pr")
+        resumed = Workspace(self.root, session_key="agent-resume").session()
+        self.assertEqual(resumed["spec"], SPEC_ID)
+        self.assertEqual(resumed["next"]["action"], "open_pr")
+        self.run_sdd("pr", "--spec", SPEC_ID, "--url", "https://example.invalid/pr/1")
         self.assertEqual(self.next_action()["action"], "done")
         metrics = json.loads(self.run_sdd("metrics", "--json").stdout)
         spec_metrics = metrics["specs"][0]
@@ -648,6 +662,70 @@ class SddFlowTest(SddFlowBase):
             expect=2,
         )
         self.assertIn("start", result.stderr)
+
+    def test_pr_url_requires_delivery_confirmation(self):
+        self.new_spec()
+        self.approve_valid_spec()
+        self.complete_design()
+        self.complete_tasks()
+        self.run_sdd("complete", "--spec", SPEC_ID, "--evidence", "开始实现")
+        self.finish_implementation()
+        self.finish_verification()
+        self.assertEqual(self.state()["state"], "PR_READY")
+        result = self.run_sdd(
+            "pr",
+            "--spec",
+            SPEC_ID,
+            "--url",
+            "https://example.invalid/pr/1",
+            expect=2,
+        )
+        self.assertIn("MERGED", result.stderr)
+        self.run_sdd(
+            "merge",
+            "--spec",
+            SPEC_ID,
+            "--human",
+            "--evidence",
+            "交付已确认",
+        )
+        subprocess.run(["git", "init", "-q"], cwd=self.root, check=True)
+        result = self.run_sdd(
+            "pr",
+            "--spec",
+            SPEC_ID,
+            "--url",
+            "https://example.invalid/pr/1",
+            expect=2,
+        )
+        self.assertIn("尚未提交", result.stderr)
+        subprocess.run(
+            ["git", "add", f"docs/specs/{SPEC_ID}"],
+            cwd=self.root,
+            check=True,
+        )
+        subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@example.com",
+                "commit",
+                "-q",
+                "-m",
+                "chore(sdd): record delivery",
+            ],
+            cwd=self.root,
+            check=True,
+        )
+        self.run_sdd(
+            "pr",
+            "--spec",
+            SPEC_ID,
+            "--url",
+            "https://example.invalid/pr/1",
+        )
 
     def test_block_and_unblock(self):
         self.new_spec()
@@ -1557,6 +1635,19 @@ class EvidenceTests(SddFlowBase):
         # [AC-005-9]
         errors = self.check(self.plain_pass(), [], "MERGED")
         self.assertEqual(errors, [])
+
+    def test_delivery_confirmed_merged_spec_keeps_evidence_rules(self):
+        errors = engine.check_verification(
+            self.plain_pass(),
+            ["AC-001-1"],
+            None,
+            {
+                "state": "MERGED",
+                "delivery_confirmed_at": "2026-11-20T00:00:00+08:00",
+            },
+            self.config([]),
+        )
+        self.assertTrue(any("test_commands 为空" in error for error in errors))
 
     def test_unmerged_spec_cannot_use_legacy_escape(self):
         # [AC-005-10]

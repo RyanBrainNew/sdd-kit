@@ -48,7 +48,7 @@ sdd_session(project)
 | 检查点 | 谁做 | 你要做什么 |
 |---|---|---|
 | `spec_approval` | 人类运行 `python -m sdd approve --human` | 提交 spec 后停止，不写 design |
-| `pr_merge` | 人类审核并合并 PR | 生成 PR_BODY、开 PR、记录 URL 后停止 |
+| `delivery_confirmation` | 人类确认交付并运行 `python -m sdd merge --human` | 生成 PR_BODY 后停止；确认前不要创建 PR |
 
 只有出现以下情况才额外停下来问人，而且只问一个具体问题：
 
@@ -81,9 +81,15 @@ sdd_session(project)
 3. 如果 server 不能执行本地测试，开发者必须在本地运行测试；把真实命令和结果写进
    `verification.md`，再用 `run_commands=false` 提交。
 
-`next.action == "open_pr"` 时：
+`next.action == "confirm_merge"` 时：
 
-1. 调用 `sdd_report` 生成 `PR_BODY.md`。
+1. 确认 `PR_BODY.md` 已生成。
+2. 不要创建 PR，把工件路径和 `human_checkpoint.command` 交给人类。
+3. 等人类确认交付后再继续。
+
+`next.action == "open_pr"` 时（此时已是 `MERGED`）：
+
+1. 提交并推送 `sdd merge` 写入的交付确认。
 2. 用 `PR_BODY.md` 创建 PR，调用 `sdd_pr` 记录 URL。
 3. 停止。不要合并 PR，不要调用 `sdd merge`。
 

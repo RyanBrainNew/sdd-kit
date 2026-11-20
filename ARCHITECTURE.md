@@ -220,7 +220,7 @@ worktree/lane 作为可选的 execution adapter 接入。
 3. Agent 通过 `python -m sdd`（或可选的本地 MCP）推进状态，状态写进当前工作区；
 4. 工件跟代码一起 commit、push、开 PR；
 5. CI 跑 `sdd check --all --stage ci --check-git`；
-6. 合并后，Spec 和 `state.json` 一起进主干。
+6. 人工确认交付后，Spec、`state.json` 和 `events.jsonl` 随 PR 一起进主干。
 
 优点：
 

@@ -22,7 +22,7 @@
 
 ## 空结构
 
-非 Task 步骤（写 Spec、写 Design、写 Tasks、验证、开 PR、已合并等）返回：
+非 Task 步骤（写 Spec、写 Design、写 Tasks、验证、交付确认、创建 PR 等）返回：
 
 ```json
 {

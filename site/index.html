@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SDD Kit · 把 SDD 装进仓库</title>
-  <meta name="description" content="SDD Kit 把公司 SDD-L2 流程做进仓库：一个 CLI、一套状态机、任何 Agent 都能接入。人只在 Spec 确认和 PR 合并时出现。">
+  <meta name="description" content="SDD Kit 把公司 SDD-L2 流程做进仓库：一个 CLI、一套状态机、任何 Agent 都能接入。人只在 Spec 确认和交付确认时出现。">
   <meta name="color-scheme" content="dark">
   <meta property="og:type" content="website">
   <meta property="og:title" content="SDD Kit · 把 SDD 装进仓库">
@@ -26,7 +26,7 @@
           <circle cx="22" cy="24" r="2" fill="currentColor"/>
         </svg>
         <span class="brand-name">SDD Kit</span>
-        <span class="brand-version">0.9.0</span>
+        <span class="brand-version">0.9.1</span>
       </a>
 
       <nav class="nav-links" id="nav-links" aria-label="主导航">
@@ -59,7 +59,7 @@
             <span class="tag">命名工作流</span>
           </div>
           <h1 id="hero-title">把 SDD 装进<span class="accent">仓库</span></h1>
-          <p class="hero-lede">开发者只说一次需求，Agent 按仓库里的 <code>next.action</code> 自动调研、写工件、推进阶段。你只在两个地方出现：确认 Spec，合并 PR。</p>
+          <p class="hero-lede">开发者只说一次需求，Agent 按仓库里的 <code>next.action</code> 自动调研、写工件、推进阶段。你只在两个地方出现：确认 Spec，确认交付。</p>
           <div class="hero-actions">
             <a class="btn btn-primary" href="#quickstart">30 秒接入</a>
             <a class="btn btn-ghost" href="#flow">看完整链路</a>
@@ -103,11 +103,11 @@
             </li>
             <li class="state">
               <span class="state-name">PR_READY</span>
-              <span class="state-note">等合并</span>
+              <span class="state-note">等交付确认</span>
             </li>
             <li class="state is-gate">
               <span class="state-name">MERGED</span>
-              <span class="state-note">人合并 PR</span>
+              <span class="state-note">人确认交付</span>
             </li>
           </ol>
           <div class="state-foot">
@@ -192,8 +192,8 @@
           <li class="step is-gate">
             <span class="step-num">G2</span>
             <div class="step-body">
-              <h3>人合并 PR</h3>
-              <p>人执行 <code>merge --human</code>。状态机进入 <code>MERGED</code>，审计链闭合。</p>
+              <h3>人确认交付</h3>
+              <p>人执行 <code>merge --human</code>。状态机进入 <code>MERGED</code>；随后 Agent 才创建 PR，由管理员合并。</p>
             </div>
           </li>
         </ol>
@@ -320,7 +320,7 @@ python -m sdd check --all --stage ci</code></pre>
               <tr><td><code>sdd submit-task</code></td><td>Agent</td><td>完成一个任务并记录测试证据</td></tr>
               <tr><td><code>sdd report</code></td><td>Agent</td><td>生成 PR 正文与 Gate 摘要</td></tr>
               <tr><td><code>sdd approve --human</code></td><td>人</td><td>确认 Spec，DRAFT 进入 SPEC_READY</td></tr>
-              <tr><td><code>sdd merge --human</code></td><td>人</td><td>确认合并，PR_READY 进入 MERGED</td></tr>
+              <tr><td><code>sdd merge --human</code></td><td>人</td><td>确认交付，PR_READY 进入 MERGED；之后才创建 PR</td></tr>
               <tr><td><code>sdd check --all</code></td><td>CI</td><td>校验全部工件、Gate 与 Git 状态</td></tr>
             </tbody>
           </table>
@@ -449,7 +449,7 @@ python -m sdd check --all --stage ci</code></pre>
           <span class="brand-name">SDD Kit</span>
         </a>
         <p>把 SDD 装进仓库，让 Agent 按同一套规则交付。</p>
-        <p class="footer-fine">0.9.0 · Apache-2.0 许可 · 公开仓库</p>
+        <p class="footer-fine">0.9.1 · Apache-2.0 许可 · 公开仓库</p>
       </div>
       <div class="footer-col">
         <h2>文档</h2>

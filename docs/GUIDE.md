@@ -2,7 +2,7 @@
 
 > 本文是仓库 README 的完整内容归档，保留全部章节、命令与问答。
 > 项目首页见 [README](../README.md)，架构取舍见 [ARCHITECTURE.md](../ARCHITECTURE.md)。
-> 文中文件路径默认相对仓库根目录。当前版本 0.9.0。
+> 文中文件路径默认相对仓库根目录。当前版本 0.9.1。
 
 ---
 
@@ -11,11 +11,12 @@
 - 平台团队维护一份 `sdd/` 核心，仓库接入一次，之后开发者 `git clone` 即用；
 - 任何能读仓库文件、能执行 shell 的 Agent 都能接入，不绑定 Kiro、Cursor 或某个 IDE；
 - 开发者只说一次工作项，Agent 按 `next.action` 自动调研、写工件、推进阶段；
-- 正常流程只有两个人类检查点：**Spec 确认**和 **PR 合并**；
+- 正常流程只有两个人类检查点：**Spec 确认**和 **交付确认**；
+  交付确认后 Agent 才创建 PR，PR 的审核合并由管理员完成；
 - 可选命名工作流预设：`l2-standard`、`l2-hotfix`、`l2-strict`，Spec 创建时固定版本；
 - MCP 是可选适配器；没有 MCP，`AGENTS.md + CLI + Git Hook + CI` 也能跑完整流程。
 
-当前版本：`0.9.0`。
+当前版本：`0.9.1`。
 
 ---
 
@@ -117,7 +118,8 @@ AGENTS.md
   -> 人 approve --human
   -> Agent 继续
   -> python -m sdd report
-  -> 人 merge --human
+  -> 人 merge --human（确认交付）
+  -> Agent 创建 PR
   -> CI: verify-core / verify-agent / check
 ```
 
@@ -292,8 +294,11 @@ sequenceDiagram
   Agent->>CLI: report
   CLI->>Repo: 生成 PR_BODY.md
 
-  Note over Dev,CI: 人类检查点 2：审 PR、合并，执行 merge --human
+  Note over Dev,CI: 人类检查点 2：确认交付，执行 merge --human
   Dev->>CLI: merge --spec ... --human
+  CLI->>Repo: 状态进入 MERGED
+  Agent->>Repo: 提交确认状态、创建 PR、记录 URL
+  Note over Dev,CI: 管理员在 GitHub 审阅并合并 PR
   CI->>Repo: verify-core / verify-agent / check --all --stage ci --check-git
 ```
 
@@ -307,10 +312,14 @@ DRAFT
   -> IMPLEMENTING          （自动开始实现）
   -> VERIFYING             （所有 Task 完成）
   -> PR_READY              （submit verification.md）
-  -> MERGED                （人 merge --human）
+  -> MERGED                （人 merge --human，确认交付）
+  -> PR                    （Agent 创建 PR，管理员合并）
 
 任意阶段 -> BLOCKED -> 原状态（人 unblock --human）
 ```
+
+`MERGED` 现在表示“人工已确认交付”，PR 由 Agent 在确认后创建，再由管理员合并。
+旧的 `MERGED` Spec 没有 `delivery_confirmed_at`，仍按 legacy 规则校验。
 
 ---
 
@@ -335,10 +344,12 @@ DRAFT
 | 1 | 给一个工作项 | 例如“按 srdcloud-553377 做这次需求”，不需要说当前阶段 |
 | 2 | 审 Spec | 看 `docs/specs/<Spec ID>/spec.md` 的范围、AC、未决问题 |
 | 3 | 执行 Spec 确认 | `python -m sdd approve --spec <Spec ID> --human --evidence "需求已确认"` |
-| 4 | 审最终 PR | 看 `PR_BODY.md`、AC 证据、diff、CI |
-| 5 | 合并并登记 | `python -m sdd merge --spec <Spec ID> --human --evidence "PR merged"` |
+| 4 | 审交付证据 | 看 `PR_BODY.md`、AC 证据、diff、CI |
+| 5 | 确认交付 | `python -m sdd merge --spec <Spec ID> --human --evidence "交付已确认"` |
+| 6 | 管理员合并 PR | Agent 用 `PR_BODY.md` 开 PR 后，管理员审阅并合并 |
 
-**这就是正常流程的全部人工步骤。**
+第 6 步是普通 GitHub 合并，不是额外的 SDD 检查点；正常流程仍然只有
+Spec 确认和交付确认两个 SDD 停止点。
 
 ### 4.3 例外：什么时候人会额外被打断？
 
@@ -545,27 +556,38 @@ python -m sdd submit --spec SPEC-ORDER-001 --artifact verification.md `
 
 默认会执行 `sdd/config.json` 的 `test_commands` 并追加证据。如果测试必须在别的环境跑，本地跑完后用 `--no-run-commands` 提交，但证据必须真实。
 
-### 6.7 生成 PR 并登记
+### 6.7 生成 PR 正文
 
 ```powershell
 python -m sdd report --spec SPEC-ORDER-001 --json
 ```
 
-用生成的 `PR_BODY.md` 开 PR，然后：
+先生成 `PR_BODY.md`，**不要创建 PR**。
+
+### 6.8 人工确认交付
+
+```powershell
+python -m sdd merge --spec SPEC-ORDER-001 --human --evidence "交付已确认"
+```
+
+没有 `--human` 会被拒绝。确认前 CLI 会再跑一次 CI 级校验。确认后状态进入
+`MERGED`，此时还没有 PR。
+
+### 6.9 创建 PR 并登记
+
+Agent 提交并推送 `sdd merge` 写入的 `state.json` / `events.jsonl`，然后用
+`PR_BODY.md` 创建 PR：
 
 ```powershell
 python -m sdd pr --spec SPEC-ORDER-001 --url "https://example.invalid/pr/1"
 ```
 
-### 6.8 人审 PR 并合并
+如果这两个审计文件还没提交，`sdd pr --url` 会拒绝登记，避免 PR 里缺少
+`MERGED` 状态而再次产生一个补状态 PR。
 
-```powershell
-python -m sdd merge --spec SPEC-ORDER-001 --human --evidence "PR #1 已合并"
-```
+PR 由管理员审阅并合并，不再需要第二个状态 PR。
 
-没有 `--human` 会被拒绝。合并前 CLI 会再跑一次 CI 级校验。
-
-### 6.9 证据绑定与审计
+### 6.10 证据绑定与审计
 
 每次记录 Gate 时，CLI 会把绑定产物的 SHA-256 写进 Gate 报告和
 `state.json.artifact_hashes`。`check --stage ci` 会重新计算并比对：
@@ -585,7 +607,7 @@ python -m sdd merge --spec SPEC-ORDER-001 --human --evidence "PR #1 已合并"
 `session_source`、`artifacts`、`approver` 等字段，并记录 `check_failed`
 事件。旧事件保持原样，不回写。
 
-### 6.10 待办、回退与指标
+### 6.11 待办、回退与指标
 
 ```powershell
 # 所有等人处理的事项：DRAFT、PR_READY、BLOCKED、人工 Gate、长期无事件
@@ -679,7 +701,7 @@ python -m sdd metrics --since 2026-11-01 --json
 3. 状态写进当前工作区；
 4. 工件跟代码一起 commit、push、开 PR；
 5. CI 跑 `verify-core` / `verify-agent` / `check`；
-6. 合并后 Spec 和 `state.json` 一起进主干。
+6. 人工确认交付后，Spec、`state.json` 和 `events.jsonl` 随 PR 一起进主干。
 
 优点：不改代码位置、每个开发者独立工作区、接入成本最低。  
 代价：共享 MCP 不能替别人写本地文件，只能做上下文和只读查询。

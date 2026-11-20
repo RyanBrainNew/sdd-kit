@@ -177,8 +177,9 @@ sdd_start_work(project, work_item="srdcloud-553377", issue_url="...", descriptio
        └─ 自动 start + complete，返回下一个 Task 或 run_verification
   └─ next.action=run_verification -> 写 verification.md -> sdd_submit_artifact
        └─ 自动跑 test_commands，校验后进入 PR_READY
-  └─ next.action=open_pr -> sdd_report -> 开 PR -> sdd_pr 记录 URL
-       └─ 停在 human_checkpoint=pr_merge
+  └─ next.action=confirm_merge -> sdd_report -> 停在 human_checkpoint=delivery_confirmation
+       └─ 人类确认交付（sdd merge --human）
+  └─ next.action=open_pr -> 提交确认状态 -> 开 PR -> sdd_pr 记录 URL
 ```
 
 `sdd_submit_artifact` 支持 `context.md`、`unknowns.md` 作为非推进型调研产物；
@@ -210,7 +211,8 @@ MCP 本身不会监听文件，也不会自己调用模型。真正把流程串�
 | IMPLEMENTING | 所有 Task 未 Done 时不能进入 VERIFYING | 硬 |
 | VERIFYING | `sdd_submit_artifact("verification.md")` 自动执行 test_commands | 硬 |
 | VERIFYING | AC 覆盖、测试标记、G0–G4 报告不全则拒绝 | 硬 |
-| PR_READY | `sdd_pr` 只能在此状态记录 URL | 硬 |
+| PR_READY | 等待人类确认交付，不能创建或记录 PR | 硬 |
+| MERGED | 确认后才创建 PR，用 `sdd_pr` 记录 URL | 硬 |
 | 任意阶段 | `approve` / `merge` / `unblock` 没有 MCP 工具 | 硬（人类） |
 | 测试证据 | 不能验证“证据是否真实”，只能要求非空并做工件校验 | 软 |
 
@@ -250,9 +252,9 @@ MCP 本身不会监听文件，也不会自己调用模型。真正把流程串�
 1. 开发者 `git clone` 仓库；
 2. Agent 用本地 stdio MCP，或直接调用 `sdd.py`；
 3. 状态和工件写进当前工作区，跟代码一起 commit；
-4. push 分支、开 PR；
+4. 人工确认交付后，Agent push 分支、开 PR；
 5. CI 跑 `sdd check --all --stage ci --check-git`；
-6. 合并后，Spec 和 `state.json` 一起进主干。
+6. PR 合并后，Spec 和 `state.json` 一起进主干。
 
 要点：
 

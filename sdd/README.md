@@ -7,7 +7,8 @@
 ```text
 开发者给一个工作项
   -> Agent 用 python -m sdd 自动循环
-  -> 人只在 Spec 确认和 PR 合并时介入
+  -> 人只在 Spec 确认和交付确认时介入
+  -> 交付确认后 Agent 才创建 PR
   -> CI 做最终硬校验
 ```
 
@@ -17,7 +18,7 @@
 |---|---|---|
 | 仓库接入（平台团队，一次） | 执行 bootstrap、补项目事实、配 CODEOWNERS | `python bootstrap.py ...` |
 | 每个需求 | 审 `spec.md` 并确认 | `python -m sdd approve --spec <spec> --human --evidence "需求已确认"` |
-| 每个需求 | 审 PR、合并并登记 | `python -m sdd merge --spec <spec> --human --evidence "PR merged"` |
+| 每个需求 | 确认交付（之后 Agent 才创建 PR） | `python -m sdd merge --spec <spec> --human --evidence "交付已确认"` |
 
 `approve`、`merge`、`unblock` 都强制 `--human`；Agent 不得代替。
 
@@ -73,7 +74,8 @@ DRAFT
   -> IMPLEMENTING    自动开始
   -> VERIFYING       所有 Task 完成
   -> PR_READY        submit verification.md
-  -> MERGED          人 merge --human
+  -> MERGED          人 merge --human（确认交付）
+  -> 创建 PR         Agent 提交确认状态、开 PR、记录 URL
 
 任意状态 -> BLOCKED -> 人 unblock --human -> 原状态
 ```
@@ -86,9 +88,12 @@ DRAFT
 | `TASKS_READY` | 无需操作 | 上一次 submit 自动进入 `IMPLEMENTING` |
 | `IMPLEMENTING` | 一次做一个 Task | `submit-task --task T-xxx` |
 | `VERIFYING` | 写 `verification.md` | `submit --artifact verification.md` |
-| `PR_READY` | 生成并开 PR | `report`，然后 `pr --url ...` |
-| `MERGED` | 结束 | 无 |
+| `PR_READY` | 生成 PR 正文，等待人工确认 | `report`，然后停 |
+| `MERGED` | 提交确认状态、创建并登记 PR | commit + push，`pr --url ...` |
 | `BLOCKED` | 等人回答 | 人 `unblock --human` |
+
+`MERGED` 表示人工已确认交付；PR 在确认后创建。旧的 `MERGED` Spec 没有
+`delivery_confirmed_at`，仍按 legacy 规则校验。
 
 ## 5. 常用命令
 
@@ -116,7 +121,7 @@ python -m sdd submit-task --spec SPEC-ORDER-001 --task T-001 --commit abc1234 --
 
 # 人类动作
 python -m sdd approve --spec SPEC-ORDER-001 --human --evidence "需求已确认"
-python -m sdd merge --spec SPEC-ORDER-001 --human --evidence "PR merged"
+python -m sdd merge --spec SPEC-ORDER-001 --human --evidence "交付已确认"
 python -m sdd unblock --spec SPEC-ORDER-001 --human --evidence "产品已确认"
 python -m sdd rewind --spec SPEC-ORDER-001 --to SPEC_READY --reason "设计遗漏" --human
 
@@ -172,7 +177,7 @@ Spec 确认时看：
 - 每条 AC 是否可测试；
 - 是否有未解决的 `[NEEDS CLARIFICATION]`。
 
-PR 审核时看：
+交付确认时看（PR 正文与本地 diff）：
 
 - `PR_BODY.md` 四要素是否齐全；
 - 每条 AC 是否有测试或证据；

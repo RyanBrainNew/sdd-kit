@@ -47,7 +47,10 @@ python -m sdd resume --json
 | 检查点 | 谁做 | 命令 |
 |---|---|---|
 | Spec 确认 | 人 | `python -m sdd approve --spec <spec> --human --evidence "需求已确认"` |
-| PR 合并 | 人 | `python -m sdd merge --spec <spec> --human --evidence "PR merged"` |
+| 交付确认（确认后才创建 PR） | 人 | `python -m sdd merge --spec <spec> --human --evidence "交付已确认"` |
+
+人类确认交付后，Agent 才用 `PR_BODY.md` 创建 PR；PR 的审核合并由管理员在
+GitHub 完成，不产生额外的 SDD 状态 PR。
 
 `l2-hotfix` 仍是两个停止点，但 G2 自动通过，设计使用轻量模板；高风险或命中
 `risk_stop` 的需求不允许使用该预设。`l2-strict` 的 G0–G5 全部需要人工确认，

@@ -53,7 +53,7 @@ class Workspace:
         "start_new_with": "sdd start-work",
         "submit_stage_with": "sdd submit",
         "submit_task_with": "sdd submit-task",
-        "human_only": ["approve_spec", "merge_pr", "unblock", "rewind"],
+        "human_only": ["approve_spec", "confirm_merge", "unblock", "rewind"],
         "rule": (
             "Do not ask the developer which SDD stage the work is in. "
             "Read next.action, execute it, and submit with next.submit_with. "
@@ -69,7 +69,7 @@ class Workspace:
         "implement_task": "sdd submit-task",
         "start_implementation": "sdd complete",
         "finish_implementation": "sdd complete",
-        "open_pr": "sdd report",
+        "open_pr": "sdd pr --url",
     }
 
     ARTIFACTS = {
@@ -326,6 +326,19 @@ class Workspace:
         if branch_spec and any(str(item["spec"]) == branch_spec for item in specs):
             return self._session_payload(
                 branch_spec,
+                specs,
+                max_chars,
+                bind=True,
+                pointer=pointer if pointer.get("found") else None,
+            )
+        pending_pr = [
+            item
+            for item in specs
+            if item.get("action") == "open_pr"
+        ]
+        if len(pending_pr) == 1:
+            return self._session_payload(
+                str(pending_pr[0]["spec"]),
                 specs,
                 max_chars,
                 bind=True,
@@ -898,8 +911,8 @@ class Workspace:
             "body": body,
             "next": self._agent_next(spec),
             "instruction": (
-                "Open a PR with PR_BODY.md, then run `sdd pr --url ...`. "
-                "Do not merge; merge is human-only."
+                "Use PR_BODY.md for the human delivery confirmation. "
+                "Do not open the PR until the state is MERGED."
             ),
         }
 
@@ -950,11 +963,12 @@ class Workspace:
             args.extend(["--approver", approver])
         result = self._run(args)
         resolved = spec or self._resolve_current_spec()
-        self.clear_session()
+        self.bind_session(resolved)
         return {
             "ok": True,
             "spec": resolved,
             "stdout": result.stdout.strip(),
+            "next": self._agent_next(resolved),
             "session": self.session_info(),
         }
 
@@ -1126,13 +1140,15 @@ class Workspace:
         if state == "PR_READY":
             return {
                 "required": True,
-                "type": "pr_merge",
+                "type": "delivery_confirmation",
                 "artifact": f"{spec_dir.as_posix()}/PR_BODY.md",
                 "command": (
                     f"python -m sdd merge --spec {spec} --human "
-                    "--evidence \"PR merged\""
+                    "--evidence \"交付已确认\""
                 ),
-                "message": "人类审核并合并 PR 后登记 merge；Agent 不得自动合并。",
+                "message": (
+                    "人类确认交付后执行 merge；确认前 Agent 不得创建 PR。"
+                ),
             }
         return {
             "required": False,
