@@ -1108,6 +1108,10 @@ td:nth-child(2) {
 }
 
 @media (max-width: 1040px) {
+  .nav-links {
+    gap: 18px;
+  }
+
   .hero-grid,
   .arch-grid {
     grid-template-columns: minmax(0, 1fr);
