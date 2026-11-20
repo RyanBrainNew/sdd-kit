@@ -1,12 +1,10 @@
-# 交付 PR
+# 创建 PR
 
-1. 运行 `python sdd/scripts/sdd.py report`，确认 `PR_BODY.md` 包含：
-   - Spec 文件；
-   - Spec Item 列表；
-   - 变更说明；
-   - AC 验证清单；
-   - 命令、结果、Not run。
-2. 用 `PR_BODY.md` 开 PR。标题建议 `<type>(<scope>): <summary>`，正文第一行引用 Spec。
-3. 运行 `python sdd/scripts/sdd.py pr --url <PR_URL>` 记录 URL。
-4. 不要合并，不要 push 默认分支。
-5. 如果平台支持 draft PR，优先开 draft；等人审后再转 ready。
+人类已经确认交付（`MERGED`），现在才创建 PR。
+
+1. 提交 `sdd merge` 写入的 `state.json` / `events.jsonl`，commit message 带
+   `Spec-Id: <spec>` trailer。
+2. push 当前功能分支，用 `PR_BODY.md` 开 PR。标题建议
+   `<type>(<scope>): <summary>`，正文第一行引用 Spec。
+3. 运行 `python -m sdd pr --url <PR_URL>` 记录 URL。
+4. 不要合并，不要 push 默认分支；由管理员审阅并合并 PR。

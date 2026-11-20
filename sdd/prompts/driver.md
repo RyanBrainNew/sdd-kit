@@ -35,10 +35,13 @@ while next.action != done:
   如果是 run_verification:
     填写 verification.md 的真实命令、结果、AC 覆盖、Gate 5 结论
     sdd_submit_artifact（自动跑 test_commands 并进入 PR_READY）
+  如果是 confirm_merge:
+    确认 PR_BODY.md 已生成
+    停止，等待人类运行 sdd merge --human
   如果是 open_pr:
-    sdd_report 生成 PR_BODY.md
+    提交并推送交付确认
     用 PR_BODY.md 开 PR，调用 sdd_pr 记录 URL
-    停止，等待人类合并
+    停止，等待管理员审核并合并 PR
   如果是 resolve_blocker:
     读 sdd/prompts/blocked.md
     停止并向人类提出一个具体问题
@@ -59,4 +62,4 @@ while next.action != done:
 
 ## 完成标准
 
-只有当 `sdd next` 返回 `open_pr` 或 `done`，且 `sdd check --stage ci` 通过时，才算本轮结束。
+只有当 `sdd next` 返回 `done`，且 `sdd check --stage ci` 通过时，才算本轮结束。

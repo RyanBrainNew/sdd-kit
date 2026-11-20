@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any, Iterable, Optional
 
 
-VERSION = "0.9.0"
+VERSION = "0.9.1"
 EVENT_SCHEMA = 2
 
 SPEC_SECTIONS = (
@@ -1539,7 +1539,7 @@ def verification_evidence_errors(
     config: dict[str, Any],
     state: dict[str, Any],
 ) -> list[str]:
-    if str(state.get("state") or "") == "MERGED":
+    if is_legacy_merged(state):
         return []
     commands = [
         str(item).strip()
@@ -1632,10 +1632,17 @@ def check_verification(
     if not re.search(r"(?i)\b(PASS|通过)\b", gate5):
         errors.append("verification.md 的 Gate 5 结论必须是 PASS/通过")
     errors.extend(verification_evidence_errors(text, config or {}, state or {}))
-    legacy = str((state or {}).get("state") or "") == "MERGED"
+    legacy = is_legacy_merged(state or {})
     if not legacy and requires_independent_review(config or {}, state or {}, workflow):
         errors.extend(check_independent_review(text, state or {}))
     return errors
+
+
+def is_legacy_merged(state: dict[str, Any]) -> bool:
+    return (
+        str(state.get("state") or "") == "MERGED"
+        and not state.get("delivery_confirmed_at")
+    )
 
 
 def review_fields(text: str) -> dict[str, str]:
@@ -2967,7 +2974,7 @@ def run_checks(
     workflow = resolve_workflow(root, directory, state)
     ctx = gate_context(root, config, directory, state)
     spec_acs = ctx["spec_acs"]
-    legacy_merged = str(state.get("state") or "") == "MERGED"
+    legacy_merged = is_legacy_merged(state)
     errors: list[str] = []
 
     if stage in {"spec", "design", "tasks", "verify", "ci"}:
@@ -3404,25 +3411,43 @@ def build_next_action(
     elif state_name == "PR_READY":
         base.update(
             {
-                "action": "open_pr",
+                "action": "confirm_merge",
                 "kind": "human_checkpoint",
-                "step_id": f"{spec_id}:pr_merge",
-                "expected_result": "human_merge",
-                "prompt": "sdd/prompts/pr.md",
+                "step_id": f"{spec_id}:delivery_confirmation",
+                "expected_result": "human_confirmation",
+                "prompt": "sdd/prompts/delivery.md",
                 "artifact": f"{relative_dir}/PR_BODY.md",
-                "done_when": "用 PR_BODY.md 开 PR，记录 URL；不要合并",
+                "done_when": (
+                    "人工确认交付并运行 sdd merge --human；确认前不要创建 PR"
+                ),
             }
         )
     elif state_name == "MERGED":
-        base.update(
-            {
-                "action": "done",
-                "kind": "done",
-                "step_id": f"{spec_id}:done",
-                "expected_result": "done",
-                "done_when": "Spec 已合并",
-            }
-        )
+        if state.get("delivery_confirmed_at") and not state.get("pr_url"):
+            base.update(
+                {
+                    "action": "open_pr",
+                    "kind": "artifact",
+                    "step_id": f"{spec_id}:open_pr",
+                    "expected_result": "pr_recorded",
+                    "prompt": "sdd/prompts/pr.md",
+                    "artifact": f"{relative_dir}/PR_BODY.md",
+                    "done_when": (
+                        "提交并推送交付确认，用 PR_BODY.md 开 PR，"
+                        "运行 sdd pr --url <URL> 记录；不要合并"
+                    ),
+                }
+            )
+        else:
+            base.update(
+                {
+                    "action": "done",
+                    "kind": "done",
+                    "step_id": f"{spec_id}:done",
+                    "expected_result": "done",
+                    "done_when": "Spec 已交付",
+                }
+            )
     elif state_name == "BLOCKED":
         base.update(
             {
@@ -3861,13 +3886,13 @@ def build_inbox_item(
             "spec": spec_id,
             "state": state_name,
             "priority": 10,
-            "action": "merge_pr",
-            "reason": "PR 已就绪，等待人工合并",
+            "action": "confirm_merge",
+            "reason": "交付待人工确认；确认后才创建 PR",
             "since": since,
             "artifact": f"{directory.relative_to(root).as_posix()}/PR_BODY.md",
             "command": (
                 f"python -m sdd merge --spec {spec_id} --human "
-                '--evidence "PR merged"'
+                '--evidence "交付已确认"'
             ),
         }
     elif state_name == "DRAFT":
@@ -5017,7 +5042,37 @@ def command_pr(
     spec_id, directory, state = resolve_spec(root, config, args.spec)
     if state.get("state") not in {"PR_READY", "MERGED"}:
         raise SddError("只有 PR_READY/MERGED 状态可以记录 PR")
+    if args.url and state.get("state") != "MERGED":
+        raise SddError(
+            "只有 MERGED（交付已确认）后才能记录 PR URL；确认前不要创建 PR"
+        )
     if args.url:
+        if (root / ".git").exists():
+            spec_dir = directory.relative_to(root).as_posix()
+            status = subprocess.run(
+                [
+                    "git",
+                    "status",
+                    "--porcelain",
+                    "--",
+                    f"{spec_dir}/state.json",
+                    f"{spec_dir}/events.jsonl",
+                ],
+                cwd=root,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+            if status.returncode != 0:
+                raise SddError(
+                    "无法检查交付确认是否已提交：" + status.stderr.strip()
+                )
+            if status.stdout.strip():
+                raise SddError(
+                    "交付确认尚未提交；先 commit state.json / events.jsonl "
+                    "再记录 PR URL"
+                )
         state["pr_url"] = args.url
         add_history(
             state,
@@ -5328,9 +5383,9 @@ def command_merge(
 ) -> int:
     spec_id, directory, state = resolve_spec(root, config, args.spec)
     if state.get("state") != "PR_READY":
-        raise SddError("只有 PR_READY 状态可以 merge")
+        raise SddError("只有 PR_READY 状态可以确认交付")
     if not args.human:
-        raise SddError("merge 需要 --human；agent 不允许自己合并")
+        raise SddError("确认交付需要 --human；agent 不允许自己确认")
     approver = resolve_approver(root, getattr(args, "approver", None))
     if config.get("require_approver") and approver == "unknown":
         raise SddError(
@@ -5340,20 +5395,22 @@ def command_merge(
     if errors:
         for error in errors:
             eprint(f"- {error}")
-        raise SddError("CI 检查未通过，不能登记合并")
+        raise SddError("CI 检查未通过，不能确认交付")
     pr_body = directory / "PR_BODY.md"
+    confirmed_at = now()
     state.setdefault("approvals", []).append(
         {
-            "action": "merge_pr",
+            "action": "confirm_delivery",
             "approver": approver,
-            "at": now(),
+            "at": confirmed_at,
             "artifact": pr_body.relative_to(root).as_posix(),
             "sha256": sha256_file(pr_body) if pr_body.is_file() else "",
             "head_sha": git_head_sha(root),
         }
     )
     state["last_approver"] = approver
-    state["merged_at"] = now()
+    state["delivery_confirmed_at"] = confirmed_at
+    state["merged_at"] = confirmed_at
     transition(
         state,
         "MERGED",
@@ -5363,7 +5420,7 @@ def command_merge(
         approver=approver,
     )
     save_state(directory, state)
-    print(f"[sdd] {spec_id} -> MERGED")
+    print(f"[sdd] {spec_id} -> MERGED (交付已确认；下一步创建 PR)")
     return 0
 
 
@@ -5785,7 +5842,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=command_rewind)
 
-    p = sub.add_parser("merge", help="human merge: PR_READY -> MERGED")
+    p = sub.add_parser(
+        "merge",
+        help="human delivery confirmation: PR_READY -> MERGED (before PR creation)",
+    )
     add_spec_option(p)
     p.add_argument("--evidence", required=True)
     p.add_argument("--approver", help="approver identity, default: git config user")

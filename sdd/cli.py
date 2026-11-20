@@ -344,7 +344,10 @@ def build_parser() -> argparse.ArgumentParser:
         )[1]
     )
 
-    p = sub.add_parser("merge", help="human merge: PR_READY -> MERGED")
+    p = sub.add_parser(
+        "merge",
+        help="human delivery confirmation: PR_READY -> MERGED (before PR creation)",
+    )
     p.add_argument("--spec")
     p.add_argument("--evidence", required=True)
     p.add_argument("--approver", help="approver identity, default: git config user")

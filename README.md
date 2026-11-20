@@ -4,10 +4,10 @@
 
 # 把 SDD 装进仓库
 
-**开发者只说一次需求，Agent 按仓库里的 `next.action` 自动推进。你只在两个地方出现：确认 Spec，合并 PR。**
+**开发者只说一次需求，Agent 按仓库里的 `next.action` 自动推进。你只在两个地方出现：确认 Spec，确认交付。**
 
 [![tests](https://github.com/RyanBrainNew/sdd-kit/actions/workflows/tests.yml/badge.svg)](https://github.com/RyanBrainNew/sdd-kit/actions/workflows/tests.yml)
-![version](https://img.shields.io/badge/version-0.9.0-5ee7a8)
+![version](https://img.shields.io/badge/version-0.9.1-5ee7a8)
 ![python](https://img.shields.io/badge/python-3.11%2B-3776AB)
 ![license](https://img.shields.io/badge/license-Apache--2.0-5ee7a8)
 [![site](https://img.shields.io/badge/site-GitHub%20Pages-5ee7a8)](https://ryanbrainnew.github.io/sdd-kit/)
@@ -35,7 +35,7 @@ SDD Kit 把公司 SDD-L2 的流程做成**仓库自带的默认开发路径**，
 | CLI 入口 | `python -m sdd resume / start-work / submit / submit-task / check` |
 | 状态机 | `DRAFT` → `SPEC_READY` → `DESIGN_READY` → `TASKS_READY` → `IMPLEMENTING` → `VERIFYING` → `PR_READY` → `MERGED` |
 | 工作流 | `l2-standard` 默认；`l2-hotfix` 用轻量设计并拒绝高风险；`l2-strict` 的 G0–G5 全部人工 |
-| 人工边界 | 正常流程只有 Spec 确认、PR 合并两个计划内检查点；`unblock`、`rewind` 是例外动作 |
+| 人工边界 | 正常流程只有 Spec 确认、交付确认两个计划内检查点；交付确认后才创建 PR；`unblock`、`rewind` 是例外动作 |
 | 证据链 | Gate 报告、产物 SHA-256、`state.json`、`events.jsonl`、测试证据都随 Git 提交 |
 | 可运维 | `board`、`inbox`、`metrics`、`events` 已可用；`rewind` 是人工回退动作 |
 | 集成 | MCP 是可选薄适配；同时提供 GitHub Actions 与 GitLab CI 模板 |
@@ -53,7 +53,7 @@ SDD Kit 把公司 SDD-L2 的流程做成**仓库自带的默认开发路径**，
 | 流程靠 Agent 自觉 | CLI 返回唯一的 `next.action`，`ok=false` 时必须按 `errors` 修复后重试 |
 | 每个 IDE 一套规则 | `AGENTS.md` 托管块 + `python -m sdd`，规则与工具解耦 |
 | 证据散落在对话里 | Spec、Design、Tasks、Gate 报告、测试命令都随 Git 提交 |
-| 人工确认太多 | 只保留 Spec 确认与 PR 合并两个检查点 |
+| 人工确认太多 | 只保留 Spec 确认与交付确认两个检查点 |
 
 ## 它怎么工作
 
@@ -65,7 +65,8 @@ flowchart LR
   T -->|逐 Task 实现| I[IMPLEMENTING]
   I -->|全部任务完成| V[VERIFYING]
   V -->|Gate 通过| P[PR_READY]
-  P -->|人 merge| M[MERGED]
+  P -->|人确认交付| M[MERGED]
+  M -->|Agent 开 PR| R[PR 审核合并]
 
   classDef gate fill:#2b2110,stroke:#ffc46b,color:#ffc46b;
   class S,P gate;
@@ -126,7 +127,7 @@ CI 执行同样的命令。核心被改、托管块漂移或工件缺失都会�
 | `python -m sdd report` | Agent | 生成 PR 正文与 Gate 摘要 |
 | `python -m sdd board` / `inbox` / `metrics` / `events` | 人 / Agent | 查看看板、待办、指标和审计事件 |
 | `python -m sdd approve --spec <id> --human --evidence "..."` | 人 | 确认 Spec |
-| `python -m sdd merge --spec <id> --human --evidence "..."` | 人 | 确认合并 |
+| `python -m sdd merge --spec <id> --human --evidence "..."` | 人 | 确认交付（之后才开 PR） |
 | `python -m sdd rewind --spec <id> --to <stage> --reason "..." --human` | 人 | 回退到更早阶段并保留审计 |
 | `python -m sdd check --all --stage ci` | CI | 校验全部工件、Gate 与 Git 状态 |
 
@@ -273,6 +274,6 @@ Copyright 2026 RyanBrainNew
 
 <div align="center">
 
-**SDD Kit 0.9.0** · 把 SDD 装进仓库
+**SDD Kit 0.9.1** · 把 SDD 装进仓库
 
 </div>

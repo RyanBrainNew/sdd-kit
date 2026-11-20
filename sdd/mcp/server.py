@@ -30,7 +30,7 @@ def create_server(service: SddService) -> Any:
             "implementation task with sdd_submit_task. The server re-validates the "
             "current state and returns the next action, so never ask the developer "
             "to choose a stage. Stop only at the returned human_checkpoint (spec "
-            "approval or PR merge). In shared registry mode, writes apply to "
+            "approval or delivery confirmation). In shared registry mode, writes apply to "
             "server-side worktrees only; a remote server cannot modify a "
             "developer's local clone. Agents must not edit state.json. approve, "
             "merge, unblock and rewind are deliberately not exposed as MCP tools."
@@ -234,7 +234,7 @@ def create_server(service: SddService) -> Any:
         spec: str,
         url: str | None = None,
     ) -> dict[str, Any]:
-        """Record a PR URL after opening the PR; only valid in PR_READY/MERGED."""
+        """Record a PR URL after the human confirms delivery and the PR is opened."""
         return service.record_pr(project, spec, url)
 
     @server.tool()
