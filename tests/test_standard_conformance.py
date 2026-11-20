@@ -34,6 +34,7 @@ def mapping_rows():
 
 class StandardConformanceTests(unittest.TestCase):
     def test_all_entries_present(self):
+        # [AC-001-1] [AC-001-2]
         self.assertTrue(DOC.is_file(), "缺少 docs/STANDARD-CONFORMANCE.md")
         header, rows = mapping_rows()
         self.assertIsNotNone(header)
@@ -52,12 +53,14 @@ class StandardConformanceTests(unittest.TestCase):
             self.assertIn(stage[1], row[1])
 
     def test_status_values_allowed(self):
+        # [AC-001-1] [AC-001-2]
         _, rows = mapping_rows()
         self.assertEqual(len(rows), 12)
         for row in rows:
             self.assertIn(row[5], STATUSES, f"{row[0]} 状态非法")
 
     def test_check_ids_exist(self):
+        # [AC-001-3]
         text = DOC.read_text(encoding="utf-8")
         ids = set(re.findall(r"\bG[0-5]-\d{2}\b", text))
         unknown = sorted(ids - set(engine.CHECK_REGISTRY_BY_ID))

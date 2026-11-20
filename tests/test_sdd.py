@@ -1343,6 +1343,7 @@ class StatusTest(unittest.TestCase):
 
 class CheckRegistryTests(SddFlowBase):
     def test_registry_ids_are_unique(self):
+        # [AC-003-4]
         self.assertEqual(engine.validate_check_registry(), [])
         ids = [str(item["id"]) for item in engine.CHECK_REGISTRY]
         self.assertEqual(len(ids), len(set(ids)))
@@ -1351,6 +1352,7 @@ class CheckRegistryTests(SddFlowBase):
             self.assertIn(item["level"], {"required", "advisory"})
 
     def test_gate_reports_include_stable_ids(self):
+        # [AC-003-1] [AC-003-2]
         self.new_spec()
         self.approve_valid_spec()
         g0 = (
@@ -1368,6 +1370,7 @@ class CheckRegistryTests(SddFlowBase):
         self.assertNotIn("| G0-01 |", g1)
 
     def test_required_item_failure_blocks(self):
+        # [AC-003-3]
         self.new_spec()
         self.write(
             "docs/specs/SPEC-ORDER-001/spec.md",
@@ -1413,6 +1416,7 @@ class FeatTraceTests(SddFlowBase):
         ).read_text(encoding="utf-8")
 
     def test_feat_metadata_must_match_index(self):
+        # [AC-002-1] [AC-002-2] [AC-002-8]
         spec_text = self.prepare_feat_spec()
         self.assertEqual(
             engine.feat_identity_errors(
@@ -1438,6 +1442,7 @@ class FeatTraceTests(SddFlowBase):
         self.assertTrue(any("缺少有效 FEAT ID" in error for error in errors))
 
     def test_duplicate_feat_is_blocked(self):
+        # [AC-002-3]
         spec_text = self.prepare_feat_spec()
         index = self.root / "docs" / "prd-index.md"
         text = index.read_text(encoding="utf-8")
@@ -1452,6 +1457,7 @@ class FeatTraceTests(SddFlowBase):
         self.assertTrue(any("被多个 Spec 使用" in error for error in errors))
 
     def test_orphan_fr_ac_is_blocked(self):
+        # [AC-002-4]
         spec_text = self.prepare_feat_spec()
         index = self.root / "docs" / "prd-index.md"
         text = index.read_text(encoding="utf-8")
@@ -1467,6 +1473,7 @@ class FeatTraceTests(SddFlowBase):
         self.assertTrue(any("不存在的 AC：AC-001-2" in error for error in errors))
 
     def test_body_only_feat_is_not_registered(self):
+        # [AC-002-5] [AC-002-6]
         spec_text = self.prepare_feat_spec()
         index = self.root / "docs" / "prd-index.md"
         text = index.read_text(encoding="utf-8")
@@ -1479,6 +1486,7 @@ class FeatTraceTests(SddFlowBase):
         self.assertTrue(any("缺少当前 Spec 的 FEAT 映射表行" in error for error in errors))
 
     def test_merged_legacy_spec_skips_feat_mapping(self):
+        # [AC-002-7]
         self.new_spec()
         legacy_spec = SPEC_TEXT.replace("| FEAT ID | FEAT-001 |\n", "")
         legacy_state = dict(self.state())
@@ -1519,21 +1527,25 @@ class EvidenceTests(SddFlowBase):
         )
 
     def test_empty_commands_block_pr_ready(self):
+        # [AC-005-1]
         errors = self.check(VERIFY_TEXT)
         self.assertTrue(any("test_commands 为空" in error for error in errors))
 
     def test_success_evidence_passes(self):
+        # [AC-005-2]
         errors = self.check(
             VERIFY_TEXT, ["python -m unittest tests.test_status"]
         )
         self.assertEqual(errors, [])
 
     def test_nonzero_exit_blocks(self):
+        # [AC-005-8]
         text = VERIFY_TEXT.replace("Exit: `0`", "Exit: `1`")
         errors = self.check(text, ["python -m unittest tests.test_status"])
         self.assertTrue(any("退出码非 0" in error for error in errors))
 
     def test_pass_without_evidence_blocks(self):
+        # [AC-005-3]
         errors = self.check(
             self.plain_pass(), ["python -m unittest tests.test_status"]
         )
@@ -1542,10 +1554,12 @@ class EvidenceTests(SddFlowBase):
         )
 
     def test_merged_spec_skips_new_evidence_rules(self):
+        # [AC-005-9]
         errors = self.check(self.plain_pass(), [], "MERGED")
         self.assertEqual(errors, [])
 
     def test_unmerged_spec_cannot_use_legacy_escape(self):
+        # [AC-005-10]
         errors = self.check(self.plain_pass(), [], "PR_READY")
         self.assertTrue(any("test_commands 为空" in error for error in errors))
         self.assertTrue(
@@ -1553,6 +1567,7 @@ class EvidenceTests(SddFlowBase):
         )
 
     def test_verify_records_structured_evidence(self):
+        # [AC-005-2]
         self.new_spec()
         self.approve_valid_spec()
         self.complete_design()
@@ -1612,6 +1627,7 @@ class TestCoverageTests(SddFlowBase):
         )
 
     def test_task_test_name_must_exist(self):
+        # [AC-005-4]
         self.write_status_test()
         tasks = engine.parse_tasks(TASKS_TEXT)
         self.assertEqual(
@@ -1630,6 +1646,7 @@ class TestCoverageTests(SddFlowBase):
         self.assertTrue(any("test_not_written" in error for error in errors))
 
     def test_bare_ac_tag_does_not_count(self):
+        # [AC-005-5]
         self.write("tests/test_bare.py", "# [AC-001-1]\n")
         errors = engine.check_test_coverage(
             self.root, self.config(), ["AC-001-1"]
@@ -1652,6 +1669,7 @@ class TestCoverageTests(SddFlowBase):
         )
 
     def test_medium_risk_requires_review(self):
+        # [AC-005-6]
         state = {"risk": "medium", "risk_labels": [], "history": []}
         errors = engine.check_verification(
             VERIFY_TEXT,
@@ -1675,6 +1693,7 @@ class TestCoverageTests(SddFlowBase):
         )
 
     def test_low_risk_flow_unchanged(self):
+        # [AC-005-7]
         state = {"risk": "low", "risk_labels": [], "history": []}
         workflow = self.workflow()
         self.assertEqual(
@@ -1712,6 +1731,7 @@ class ContextBundleTests(SddFlowBase):
         return self.next_action()
 
     def test_task_step_returns_all_fields(self):
+        # [AC-004-1]
         action = self.prepare_implementing()
         bundle = action["context_bundle"]
         self.assertEqual(
@@ -1770,6 +1790,7 @@ class ContextBundleTests(SddFlowBase):
         self.assertEqual(action["prompt_file"], "sdd/prompts/task.md")
 
     def test_non_task_step_returns_empty_bundle(self):
+        # [AC-004-2]
         self.new_spec()
         action = self.next_action()
         bundle = action["context_bundle"]
@@ -1789,6 +1810,7 @@ class ContextBundleTests(SddFlowBase):
         self.assertEqual(action["artifact"], "docs/specs/SPEC-ORDER-001/spec.md")
 
     def test_bundle_is_read_only(self):
+        # [AC-004-3]
         self.prepare_implementing()
         state_path = self.root / "docs/specs/SPEC-ORDER-001/state.json"
         events_path = self.root / "docs/specs/SPEC-ORDER-001/events.jsonl"
@@ -1800,6 +1822,7 @@ class ContextBundleTests(SddFlowBase):
         self.assertEqual(events_path.read_bytes(), events_before)
 
     def test_allowed_paths_from_design_impact(self):
+        # [AC-004-4]
         design = DESIGN_TEXT.replace(
             "## 5. 系统架构",
             """## 4.1 影响范围
@@ -1842,6 +1865,7 @@ class ContextBundleTests(SddFlowBase):
         self.assertEqual(bundle["allowed_paths"], [])
 
     def test_bundle_excludes_other_specs(self):
+        # [AC-004-5]
         self.write(
             "docs/specs/SPEC-OTHER-001/spec.md",
             SPEC_TEXT.replace("SPEC-ORDER-001", "SPEC-OTHER-001"),
