@@ -1482,11 +1482,110 @@ def check_tasks(
     return errors
 
 
+def unquote_field(value: str) -> str:
+    cleaned = value.strip()
+    if len(cleaned) >= 2 and cleaned[0] == cleaned[-1] == "`":
+        cleaned = cleaned[1:-1]
+    return cleaned.strip()
+
+
+def parse_command_evidence(text: str) -> list[dict[str, Any]]:
+    lines = text.splitlines()
+    blocks: list[dict[str, Any]] = []
+    index = 0
+    while index < len(lines):
+        match = re.match(r"^\s*-\s*Command:\s*(.+?)\s*$", lines[index], re.I)
+        if not match:
+            index += 1
+            continue
+        block: dict[str, Any] = {"command": unquote_field(match.group(1))}
+        index += 1
+        while index < len(lines):
+            field = re.match(
+                r"^\s*-\s*(CWD|Exit|Head|Plan-Hash|At|Output):\s*(.*)$",
+                lines[index],
+                re.I,
+            )
+            if field:
+                block[field.group(1).lower()] = unquote_field(field.group(2))
+                index += 1
+                continue
+            if not lines[index].strip():
+                index += 1
+                continue
+            break
+        while index < len(lines) and not lines[index].strip():
+            index += 1
+        if index < len(lines) and lines[index].strip().startswith("```"):
+            index += 1
+            output: list[str] = []
+            while index < len(lines) and not lines[index].strip().startswith("```"):
+                output.append(lines[index])
+                index += 1
+            block["output"] = "\n".join(output).strip()
+            index += 1
+        blocks.append(block)
+    return blocks
+
+
+def verification_evidence_errors(
+    text: str,
+    config: dict[str, Any],
+    state: dict[str, Any],
+) -> list[str]:
+    if str(state.get("state") or "") == "MERGED":
+        return []
+    commands = [
+        str(item).strip()
+        for item in config.get("test_commands", [])
+        if str(item).strip()
+    ]
+    errors: list[str] = []
+    if not commands:
+        errors.append(
+            "config.test_commands 为空；G5 为 manual/unverified，"
+            "必须配置可执行测试命令后才能进入 PR_READY"
+        )
+    blocks = parse_command_evidence(text)
+    if not blocks:
+        errors.append(
+            "verification.md 缺少结构化命令证据；"
+            "需要 Command/CWD/Exit/Head/Plan-Hash/At"
+        )
+        return errors
+    success = False
+    for block in blocks:
+        command = str(block.get("command") or "")
+        exit_value = str(block.get("exit") or "").strip()
+        if not re.fullmatch(r"-?\d+", exit_value):
+            errors.append(f"命令证据缺少有效 Exit：{command or '(empty)'}")
+            continue
+        missing = [
+            field
+            for field in ("cwd", "head", "plan-hash", "at")
+            if not str(block.get(field) or "").strip()
+        ]
+        if missing:
+            errors.append(
+                f"命令证据 {command or '(empty)'} 缺少字段：" + ", ".join(missing)
+            )
+        if int(exit_value) != 0:
+            errors.append(
+                f"命令证据退出码非 0（exit {exit_value}）：{command or '(empty)'}"
+            )
+        else:
+            success = True
+    if not success:
+        errors.append("verification.md 没有 exit=0 的成功命令证据")
+    return errors
+
+
 def check_verification(
     text: str,
     spec_acs: list[str],
     workflow: Optional[dict[str, Any]] = None,
     state: Optional[dict[str, Any]] = None,
+    config: Optional[dict[str, Any]] = None,
 ) -> list[str]:
     errors: list[str] = []
     for aliases in VERIFY_SECTIONS:
@@ -1503,6 +1602,7 @@ def check_verification(
     gate5 = section_body(text, ("Gate 5 结论", "Gate 5 Result"))
     if not re.search(r"(?i)\b(PASS|通过)\b", gate5):
         errors.append("verification.md 的 Gate 5 结论必须是 PASS/通过")
+    errors.extend(verification_evidence_errors(text, config or {}, state or {}))
     if workflow and workflow.get("review_required"):
         errors.extend(check_independent_review(text, state or {}))
     return errors
@@ -2687,7 +2787,9 @@ def run_checks(
         errors.extend(check_tasks(tasks_text, spec_acs, config))
     if stage in {"verify", "ci"}:
         errors.extend(
-            check_verification(verification_text, spec_acs, workflow, state)
+            check_verification(
+                verification_text, spec_acs, workflow, state, config
+            )
         )
         errors.extend(check_test_coverage(root, config, spec_acs))
     if stage == "ci":
@@ -4474,6 +4576,7 @@ def command_complete(
             spec_acs,
             workflow,
             state,
+            config,
         )
         errors.extend(check_test_coverage(root, config, spec_acs))
         errors.extend(
@@ -4572,10 +4675,15 @@ def command_verify(
         output = output.strip()
         if len(output) > 20000:
             output = output[:20000] + "\n... (truncated)"
+        head = git_head_sha(root) or "unknown"
+        plan_hash = task_plan_hash(read_text(directory / "tasks.md"))
         body = (
             f"- Command: `{command}`\n"
             f"- CWD: `{root}`\n"
             f"- Exit: `{result.returncode}`\n\n"
+            f"- Head: `{head[:12]}`\n"
+            f"- Plan-Hash: `sha256:{plan_hash}`\n"
+            f"- At: `{now()}`\n\n"
             "```text\n"
             f"{output}\n"
             "```"

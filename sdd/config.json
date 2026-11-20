@@ -28,7 +28,9 @@
     ".pytest_cache",
     ".mypy_cache"
   ],
-  "test_commands": [],
+  "test_commands": [
+    "python -m unittest discover -s tests -v"
+  ],
   "require_commit_sha": false,
   "require_approver": false,
   "require_artifact_hash": false,

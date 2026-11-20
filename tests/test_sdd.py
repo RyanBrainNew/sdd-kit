@@ -335,7 +335,16 @@ VERIFY_TEXT = """# 订单取消验证报告
 
 ## 2. 命令
 
-`python -m unittest tests.test_status`，退出码 0。
+- Command: `python -m unittest tests.test_status`
+- CWD: `C:/repo`
+- Exit: `0`
+- Head: `abc1234`
+- Plan-Hash: `sha256:0123456789abcdef`
+- At: `2026-11-14T10:00:00+08:00`
+
+```text
+test_cancel_pending_order (tests.test_status.StatusTest) ... ok
+```
 
 ## 3. 结果
 
@@ -837,6 +846,9 @@ class StatusTest(unittest.TestCase):
             "代码评审通过",
         )
         self.assertEqual(self.state()["state"], "VERIFYING")
+        self.set_config(
+            test_commands=["python -m unittest discover -s tests -p test_status.py"]
+        )
 
         session = next(
             str(item["session"])
@@ -1481,6 +1493,97 @@ class FeatTraceTests(SddFlowBase):
             engine.check_feat_trace(
                 self.root, self.config(), self.state(), legacy_spec
             )
+        )
+
+
+class EvidenceTests(SddFlowBase):
+    def config(self, commands=None):
+        return {"test_commands": commands or []}
+
+    def check(self, text, commands=None, state_name="VERIFYING"):
+        return engine.check_verification(
+            text,
+            ["AC-001-1"],
+            None,
+            {"state": state_name},
+            self.config(commands),
+        )
+
+    def plain_pass(self):
+        return (
+            VERIFY_TEXT.split("## 2. 命令")[0]
+            + "## 2. 命令\n\n"
+            + "`python -m unittest tests.test_status`，退出码 0。\n\n"
+            + "## 3. 结果"
+            + VERIFY_TEXT.split("## 3. 结果", 1)[1]
+        )
+
+    def test_empty_commands_block_pr_ready(self):
+        errors = self.check(VERIFY_TEXT)
+        self.assertTrue(any("test_commands 为空" in error for error in errors))
+
+    def test_success_evidence_passes(self):
+        errors = self.check(
+            VERIFY_TEXT, ["python -m unittest tests.test_status"]
+        )
+        self.assertEqual(errors, [])
+
+    def test_nonzero_exit_blocks(self):
+        text = VERIFY_TEXT.replace("Exit: `0`", "Exit: `1`")
+        errors = self.check(text, ["python -m unittest tests.test_status"])
+        self.assertTrue(any("退出码非 0" in error for error in errors))
+
+    def test_pass_without_evidence_blocks(self):
+        errors = self.check(
+            self.plain_pass(), ["python -m unittest tests.test_status"]
+        )
+        self.assertTrue(
+            any("缺少结构化命令证据" in error for error in errors)
+        )
+
+    def test_merged_spec_skips_new_evidence_rules(self):
+        errors = self.check(self.plain_pass(), [], "MERGED")
+        self.assertEqual(errors, [])
+
+    def test_unmerged_spec_cannot_use_legacy_escape(self):
+        errors = self.check(self.plain_pass(), [], "PR_READY")
+        self.assertTrue(any("test_commands 为空" in error for error in errors))
+        self.assertTrue(
+            any("缺少结构化命令证据" in error for error in errors)
+        )
+
+    def test_verify_records_structured_evidence(self):
+        self.new_spec()
+        self.approve_valid_spec()
+        self.complete_design()
+        self.complete_tasks()
+        self.run_sdd("complete", "--spec", SPEC_ID, "--evidence", "开始实现")
+        self.finish_implementation()
+        self.set_config(
+            test_commands=["python -m unittest tests.test_status"]
+        )
+        self.run_sdd("verify", "--spec", SPEC_ID)
+        text = (
+            self.root / "docs/specs/SPEC-ORDER-001/verification.md"
+        ).read_text(encoding="utf-8")
+        for field in ("Command:", "CWD:", "Exit: `0`", "Head:", "Plan-Hash:", "At:"):
+            self.assertIn(field, text)
+        self.assertEqual(
+            engine.verification_evidence_errors(
+                text,
+                {"test_commands": ["python -m unittest tests.test_status"]},
+                {"state": "VERIFYING"},
+            ),
+            [],
+        )
+
+    def set_config(self, **values):
+        path = self.root / "sdd" / "config.json"
+        config = json.loads(path.read_text(encoding="utf-8"))
+        config.update(values)
+        path.write_text(
+            json.dumps(config, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
         )
 
 
