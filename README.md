@@ -7,7 +7,7 @@
 **开发者只说一次需求，Agent 按仓库里的 `next.action` 自动推进。你只在两个地方出现：确认 Spec，合并 PR。**
 
 [![tests](https://github.com/RyanBrainNew/sdd-kit/actions/workflows/tests.yml/badge.svg)](https://github.com/RyanBrainNew/sdd-kit/actions/workflows/tests.yml)
-![version](https://img.shields.io/badge/version-0.8.0-5ee7a8)
+![version](https://img.shields.io/badge/version-0.9.0-5ee7a8)
 ![python](https://img.shields.io/badge/python-3.11%2B-3776AB)
 ![license](https://img.shields.io/badge/license-Apache--2.0-5ee7a8)
 [![site](https://img.shields.io/badge/site-GitHub%20Pages-5ee7a8)](https://ryanbrainnew.github.io/sdd-kit/)
@@ -208,6 +208,8 @@ Gate 报告单独写入 `sdd/reports/<Spec ID>/`，与 `docs/` 下的 Spec 工�
 | [官网](https://ryanbrainnew.github.io/sdd-kit/) | 一页看懂定位、链路、命令与路线图 |
 | [完整指南](docs/GUIDE.md) | 接入、架构、MCP、FAQ 与全部命令细节 |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | 设计取舍、模块边界与分阶段落地 |
+| [CONTEXT-BUNDLE.md](docs/CONTEXT-BUNDLE.md) | `next.context_bundle` 的字段、范围与只读语义 |
+| [STANDARD-CONFORMANCE.md](docs/STANDARD-CONFORMANCE.md) | 官方 P0–P5 / G0–G5 的实现、证据、缺口与状态 |
 | [DESIGN-NEXT.md](DESIGN-NEXT.md) | 下一阶段设计与待落地能力 |
 | [ADOPTION.md](ADOPTION.md) | 从单仓库试点到多仓库推广 |
 | [LANDSCAPE.md](LANDSCAPE.md) | 与 aidlc、Trellis、Spec Kitty 等方案的关系 |
@@ -271,6 +273,6 @@ Copyright 2026 RyanBrainNew
 
 <div align="center">
 
-**SDD Kit 0.8.0** · 把 SDD 装进仓库
+**SDD Kit 0.9.0** · 把 SDD 装进仓库
 
 </div>

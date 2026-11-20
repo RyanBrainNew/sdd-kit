@@ -111,6 +111,14 @@ def _print_human(payload: dict[str, Any]) -> None:
             f"(version {payload.get('version')}, {len(payload.get('files', {}))} files)"
         )
         return
+    if payload.get("kind") == "index":
+        print(f"[sdd] {payload.get('spec')} index synced: {payload.get('message')}")
+        return
+    if payload.get("kind") == "verify":
+        output = str(payload.get("stdout") or "").strip()
+        if output:
+            print(output)
+        return
     if payload.get("kind") == "sync_agent":
         if payload.get("changed"):
             print("[sdd] updated the SDD managed block in AGENTS.md")
@@ -316,6 +324,13 @@ def build_parser() -> argparse.ArgumentParser:
         )
     )
 
+    p = sub.add_parser("index", help="sync FEAT mapping rows into docs/prd-index.md")
+    p.add_argument("--spec")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(
+        func=lambda a, w: w.index(a.spec or w._resolve_current_spec())
+    )
+
     p = sub.add_parser("approve", help="human approval: DRAFT -> SPEC_READY")
     p.add_argument("--spec")
     p.add_argument("--evidence", required=True)
@@ -404,6 +419,18 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=lambda a, w: w.report(a.spec or w._resolve_current_spec()))
 
+    p = sub.add_parser("verify", help="run test commands and record evidence")
+    p.add_argument("--spec")
+    p.add_argument("--command", action="append", help="override test_commands; repeatable")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(
+        func=lambda a, w: _verify_payload(
+            w,
+            a.spec or w._resolve_current_spec(),
+            a.command or [],
+        )
+    )
+
     p = sub.add_parser("pr", help="record a PR URL")
     p.add_argument("--spec")
     p.add_argument("--url")
@@ -452,6 +479,15 @@ def _verify_agent_payload(root: Path) -> dict[str, Any]:
 def _verify_core_payload(root: Path) -> dict[str, Any]:
     errors = verify_core(root)
     return {"ok": not errors, "kind": "verify_core", "errors": errors}
+
+
+def _verify_payload(
+    workspace: Workspace, spec: str, commands: list[str]
+) -> dict[str, Any]:
+    payload = workspace.verify(spec, commands)
+    payload["ok"] = True
+    payload["kind"] = "verify"
+    return payload
 
 
 def main(argv: list[str] | None = None) -> int:

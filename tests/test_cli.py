@@ -77,6 +77,18 @@ class CliTest(unittest.TestCase):
         path = self.root / "docs" / "specs" / spec / name
         path.write_text(text.replace("SPEC-ORDER-001", spec), encoding="utf-8")
 
+    def test_verify_command_is_exposed(self):
+        result = subprocess.run(
+            [sys.executable, "-m", "sdd", "--help"],
+            cwd=KIT_ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("verify", result.stdout)
+
     def test_start_work_binds_session_and_resume_restores_it(self):
         started = self.start("srdcloud-553377", "订单取消")
         spec = started["spec_id"]

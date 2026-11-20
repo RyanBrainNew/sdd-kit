@@ -7,6 +7,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from sdd.scripts import sdd as engine
+
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
 SPEC_ID = "SPEC-ORDER-001"
@@ -19,6 +21,7 @@ SPEC_TEXT = """# 订单取消规格说明书（Spec）
 |---|---|
 | Spec ID | SPEC-ORDER-001 |
 | 工作项 ID | srdcloud-553377 |
+| FEAT ID | FEAT-001 |
 | 原始需求来源 | https://example.invalid/item/553377 |
 | 作者 | SDD Agent |
 | 创建日期 | 2026-11-14 |
@@ -277,7 +280,7 @@ TASKS_TEXT = """# 订单取消任务清单（Tasks）
 
 | Task ID | 任务描述 | 关联FR/AC | 依赖Task | 并行标识 | 验收标准 | 单元测试类/方法 | 单Task测试命令 | 状态 | Commit SHA |
 |---|---|---|---|---|---|---|---|---|---|
-| T-001 | 实现订单取消接口和状态校验 | FR-001；AC-001-1 | None | P | 待支付订单可取消，其他状态拒绝 | `OrderServiceTest#testCancelPendingOrder` | `python -m unittest tests.test_status` | Todo | — |
+| T-001 | 实现订单取消接口和状态校验 | FR-001；AC-001-1 | None | P | 待支付订单可取消，其他状态拒绝 | `StatusTest#test_cancel_pending_order` | `python -m unittest tests.test_status` | Todo | — |
 
 字段规则：
 
@@ -288,7 +291,7 @@ TASKS_TEXT = """# 订单取消任务清单（Tasks）
 
 | AC ID | 覆盖Task | 测试类/方法 | 测试命令/选择器 | 预期结果 | Gate 4实际结果 |
 |---|---|---|---|---|---|
-| AC-001-1 | T-001 | `OrderServiceTest#testCancelPendingOrder` | `python -m unittest tests.test_status` | 订单状态变为已取消 | 未执行 |
+| AC-001-1 | T-001 | `StatusTest#test_cancel_pending_order` | `python -m unittest tests.test_status` | 订单状态变为已取消 | 未执行 |
 
 ## 4. 依赖图
 
@@ -332,7 +335,16 @@ VERIFY_TEXT = """# 订单取消验证报告
 
 ## 2. 命令
 
-`python -m unittest tests.test_status`，退出码 0。
+- Command: `python -m unittest tests.test_status`
+- CWD: `C:/repo`
+- Exit: `0`
+- Head: `abc1234`
+- Plan-Hash: `sha256:0123456789abcdef`
+- At: `2026-11-14T10:00:00+08:00`
+
+```text
+test_cancel_pending_order (tests.test_status.StatusTest) ... ok
+```
 
 ## 3. 结果
 
@@ -407,7 +419,7 @@ VERIFY_STRICT_SUFFIX = """
 """
 
 
-class SddFlowTest(unittest.TestCase):
+class SddFlowBase(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
@@ -544,6 +556,7 @@ class StatusTest(unittest.TestCase):
         )
         self.run_sdd("complete", "--spec", spec_id, "--evidence", "验证完成")
 
+class SddFlowTest(SddFlowBase):
     def test_full_flow(self):
         self.new_spec()
         self.assertEqual(self.state()["state"], "DRAFT")
@@ -551,6 +564,7 @@ class StatusTest(unittest.TestCase):
         self.run_sdd("check", "--spec", SPEC_ID, "--stage", "spec", expect=1)
 
         self.write("docs/specs/SPEC-ORDER-001/spec.md", SPEC_TEXT)
+        self.run_sdd("index", "--spec", SPEC_ID)
         self.run_sdd("check", "--spec", SPEC_ID, "--stage", "spec")
         self.run_sdd(
             "approve",
@@ -832,6 +846,9 @@ class StatusTest(unittest.TestCase):
             "代码评审通过",
         )
         self.assertEqual(self.state()["state"], "VERIFYING")
+        self.set_config(
+            test_commands=["python -m unittest discover -s tests -p test_status.py"]
+        )
 
         session = next(
             str(item["session"])
@@ -1322,6 +1339,548 @@ class StatusTest(unittest.TestCase):
         )
         self.assertIn("--human", result.stderr)
         self.assertEqual(self.state()["state"], "DRAFT")
+
+
+class CheckRegistryTests(SddFlowBase):
+    def test_registry_ids_are_unique(self):
+        # [AC-003-4]
+        self.assertEqual(engine.validate_check_registry(), [])
+        ids = [str(item["id"]) for item in engine.CHECK_REGISTRY]
+        self.assertEqual(len(ids), len(set(ids)))
+        for item in engine.CHECK_REGISTRY:
+            self.assertIn(item["gate"], engine.GATE_STAGES)
+            self.assertIn(item["level"], {"required", "advisory"})
+
+    def test_gate_reports_include_stable_ids(self):
+        # [AC-003-1] [AC-003-2]
+        self.new_spec()
+        self.approve_valid_spec()
+        g0 = (
+            self.root / "sdd/reports/SPEC-ORDER-001/gate0-report.md"
+        ).read_text(encoding="utf-8")
+        g1 = (
+            self.root / "sdd/reports/SPEC-ORDER-001/gate1-report.md"
+        ).read_text(encoding="utf-8")
+        for report in (g0, g1):
+            self.assertIn("| 检查 ID | 检查项 | 级别 | 结果 | 证据 |", report)
+            self.assertIn("| required |", report)
+        self.assertIn("| G0-01 |", g0)
+        self.assertIn("| G1-01 |", g1)
+        self.assertNotIn("| G1-01 |", g0)
+        self.assertNotIn("| G0-01 |", g1)
+
+    def test_required_item_failure_blocks(self):
+        # [AC-003-3]
+        self.new_spec()
+        self.write(
+            "docs/specs/SPEC-ORDER-001/spec.md",
+            SPEC_TEXT.replace(
+                "- Out-of-Scope：不支持已支付订单退款。",
+                "- Out-of-Scope：待补充",
+            ),
+        )
+        self.run_sdd(
+            "approve",
+            "--spec",
+            SPEC_ID,
+            "--human",
+            "--evidence",
+            "确认",
+            expect=2,
+        )
+        self.assertEqual(self.state()["state"], "DRAFT")
+        g0 = (
+            self.root / "sdd/reports/SPEC-ORDER-001/gate0-report.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("| 总体结果 | FAILED |", g0)
+        self.assertIn("| G0-06 |", g0)
+        self.assertIn("| BLOCK |", g0)
+        g1 = (
+            self.root / "sdd/reports/SPEC-ORDER-001/gate1-report.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("| 总体结果 | PASS |", g1)
+
+
+class FeatTraceTests(SddFlowBase):
+    def config(self):
+        return json.loads(
+            (self.root / "sdd" / "config.json").read_text(encoding="utf-8")
+        )
+
+    def prepare_feat_spec(self):
+        self.new_spec()
+        self.write("docs/specs/SPEC-ORDER-001/spec.md", SPEC_TEXT)
+        self.run_sdd("index", "--spec", SPEC_ID)
+        return (
+            self.root / "docs/specs/SPEC-ORDER-001/spec.md"
+        ).read_text(encoding="utf-8")
+
+    def test_feat_metadata_must_match_index(self):
+        # [AC-002-1] [AC-002-2] [AC-002-8]
+        spec_text = self.prepare_feat_spec()
+        self.assertEqual(
+            engine.feat_identity_errors(
+                self.root, self.config(), self.state(), spec_text
+            ),
+            [],
+        )
+        self.assertEqual(
+            engine.feat_coverage_errors(
+                self.root, self.config(), self.state(), spec_text
+            ),
+            [],
+        )
+        mismatched = spec_text.replace("| FEAT ID | FEAT-001 |", "| FEAT ID | FEAT-999 |")
+        errors = engine.feat_identity_errors(
+            self.root, self.config(), self.state(), mismatched
+        )
+        self.assertTrue(any("不一致" in error for error in errors))
+        missing = spec_text.replace("| FEAT ID | FEAT-001 |\n", "")
+        errors = engine.feat_identity_errors(
+            self.root, self.config(), self.state(), missing
+        )
+        self.assertTrue(any("缺少有效 FEAT ID" in error for error in errors))
+
+    def test_duplicate_feat_is_blocked(self):
+        # [AC-002-3]
+        spec_text = self.prepare_feat_spec()
+        index = self.root / "docs" / "prd-index.md"
+        text = index.read_text(encoding="utf-8")
+        marker = text.index("## FEAT 映射")
+        duplicate = (
+            "| srdcloud-999999 | N/A | current | FEAT-001 | SPEC-ORDER-002 | 重复 | 0 |\n"
+        )
+        index.write_text(text[:marker] + duplicate + "\n" + text[marker:], encoding="utf-8")
+        errors = engine.feat_identity_errors(
+            self.root, self.config(), self.state(), spec_text
+        )
+        self.assertTrue(any("被多个 Spec 使用" in error for error in errors))
+
+    def test_orphan_fr_ac_is_blocked(self):
+        # [AC-002-4]
+        spec_text = self.prepare_feat_spec()
+        index = self.root / "docs" / "prd-index.md"
+        text = index.read_text(encoding="utf-8")
+        text = text.replace(
+            "| FR-001 | AC-001-1 |",
+            "| FR-001 | AC-001-2 |",
+        )
+        index.write_text(text, encoding="utf-8")
+        errors = engine.feat_coverage_errors(
+            self.root, self.config(), self.state(), spec_text
+        )
+        self.assertTrue(any("缺少 AC：AC-001-1" in error for error in errors))
+        self.assertTrue(any("不存在的 AC：AC-001-2" in error for error in errors))
+
+    def test_body_only_feat_is_not_registered(self):
+        # [AC-002-5] [AC-002-6]
+        spec_text = self.prepare_feat_spec()
+        index = self.root / "docs" / "prd-index.md"
+        text = index.read_text(encoding="utf-8")
+        marker = text.index("## FEAT 映射")
+        body_only = text[:marker] + "正文提到 FEAT-001 / SPEC-ORDER-001 / FR-001 / AC-001-1。\n"
+        index.write_text(body_only, encoding="utf-8")
+        errors = engine.feat_coverage_errors(
+            self.root, self.config(), self.state(), spec_text
+        )
+        self.assertTrue(any("缺少当前 Spec 的 FEAT 映射表行" in error for error in errors))
+
+    def test_merged_legacy_spec_skips_feat_mapping(self):
+        # [AC-002-7]
+        self.new_spec()
+        legacy_spec = SPEC_TEXT.replace("| FEAT ID | FEAT-001 |\n", "")
+        legacy_state = dict(self.state())
+        legacy_state["state"] = "MERGED"
+        self.assertEqual(
+            engine.check_feat_trace(
+                self.root, self.config(), legacy_state, legacy_spec
+            ),
+            [],
+        )
+        self.assertTrue(
+            engine.check_feat_trace(
+                self.root, self.config(), self.state(), legacy_spec
+            )
+        )
+
+
+class EvidenceTests(SddFlowBase):
+    def config(self, commands=None):
+        return {"test_commands": commands or []}
+
+    def check(self, text, commands=None, state_name="VERIFYING"):
+        return engine.check_verification(
+            text,
+            ["AC-001-1"],
+            None,
+            {"state": state_name},
+            self.config(commands),
+        )
+
+    def plain_pass(self):
+        return (
+            VERIFY_TEXT.split("## 2. 命令")[0]
+            + "## 2. 命令\n\n"
+            + "`python -m unittest tests.test_status`，退出码 0。\n\n"
+            + "## 3. 结果"
+            + VERIFY_TEXT.split("## 3. 结果", 1)[1]
+        )
+
+    def test_empty_commands_block_pr_ready(self):
+        # [AC-005-1]
+        errors = self.check(VERIFY_TEXT)
+        self.assertTrue(any("test_commands 为空" in error for error in errors))
+
+    def test_success_evidence_passes(self):
+        # [AC-005-2]
+        errors = self.check(
+            VERIFY_TEXT, ["python -m unittest tests.test_status"]
+        )
+        self.assertEqual(errors, [])
+
+    def test_nonzero_exit_blocks(self):
+        # [AC-005-8]
+        text = VERIFY_TEXT.replace("Exit: `0`", "Exit: `1`")
+        errors = self.check(text, ["python -m unittest tests.test_status"])
+        self.assertTrue(any("退出码非 0" in error for error in errors))
+
+    def test_pass_without_evidence_blocks(self):
+        # [AC-005-3]
+        errors = self.check(
+            self.plain_pass(), ["python -m unittest tests.test_status"]
+        )
+        self.assertTrue(
+            any("缺少结构化命令证据" in error for error in errors)
+        )
+
+    def test_merged_spec_skips_new_evidence_rules(self):
+        # [AC-005-9]
+        errors = self.check(self.plain_pass(), [], "MERGED")
+        self.assertEqual(errors, [])
+
+    def test_unmerged_spec_cannot_use_legacy_escape(self):
+        # [AC-005-10]
+        errors = self.check(self.plain_pass(), [], "PR_READY")
+        self.assertTrue(any("test_commands 为空" in error for error in errors))
+        self.assertTrue(
+            any("缺少结构化命令证据" in error for error in errors)
+        )
+
+    def test_verify_records_structured_evidence(self):
+        # [AC-005-2]
+        self.new_spec()
+        self.approve_valid_spec()
+        self.complete_design()
+        self.complete_tasks()
+        self.run_sdd("complete", "--spec", SPEC_ID, "--evidence", "开始实现")
+        self.finish_implementation()
+        self.set_config(
+            test_commands=["python -m unittest tests.test_status"]
+        )
+        self.run_sdd("verify", "--spec", SPEC_ID)
+        text = (
+            self.root / "docs/specs/SPEC-ORDER-001/verification.md"
+        ).read_text(encoding="utf-8")
+        for field in ("Command:", "CWD:", "Exit: `0`", "Head:", "Plan-Hash:", "At:"):
+            self.assertIn(field, text)
+        self.assertEqual(
+            engine.verification_evidence_errors(
+                text,
+                {"test_commands": ["python -m unittest tests.test_status"]},
+                {"state": "VERIFYING"},
+            ),
+            [],
+        )
+
+    def set_config(self, **values):
+        path = self.root / "sdd" / "config.json"
+        config = json.loads(path.read_text(encoding="utf-8"))
+        config.update(values)
+        path.write_text(
+            json.dumps(config, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+
+class TestCoverageTests(SddFlowBase):
+    def config(self):
+        return json.loads(
+            (self.root / "sdd" / "config.json").read_text(encoding="utf-8")
+        )
+
+    def workflow(self):
+        return json.loads(
+            (self.root / "sdd" / "workflows" / "l2-standard.json").read_text(
+                encoding="utf-8"
+            )
+        )
+
+    def write_status_test(self, tag_inside=True):
+        tag = "        # [AC-001-1]\n" if tag_inside else ""
+        self.write(
+            "tests/test_status.py",
+            "import unittest\n\n\n"
+            "class StatusTest(unittest.TestCase):\n"
+            "    def test_cancel_pending_order(self):\n"
+            f"{tag}"
+            "        self.assertTrue(True)\n",
+        )
+
+    def test_task_test_name_must_exist(self):
+        # [AC-005-4]
+        self.write_status_test()
+        tasks = engine.parse_tasks(TASKS_TEXT)
+        self.assertEqual(
+            engine.task_test_name_errors(self.root, self.config(), tasks), []
+        )
+        missing = TASKS_TEXT.replace(
+            "StatusTest#test_cancel_pending_order",
+            "MissingTest#test_not_written",
+        )
+        errors = engine.task_test_name_errors(
+            self.root, self.config(), engine.parse_tasks(missing)
+        )
+        self.assertTrue(
+            any("测试名无法定位" in error for error in errors)
+        )
+        self.assertTrue(any("test_not_written" in error for error in errors))
+
+    def test_bare_ac_tag_does_not_count(self):
+        # [AC-005-5]
+        self.write("tests/test_bare.py", "# [AC-001-1]\n")
+        errors = engine.check_test_coverage(
+            self.root, self.config(), ["AC-001-1"]
+        )
+        self.assertTrue(any("函数体内" in error for error in errors))
+
+        self.write(
+            "tests/test_bare.py",
+            "import unittest\n\n\n"
+            "class BareTest(unittest.TestCase):\n"
+            "    def test_ac(self):\n"
+            "        # [AC-001-1]\n"
+            "        self.assertTrue(True)\n",
+        )
+        self.assertEqual(
+            engine.check_test_coverage(
+                self.root, self.config(), ["AC-001-1"]
+            ),
+            [],
+        )
+
+    def test_medium_risk_requires_review(self):
+        # [AC-005-6]
+        state = {"risk": "medium", "risk_labels": [], "history": []}
+        errors = engine.check_verification(
+            VERIFY_TEXT,
+            ["AC-001-1"],
+            self.workflow(),
+            state,
+            self.config(),
+        )
+        self.assertTrue(
+            any("独立审查" in error for error in errors)
+        )
+        errors = engine.check_verification(
+            VERIFY_TEXT + VERIFY_STRICT_SUFFIX,
+            ["AC-001-1"],
+            self.workflow(),
+            state,
+            self.config(),
+        )
+        self.assertFalse(
+            any("独立审查" in error for error in errors)
+        )
+
+    def test_low_risk_flow_unchanged(self):
+        # [AC-005-7]
+        state = {"risk": "low", "risk_labels": [], "history": []}
+        workflow = self.workflow()
+        self.assertEqual(
+            engine.check_verification(
+                VERIFY_TEXT,
+                ["AC-001-1"],
+                workflow,
+                state,
+                self.config(),
+            ),
+            [],
+        )
+        self.assertEqual(
+            engine.gate_mode(self.config(), "G4", state, False, workflow),
+            "auto",
+        )
+        self.assertEqual(
+            engine.gate_mode(self.config(), "G5", state, False, workflow),
+            "auto",
+        )
+
+
+class ContextBundleTests(SddFlowBase):
+    def prepare_implementing(self, design_text=None):
+        self.new_spec()
+        self.approve_valid_spec()
+        self.write(
+            "docs/specs/SPEC-ORDER-001/design.md",
+            design_text if design_text is not None else DESIGN_TEXT,
+        )
+        self.run_sdd("complete", "--spec", SPEC_ID, "--evidence", "design 完成")
+        self.write("docs/specs/SPEC-ORDER-001/tasks.md", TASKS_TEXT)
+        self.run_sdd("complete", "--spec", SPEC_ID, "--evidence", "tasks 完成")
+        self.run_sdd("complete", "--spec", SPEC_ID, "--evidence", "开始实现")
+        return self.next_action()
+
+    def test_task_step_returns_all_fields(self):
+        # [AC-004-1]
+        action = self.prepare_implementing()
+        bundle = action["context_bundle"]
+        self.assertEqual(
+            set(bundle),
+            {
+                "task",
+                "frs",
+                "acs",
+                "design_sections",
+                "contracts",
+                "project_constraints",
+                "fix_patterns",
+                "allowed_paths",
+                "exclude",
+            },
+        )
+        self.assertEqual(
+            bundle["task"],
+            {
+                "id": "T-001",
+                "description": "实现订单取消接口和状态校验",
+                "status": "Todo",
+            },
+        )
+        self.assertEqual(bundle["frs"], ["FR-001"])
+        self.assertEqual(bundle["acs"], ["AC-001-1"])
+        self.assertTrue(
+            any(
+                "Spec覆盖关系" in item["heading"]
+                and "AC-001-1" in item["reason"]
+                for item in bundle["design_sections"]
+            )
+        )
+        self.assertIn(
+            "docs/specs/SPEC-ORDER-001/api/order.yaml", bundle["contracts"]
+        )
+        self.assertIn(
+            {"path": "AGENTS.md", "scope": "."}, bundle["project_constraints"]
+        )
+        self.assertEqual(bundle["fix_patterns"], [])
+        self.assertIn("tests/test_status.py", bundle["allowed_paths"])
+        self.assertEqual(
+            bundle["exclude"],
+            [
+                "docs/prd.md",
+                "docs/specs/*（其他 Spec）",
+                ".sdd/runtime/**",
+                "历史聊天",
+            ],
+        )
+        self.assertEqual(action["action"], "implement_task")
+        self.assertEqual(action["task"], "T-001")
+        self.assertEqual(
+            action["artifact"], "docs/specs/SPEC-ORDER-001/tasks.md"
+        )
+        self.assertEqual(action["prompt_file"], "sdd/prompts/task.md")
+
+    def test_non_task_step_returns_empty_bundle(self):
+        # [AC-004-2]
+        self.new_spec()
+        action = self.next_action()
+        bundle = action["context_bundle"]
+        self.assertIsNone(bundle["task"])
+        for field in (
+            "frs",
+            "acs",
+            "design_sections",
+            "contracts",
+            "project_constraints",
+            "fix_patterns",
+            "allowed_paths",
+            "exclude",
+        ):
+            self.assertEqual(bundle[field], [])
+        self.assertEqual(action["action"], "write_spec")
+        self.assertEqual(action["artifact"], "docs/specs/SPEC-ORDER-001/spec.md")
+
+    def test_bundle_is_read_only(self):
+        # [AC-004-3]
+        self.prepare_implementing()
+        state_path = self.root / "docs/specs/SPEC-ORDER-001/state.json"
+        events_path = self.root / "docs/specs/SPEC-ORDER-001/events.jsonl"
+        state_before = state_path.read_bytes()
+        events_before = events_path.read_bytes()
+        self.next_action()
+        self.next_action()
+        self.assertEqual(state_path.read_bytes(), state_before)
+        self.assertEqual(events_path.read_bytes(), events_before)
+
+    def test_allowed_paths_from_design_impact(self):
+        # [AC-004-4]
+        design = DESIGN_TEXT.replace(
+            "## 5. 系统架构",
+            """## 4.1 影响范围
+
+| 模块/服务 | 影响 | 兼容性 | 回滚风险 |
+|---|---|---|---|
+| `sdd/scripts/sdd.py` | 增加取消逻辑 | 向后兼容 | 低 |
+| `tests/test_status.py` | 新增单测 | 无 | 低 |
+
+## 5. 系统架构""",
+        )
+        action = self.prepare_implementing(design)
+        allowed = action["context_bundle"]["allowed_paths"]
+        self.assertIn("sdd/scripts/sdd.py", allowed)
+        self.assertIn("tests/test_status.py", allowed)
+
+        self.write(
+            "docs/specs/SPEC-ORDER-001/design.md",
+            DESIGN_TEXT.replace(
+                "- 请求/响应结构：见 `api/order.yaml`。\n", ""
+            ).replace(
+                "- 契约文件：`docs/specs/SPEC-ORDER-001/api/order.yaml`\n", ""
+            ),
+        )
+        task = {
+            "id": "T-999",
+            "description": "无范围任务",
+            "status": "Todo",
+            "frs": ["FR-001"],
+            "acs": ["AC-001-1"],
+            "test": "",
+            "command": "",
+        }
+        bundle = engine.build_context_bundle(
+            self.root,
+            self.root / "docs/specs/SPEC-ORDER-001",
+            self.state(),
+            task,
+        )
+        self.assertEqual(bundle["allowed_paths"], [])
+
+    def test_bundle_excludes_other_specs(self):
+        # [AC-004-5]
+        self.write(
+            "docs/specs/SPEC-OTHER-001/spec.md",
+            SPEC_TEXT.replace("SPEC-ORDER-001", "SPEC-OTHER-001"),
+        )
+        self.write(
+            "docs/specs/SPEC-OTHER-001/api/other.yaml",
+            "openapi: 3.0.0\n",
+        )
+        action = self.prepare_implementing()
+        bundle = action["context_bundle"]
+        rendered = json.dumps(bundle, ensure_ascii=False)
+        self.assertNotIn("SPEC-OTHER-001", rendered)
+        self.assertNotIn("api/other.yaml", rendered)
+        self.assertIn("docs/specs/*（其他 Spec）", bundle["exclude"])
+        self.assertEqual(bundle["fix_patterns"], [])
 
 
 if __name__ == "__main__":
