@@ -9,7 +9,7 @@
     "sdd/agents.py": "0683be7fda8ebb6c900f56ce13164c36c4338f7849bd82b2e1403fbc1ffc4d39",
     "sdd/ci/github-actions.yml": "0b6c73229299ef3a8ca497da8a2d58f1e1b723597f56f6bf9b4f30f9d5cd5567",
     "sdd/ci/gitlab-ci.yml": "98474f464906e13e4cd0cc830e8cf426bb22944e72163f0a5fd9a6d1a10075c0",
-    "sdd/cli.py": "3a2af67f9410ecbb5f214686d4b91f65b2bc0ea77d8c409e1c7f751b544796b0",
+    "sdd/cli.py": "baeb8a34bc2fbb76384fc85d6b767bd66f8d1e1a2838cc9083d26be017fec943",
     "sdd/core.py": "424d74b2b6b09669394275411ed3a6ee1932d4ac313b5c20cbb1a514bc4e0c0d",
     "sdd/mcp/__init__.py": "5085c4dc02bab45899c0edd4fa487e7da3c8251876c4310f54bff04b5a98a7e5",
     "sdd/mcp/__main__.py": "0d56a8285f3d7898c7d24b53f2ce08e7ccc9dbd01a93f334952b101125e17903",
