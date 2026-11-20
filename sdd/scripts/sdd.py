@@ -127,6 +127,102 @@ TASK_PLAN_FIELDS = (
     "command",
 )
 
+CHECK_REQUIRED_FIELDS = (
+    "id",
+    "gate",
+    "name",
+    "level",
+    "trigger",
+    "waivable",
+    "evidence",
+    "owner",
+)
+
+CHECK_REGISTRY = (
+    {
+        "id": "G0-01",
+        "gate": "G0",
+        "name": "工作项与 Spec 元数据一致",
+        "level": "required",
+        "trigger": "approve",
+        "waivable": False,
+        "evidence": "spec.md 工作项 ID 与 state/prd-index 一致",
+        "owner": "planner",
+    },
+    {
+        "id": "G0-02",
+        "gate": "G0",
+        "name": "PRD 索引结构可解析",
+        "level": "required",
+        "trigger": "approve",
+        "waivable": False,
+        "evidence": "docs/prd-index.md 有 source/updated 且表格可解析",
+        "owner": "planner",
+    },
+    {
+        "id": "G0-03",
+        "gate": "G0",
+        "name": "PRD 澄清标记为 0",
+        "level": "required",
+        "trigger": "approve",
+        "waivable": False,
+        "evidence": "docs/prd-index.md 不含 [NEEDS CLARIFICATION]",
+        "owner": "planner",
+    },
+    {
+        "id": "G0-06",
+        "gate": "G0",
+        "name": "范围声明可判定",
+        "level": "required",
+        "trigger": "approve",
+        "waivable": False,
+        "evidence": "spec.md 的 In-Scope / Out-of-Scope 已填写",
+        "owner": "planner",
+    },
+    {
+        "id": "G1-01",
+        "gate": "G1",
+        "name": "Spec 章节齐备",
+        "level": "required",
+        "trigger": "approve",
+        "waivable": False,
+        "evidence": "spec.md 核心章节存在",
+        "owner": "planner",
+    },
+    {
+        "id": "G1-02",
+        "gate": "G1",
+        "name": "FR/AC 映射完整",
+        "level": "required",
+        "trigger": "approve",
+        "waivable": False,
+        "evidence": "每个 FR 至少有一条 AC",
+        "owner": "planner",
+    },
+    {
+        "id": "G1-03",
+        "gate": "G1",
+        "name": "AC 可测试性",
+        "level": "required",
+        "trigger": "approve",
+        "waivable": False,
+        "evidence": "每条 AC 含 Given/When/Then 与执行路径",
+        "owner": "planner",
+    },
+    {
+        "id": "G1-04",
+        "gate": "G1",
+        "name": "无占位符与澄清标记",
+        "level": "required",
+        "trigger": "approve",
+        "waivable": False,
+        "evidence": "spec.md 无 TODO、占位符或 [NEEDS CLARIFICATION]",
+        "owner": "planner",
+    },
+)
+
+CHECK_REGISTRY_BY_ID = {str(item["id"]): item for item in CHECK_REGISTRY}
+
 STAGE_ORDER = (
     "DRAFT",
     "SPEC_READY",
@@ -1190,23 +1286,24 @@ def task_table_error(tasks: list[dict[str, Any]], spec_acs: list[str], config: d
     return errors
 
 
-def check_spec(text: str, spec_id: Optional[str] = None) -> tuple[list[str], list[str]]:
+def spec_metadata_errors(text: str, spec_id: Optional[str] = None) -> list[str]:
     errors: list[str] = []
-    for aliases in SPEC_SECTIONS:
-        if not has_section(text, aliases):
-            errors.append(f"spec.md 缺少章节：{aliases[0]}")
-    errors.extend(placeholder_errors("spec.md", text))
-
     if spec_id:
         declared = metadata_value(text, "Spec ID", "SpecID")
         if declared != spec_id:
-            errors.append(f"spec.md 元数据 Spec ID 必须是 {spec_id}，当前是 {declared or '空'}")
+            errors.append(
+                f"spec.md 元数据 Spec ID 必须是 {spec_id}，当前是 {declared or '空'}"
+            )
     work_item = metadata_value(text, "工作项 ID", "工作项ID", "Work Item ID")
     if is_placeholder_value(work_item):
         errors.append("spec.md 缺少有效的工作项 ID")
     elif work_item.startswith("%"):
         errors.append("spec.md 的工作项 ID 不能带前导 %")
+    return errors
 
+
+def spec_scope_errors(text: str) -> list[str]:
+    errors: list[str] = []
     scope = section_body(text, ("范围声明", "Scope"))
     in_scope = re.search(r"(?im)^\s*[-*]?\s*In-Scope\s*[：:]\s*(.+)$", scope)
     out_scope = re.search(r"(?im)^\s*[-*]?\s*Out-of-Scope\s*[：:]\s*(.+)$", scope)
@@ -1214,20 +1311,43 @@ def check_spec(text: str, spec_id: Optional[str] = None) -> tuple[list[str], lis
         errors.append("spec.md 的 In-Scope 未填写")
     if not out_scope or is_placeholder_value(out_scope.group(1)):
         errors.append("spec.md 的 Out-of-Scope 未填写")
+    return errors
 
+
+def spec_section_errors(text: str) -> list[str]:
+    return [
+        f"spec.md 缺少章节：{aliases[0]}"
+        for aliases in SPEC_SECTIONS
+        if not has_section(text, aliases)
+    ]
+
+
+def spec_fr_ac_errors(text: str) -> list[str]:
+    errors: list[str] = []
     acs = extract_acs(text)
     frs = extract_frs(text)
     if not frs:
         errors.append("spec.md 没有 FR-xxx 形式的功能需求")
     if not acs:
         errors.append("spec.md 没有 AC-xxx-y 形式的验收标准")
-
     for fr in frs:
         suffix = fr[3:]
         if not any(ac.startswith(f"AC-{suffix}-") for ac in acs):
             errors.append(f"{fr} 没有对应 AC")
+    fr_defs = re.findall(r"(?m)^#{1,6}\s+(FR-\d{3})\b", text)
+    ac_defs = re.findall(
+        r"(?m)^\s*[-*]?\s*(AC-\d{3}-[1-9]\d*)\s*[:：]", text
+    )
+    if len(fr_defs) != len(set(fr_defs)):
+        errors.append("spec.md 存在重复 FR 定义")
+    if len(ac_defs) != len(set(ac_defs)):
+        errors.append("spec.md 存在重复 AC 定义")
+    return errors
 
-    for ac in acs:
+
+def spec_ac_testability_errors(text: str) -> list[str]:
+    errors: list[str] = []
+    for ac in extract_acs(text):
         line = ""
         for raw in text.splitlines():
             if ac in raw:
@@ -1237,16 +1357,18 @@ def check_spec(text: str, spec_id: Optional[str] = None) -> tuple[list[str], lis
             errors.append(f"{ac} 必须在同一条验收定义中包含 Given/When/Then")
         if "执行路径" not in line:
             errors.append(f"{ac} 缺少【执行路径：...】标注")
+    return errors
 
-    fr_defs = re.findall(r"(?m)^#{1,6}\s+(FR-\d{3})\b", text)
-    ac_defs = re.findall(
-        r"(?m)^\s*[-*]?\s*(AC-\d{3}-[1-9]\d*)\s*[:：]", text
-    )
-    if len(fr_defs) != len(set(fr_defs)):
-        errors.append("spec.md 存在重复 FR 定义")
-    if len(ac_defs) != len(set(ac_defs)):
-        errors.append("spec.md 存在重复 AC 定义")
-    return errors, acs
+
+def check_spec(text: str, spec_id: Optional[str] = None) -> tuple[list[str], list[str]]:
+    errors: list[str] = []
+    errors.extend(spec_section_errors(text))
+    errors.extend(placeholder_errors("spec.md", text))
+    errors.extend(spec_metadata_errors(text, spec_id))
+    errors.extend(spec_scope_errors(text))
+    errors.extend(spec_fr_ac_errors(text))
+    errors.extend(spec_ac_testability_errors(text))
+    return errors, extract_acs(text)
 
 
 def check_design(
@@ -1539,7 +1661,7 @@ def ensure_prd_index(
     return path
 
 
-def check_prd_index(
+def prd_index_structure_errors(
     root: Path,
     config: dict[str, Any],
     state: dict[str, Any],
@@ -1560,8 +1682,44 @@ def check_prd_index(
         errors.append(
             f"docs/prd-index.md 的 source={source} 与 config.prd_mode={expected} 不一致"
         )
+    if not re.search(r"(?im)^\s*(?:[-*]\s*)?updated\s*[:：]\s*\S+", text):
+        errors.append("docs/prd-index.md 头部缺少 updated 时间")
+    if not prd_index_rows(text):
+        errors.append("docs/prd-index.md 没有可解析的映射表行")
+    if source == "repo":
+        prd_path = root / "docs" / "prd.md"
+        if not prd_path.is_file():
+            errors.append("source: repo 时必须存在 docs/prd.md")
+    return errors
+
+
+def prd_index_clarify_errors(
+    root: Path,
+    config: dict[str, Any],
+    state: dict[str, Any],
+    spec_text: str,
+) -> list[str]:
+    if not config.get("require_prd_index"):
+        return []
+    text = read_text(prd_index_path(root, config))
     if CLARIFY_RE.search(text):
-        errors.append("docs/prd-index.md 还有 [NEEDS CLARIFICATION] 标记")
+        return ["docs/prd-index.md 还有 [NEEDS CLARIFICATION] 标记"]
+    return []
+
+
+def prd_index_registration_errors(
+    root: Path,
+    config: dict[str, Any],
+    state: dict[str, Any],
+    spec_text: str,
+) -> list[str]:
+    if not config.get("require_prd_index"):
+        return []
+    path = prd_index_path(root, config)
+    text = read_text(path)
+    if not text:
+        return [f"缺少 PRD 追溯索引：{path.relative_to(root).as_posix()}"]
+    errors: list[str] = []
     spec_id = str(state.get("spec_id", ""))
     work_item = metadata_value(spec_text, "工作项 ID", "工作项ID") or str(
         state.get("work_item") or state.get("issue") or ""
@@ -1571,11 +1729,177 @@ def check_prd_index(
         errors.append(f"docs/prd-index.md 没有登记 Spec {spec_id}")
     if work_item and not any(row.get("工作项id") == work_item for row in rows):
         errors.append(f"docs/prd-index.md 没有登记工作项 {work_item}")
-    if source == "repo":
-        prd_path = root / "docs" / "prd.md"
-        if not prd_path.is_file():
-            errors.append("source: repo 时必须存在 docs/prd.md")
     return errors
+
+
+def check_prd_index(
+    root: Path,
+    config: dict[str, Any],
+    state: dict[str, Any],
+    spec_text: str,
+) -> list[str]:
+    errors: list[str] = []
+    errors.extend(prd_index_structure_errors(root, config, state, spec_text))
+    errors.extend(prd_index_clarify_errors(root, config, state, spec_text))
+    errors.extend(prd_index_registration_errors(root, config, state, spec_text))
+    return errors
+
+
+def validate_check_registry(
+    registry: tuple[dict[str, Any], ...] = CHECK_REGISTRY,
+) -> list[str]:
+    errors: list[str] = []
+    seen: set[str] = set()
+    for item in registry:
+        if not isinstance(item, dict):
+            errors.append("检查项必须是对象")
+            continue
+        missing = [field for field in CHECK_REQUIRED_FIELDS if field not in item]
+        if missing:
+            errors.append(
+                f"{item.get('id') or '(unknown)'} 缺少字段：" + ", ".join(missing)
+            )
+        check_id = str(item.get("id") or "")
+        if not check_id:
+            errors.append("检查项缺少非空 ID")
+        elif check_id in seen:
+            errors.append(f"检查 ID 重复：{check_id}")
+        seen.add(check_id)
+        if str(item.get("gate") or "") not in GATE_STAGES:
+            errors.append(f"{check_id or '(unknown)'} 的 Gate 非法：{item.get('gate')}")
+        if str(item.get("level") or "") not in {"required", "advisory"}:
+            errors.append(
+                f"{check_id or '(unknown)'} 的级别必须是 required 或 advisory"
+            )
+    return errors
+
+
+def gate_context(
+    root: Path,
+    config: dict[str, Any],
+    directory: Path,
+    state: dict[str, Any],
+) -> dict[str, Any]:
+    spec_id = str(state.get("spec_id", directory.name))
+    spec_text = read_text(directory / "spec.md")
+    _, spec_acs = check_spec(spec_text, spec_id)
+    return {
+        "root": root,
+        "config": config,
+        "directory": directory,
+        "state": state,
+        "spec_id": spec_id,
+        "spec_text": spec_text,
+        "spec_acs": spec_acs,
+    }
+
+
+def gate_g0_work_item(ctx: dict[str, Any]) -> tuple[list[str], str]:
+    state = ctx["state"]
+    spec_text = ctx["spec_text"]
+    errors: list[str] = []
+    declared = metadata_value(spec_text, "工作项 ID", "工作项ID", "Work Item ID")
+    state_item = str(state.get("work_item") or "")
+    if is_placeholder_value(declared):
+        errors.append("spec.md 缺少有效的工作项 ID")
+    elif declared.startswith("%"):
+        errors.append("spec.md 的工作项 ID 不能带前导 %")
+    if state_item and declared and declared != state_item:
+        errors.append(
+            f"spec.md 工作项 ID={declared} 与 state.work_item={state_item} 不一致"
+        )
+    work_item = declared or state_item
+    rows = prd_index_rows(read_text(prd_index_path(ctx["root"], ctx["config"])))
+    if work_item and not any(row.get("工作项id") == work_item for row in rows):
+        errors.append(f"docs/prd-index.md 没有登记工作项 {work_item}")
+    return errors, f"work_item={work_item or '(empty)'}"
+
+
+def gate_g0_structure(ctx: dict[str, Any]) -> tuple[list[str], str]:
+    errors = prd_index_structure_errors(
+        ctx["root"], ctx["config"], ctx["state"], ctx["spec_text"]
+    )
+    return errors, "source/updated/table parsed"
+
+
+def gate_g0_clarify(ctx: dict[str, Any]) -> tuple[list[str], str]:
+    errors = prd_index_clarify_errors(
+        ctx["root"], ctx["config"], ctx["state"], ctx["spec_text"]
+    )
+    if CLARIFY_RE.search(ctx["spec_text"]):
+        errors.append("spec.md 还有 [NEEDS CLARIFICATION] 标记")
+    return errors, "clarification markers = 0"
+
+
+def gate_g0_scope(ctx: dict[str, Any]) -> tuple[list[str], str]:
+    errors = spec_scope_errors(ctx["spec_text"])
+    return errors, "In-Scope / Out-of-Scope"
+
+
+def gate_g1_sections(ctx: dict[str, Any]) -> tuple[list[str], str]:
+    errors = spec_section_errors(ctx["spec_text"])
+    return errors, f"{len(SPEC_SECTIONS)} core sections"
+
+
+def gate_g1_fr_ac(ctx: dict[str, Any]) -> tuple[list[str], str]:
+    errors = spec_fr_ac_errors(ctx["spec_text"])
+    return errors, f"{len(extract_frs(ctx['spec_text']))} FR / {len(ctx['spec_acs'])} AC"
+
+
+def gate_g1_testability(ctx: dict[str, Any]) -> tuple[list[str], str]:
+    errors = spec_ac_testability_errors(ctx["spec_text"])
+    return errors, f"{len(ctx['spec_acs'])} AC checked"
+
+
+def gate_g1_placeholders(ctx: dict[str, Any]) -> tuple[list[str], str]:
+    errors = placeholder_errors("spec.md", ctx["spec_text"])
+    return errors, "TODO/placeholder/clarification = 0"
+
+
+GATE_CHECK_FUNCS = {
+    "G0-01": gate_g0_work_item,
+    "G0-02": gate_g0_structure,
+    "G0-03": gate_g0_clarify,
+    "G0-06": gate_g0_scope,
+    "G1-01": gate_g1_sections,
+    "G1-02": gate_g1_fr_ac,
+    "G1-03": gate_g1_testability,
+    "G1-04": gate_g1_placeholders,
+}
+
+
+def run_gate_checks(gate: str, ctx: dict[str, Any]) -> list[dict[str, Any]]:
+    registry_errors = validate_check_registry()
+    if registry_errors:
+        raise SddError("检查项注册表无效：" + "；".join(registry_errors))
+    rows: list[dict[str, Any]] = []
+    for item in CHECK_REGISTRY:
+        if str(item.get("gate")) != gate:
+            continue
+        func = GATE_CHECK_FUNCS.get(str(item["id"]))
+        if func is None:
+            item_errors = [f"检查项 {item['id']} 没有实现"]
+            detail = "missing check function"
+        else:
+            item_errors, detail = func(ctx)
+        rows.append(
+            {
+                "id": item["id"],
+                "name": item["name"],
+                "level": item["level"],
+                "trigger": item["trigger"],
+                "waivable": item["waivable"],
+                "owner": item["owner"],
+                "result": "block" if item_errors else "pass",
+                "detail": detail,
+                "errors": item_errors,
+            }
+        )
+    return rows
+
+
+def gate_rows_errors(rows: list[dict[str, Any]]) -> list[str]:
+    return [error for row in rows for error in row.get("errors", [])]
 
 
 def check_duplicate_spec_files(root: Path, config: dict[str, Any]) -> list[str]:
@@ -1759,6 +2083,35 @@ def append_gate(
     write_text(path, text + row)
 
 
+def normalize_check_rows(
+    gate: str, checks: list[Any]
+) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for index, item in enumerate(checks, 1):
+        if isinstance(item, dict):
+            rows.append(
+                {
+                    "id": str(item.get("id") or f"{gate}-{index:02d}"),
+                    "name": str(item.get("name") or "检查项"),
+                    "level": str(item.get("level") or "required"),
+                    "result": str(item.get("result") or "pass").upper(),
+                    "detail": str(item.get("detail") or ""),
+                }
+            )
+            continue
+        name, result, detail = item
+        rows.append(
+            {
+                "id": f"{gate}-{index:02d}",
+                "name": str(name),
+                "level": "required",
+                "result": str(result).upper(),
+                "detail": str(detail),
+            }
+        )
+    return rows
+
+
 def write_gate_report(
     root: Path,
     config: dict[str, Any],
@@ -1768,7 +2121,7 @@ def write_gate_report(
     state_name: str,
     mode: str,
     evidence: str,
-    checks: list[tuple[str, str, str]],
+    checks: list[Any],
     errors: Optional[list[str]] = None,
     approver: Optional[str] = None,
 ) -> Path:
@@ -1793,6 +2146,7 @@ def write_gate_report(
     relative_dir = directory.relative_to(root).as_posix()
     report_path = gate_report_path(root, config, spec_id, gate)
 
+    check_rows = normalize_check_rows(gate, checks)
     lines = [
         f"# {gate} {label}报告",
         "",
@@ -1811,14 +2165,20 @@ def write_gate_report(
         "",
         "## 2. 检查项",
         "",
-        "| 检查项 | 结果 | 证据 |",
-        "| --- | --- | --- |",
+        "| 检查 ID | 检查项 | 级别 | 结果 | 证据 |",
+        "| --- | --- | --- | --- | --- |",
     ]
-    for name, result, detail in checks:
-        safe_detail = " ".join(str(detail).split()).replace("|", "\\|")
-        lines.append(f"| {name} | {result} | {safe_detail} |")
-    if not checks:
-        lines.append("| 无自动检查项 | PASS | 由人工评审 |")
+    for row in check_rows:
+        safe_name = " ".join(row["name"].split()).replace("|", "\\|")
+        safe_detail = " ".join(row["detail"].split()).replace("|", "\\|")
+        lines.append(
+            f"| {row['id']} | {safe_name} | {row['level']} | "
+            f"{row['result']} | {safe_detail} |"
+        )
+    if not check_rows:
+        lines.append(
+            f"| {gate}-00 | 无自动检查项 | required | PASS | 由人工评审 |"
+        )
 
     lines.extend(
         [
@@ -2027,11 +2387,13 @@ def run_checks(
     tasks_text = read_text(directory / "tasks.md")
     verification_text = read_text(directory / "verification.md")
     workflow = resolve_workflow(root, directory, state)
-    spec_errors, spec_acs = check_spec(spec_text, spec_id)
+    ctx = gate_context(root, config, directory, state)
+    spec_acs = ctx["spec_acs"]
     errors: list[str] = []
 
     if stage in {"spec", "design", "tasks", "verify", "ci"}:
-        errors.extend(spec_errors)
+        errors.extend(gate_rows_errors(run_gate_checks("G0", ctx)))
+        errors.extend(gate_rows_errors(run_gate_checks("G1", ctx)))
     if stage in {"design", "tasks", "verify", "ci"}:
         errors.extend(check_design(design_text, spec_acs, workflow))
     if stage in {"tasks", "verify", "ci"}:
@@ -2060,7 +2422,6 @@ def run_checks(
                 errors.append(
                     "require_approver=true，但 state.json 没有有效审批人记录"
                 )
-        errors.extend(check_prd_index(root, config, state, spec_text))
         errors.extend(check_duplicate_spec_files(root, config))
         if check_git_trailer:
             errors.extend(check_git(root, spec_id))
@@ -3042,28 +3403,49 @@ def command_approve(
         raise SddError(
             "require_approver=true；请用 --approver 提供审批人"
         )
-    errors, _ = run_checks(root, config, directory, state, "spec")
-    spec_text = read_text(directory / "spec.md")
-    errors.extend(check_prd_index(root, config, state, spec_text))
-    if errors:
+    evidence = args.evidence or "requirement confirmed by human"
+    ctx = gate_context(root, config, directory, state)
+    g0_rows = run_gate_checks("G0", ctx)
+    g1_rows = run_gate_checks("G1", ctx)
+    g0_errors = gate_rows_errors(g0_rows)
+    g1_errors = gate_rows_errors(g1_rows)
+    try:
+        g1_mode = gate_mode(config, "G1", state, False, workflow)
+    except SddError:
+        g1_mode = "manual"
+    if g0_errors or g1_errors:
+        errors = g0_errors + g1_errors
         for error in errors:
             eprint(f"- {error}")
-        record_check_failure(directory, "spec", errors, gate="G0")
-        record_gate(
-            root,
-            config,
-            directory,
-            state,
-            "G0",
-            "SPEC_READY",
-            "manual",
-            args.evidence or "requirement confirmed by human",
-            [("需求侧准入", "FAILED", "spec 或 prd-index 校验未通过")],
-            errors,
-            approver,
-        )
+        record_check_failure(directory, "spec", errors, gate="G0/G1")
+    record_gate(
+        root,
+        config,
+        directory,
+        state,
+        "G0",
+        "SPEC_READY",
+        "manual",
+        evidence,
+        g0_rows,
+        g0_errors,
+        approver,
+    )
+    record_gate(
+        root,
+        config,
+        directory,
+        state,
+        "G1",
+        "SPEC_READY",
+        g1_mode,
+        "spec check passed" if not g1_errors else "spec check failed",
+        g1_rows,
+        g1_errors,
+        approver if g1_mode == "manual" else None,
+    )
+    if g0_errors or g1_errors:
         raise SddError("spec 校验失败，不能 approve")
-    evidence = args.evidence or "requirement confirmed by human"
     spec_path = directory / "spec.md"
     state.setdefault("approvals", []).append(
         {
@@ -3075,48 +3457,10 @@ def command_approve(
         }
     )
     state["last_approver"] = approver
-    record_gate(
-        root,
-        config,
-        directory,
-        state,
-        "G0",
-        "SPEC_READY",
-        "manual",
-        evidence,
-        [
-            ("工作项 ID 已登记", "PASS", f"work_item={state.get('work_item')}"),
-            ("PRD 追溯映射", "PASS", "docs/prd-index.md 已登记当前 Spec"),
-            ("澄清标记清零", "PASS", "[NEEDS CLARIFICATION] = 0"),
-            ("范围声明", "PASS", "In-Scope / Out-of-Scope 已填写"),
-        ],
-        approver=approver,
-    )
-    try:
-        g1_mode = gate_mode(config, "G1", state, False, workflow)
-    except SddError:
-        g1_mode = "manual"
     if g1_mode == "manual":
         record_gate_approval(
             root, directory, state, "G1", approver, "spec check passed"
         )
-    record_gate(
-        root,
-        config,
-        directory,
-        state,
-        "G1",
-        "SPEC_READY",
-        g1_mode,
-        "spec check passed",
-        [
-            ("Spec 章节齐备", "PASS", "核心 1–10 章存在"),
-            ("FR/AC 映射", "PASS", "每个 FR 至少一条 AC"),
-            ("AC 可测试性", "PASS", "Given/When/Then + 执行路径"),
-            ("占位符/澄清标记", "PASS", "TODO、占位符、NEEDS CLARIFICATION 均为 0"),
-        ],
-        approver=approver if g1_mode == "manual" else None,
-    )
     transition(
         state,
         "SPEC_READY",

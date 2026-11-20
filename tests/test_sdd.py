@@ -7,6 +7,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from sdd.scripts import sdd as engine
+
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
 SPEC_ID = "SPEC-ORDER-001"
@@ -407,7 +409,7 @@ VERIFY_STRICT_SUFFIX = """
 """
 
 
-class SddFlowTest(unittest.TestCase):
+class SddFlowBase(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
@@ -544,6 +546,7 @@ class StatusTest(unittest.TestCase):
         )
         self.run_sdd("complete", "--spec", spec_id, "--evidence", "验证完成")
 
+class SddFlowTest(SddFlowBase):
     def test_full_flow(self):
         self.new_spec()
         self.assertEqual(self.state()["state"], "DRAFT")
@@ -1322,6 +1325,63 @@ class StatusTest(unittest.TestCase):
         )
         self.assertIn("--human", result.stderr)
         self.assertEqual(self.state()["state"], "DRAFT")
+
+
+class CheckRegistryTests(SddFlowBase):
+    def test_registry_ids_are_unique(self):
+        self.assertEqual(engine.validate_check_registry(), [])
+        ids = [str(item["id"]) for item in engine.CHECK_REGISTRY]
+        self.assertEqual(len(ids), len(set(ids)))
+        for item in engine.CHECK_REGISTRY:
+            self.assertIn(item["gate"], engine.GATE_STAGES)
+            self.assertIn(item["level"], {"required", "advisory"})
+
+    def test_gate_reports_include_stable_ids(self):
+        self.new_spec()
+        self.approve_valid_spec()
+        g0 = (
+            self.root / "sdd/reports/SPEC-ORDER-001/gate0-report.md"
+        ).read_text(encoding="utf-8")
+        g1 = (
+            self.root / "sdd/reports/SPEC-ORDER-001/gate1-report.md"
+        ).read_text(encoding="utf-8")
+        for report in (g0, g1):
+            self.assertIn("| 检查 ID | 检查项 | 级别 | 结果 | 证据 |", report)
+            self.assertIn("| required |", report)
+        self.assertIn("| G0-01 |", g0)
+        self.assertIn("| G1-01 |", g1)
+        self.assertNotIn("| G1-01 |", g0)
+        self.assertNotIn("| G0-01 |", g1)
+
+    def test_required_item_failure_blocks(self):
+        self.new_spec()
+        self.write(
+            "docs/specs/SPEC-ORDER-001/spec.md",
+            SPEC_TEXT.replace(
+                "- Out-of-Scope：不支持已支付订单退款。",
+                "- Out-of-Scope：待补充",
+            ),
+        )
+        self.run_sdd(
+            "approve",
+            "--spec",
+            SPEC_ID,
+            "--human",
+            "--evidence",
+            "确认",
+            expect=2,
+        )
+        self.assertEqual(self.state()["state"], "DRAFT")
+        g0 = (
+            self.root / "sdd/reports/SPEC-ORDER-001/gate0-report.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("| 总体结果 | FAILED |", g0)
+        self.assertIn("| G0-06 |", g0)
+        self.assertIn("| BLOCK |", g0)
+        g1 = (
+            self.root / "sdd/reports/SPEC-ORDER-001/gate1-report.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("| 总体结果 | PASS |", g1)
 
 
 if __name__ == "__main__":
