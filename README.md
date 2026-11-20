@@ -151,6 +151,7 @@ dsh/                   dsh / harness 薄适配约定
 | [官网](https://ryanbrainnew.github.io/sdd-kit/) | 一页看懂定位、链路与命令 |
 | [完整指南](docs/GUIDE.md) | 接入、架构、MCP、FAQ 与全部命令细节 |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | 设计取舍、模块边界与分阶段落地 |
+| [CONTEXT-BUNDLE.md](docs/CONTEXT-BUNDLE.md) | `next.context_bundle` 的字段、范围与只读语义 |
 | [DESIGN-NEXT.md](DESIGN-NEXT.md) | 下一阶段设计与待落地能力 |
 | [ADOPTION.md](ADOPTION.md) | 从单仓库试点到多仓库推广 |
 | [sdd/agent-contract.md](sdd/agent-contract.md) | Agent 自动循环与人类检查点契约 |

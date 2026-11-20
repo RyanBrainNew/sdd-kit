@@ -1484,5 +1484,167 @@ class FeatTraceTests(SddFlowBase):
         )
 
 
+class ContextBundleTests(SddFlowBase):
+    def prepare_implementing(self, design_text=None):
+        self.new_spec()
+        self.approve_valid_spec()
+        self.write(
+            "docs/specs/SPEC-ORDER-001/design.md",
+            design_text if design_text is not None else DESIGN_TEXT,
+        )
+        self.run_sdd("complete", "--spec", SPEC_ID, "--evidence", "design 完成")
+        self.write("docs/specs/SPEC-ORDER-001/tasks.md", TASKS_TEXT)
+        self.run_sdd("complete", "--spec", SPEC_ID, "--evidence", "tasks 完成")
+        self.run_sdd("complete", "--spec", SPEC_ID, "--evidence", "开始实现")
+        return self.next_action()
+
+    def test_task_step_returns_all_fields(self):
+        action = self.prepare_implementing()
+        bundle = action["context_bundle"]
+        self.assertEqual(
+            set(bundle),
+            {
+                "task",
+                "frs",
+                "acs",
+                "design_sections",
+                "contracts",
+                "project_constraints",
+                "fix_patterns",
+                "allowed_paths",
+                "exclude",
+            },
+        )
+        self.assertEqual(
+            bundle["task"],
+            {
+                "id": "T-001",
+                "description": "实现订单取消接口和状态校验",
+                "status": "Todo",
+            },
+        )
+        self.assertEqual(bundle["frs"], ["FR-001"])
+        self.assertEqual(bundle["acs"], ["AC-001-1"])
+        self.assertTrue(
+            any(
+                "Spec覆盖关系" in item["heading"]
+                and "AC-001-1" in item["reason"]
+                for item in bundle["design_sections"]
+            )
+        )
+        self.assertIn(
+            "docs/specs/SPEC-ORDER-001/api/order.yaml", bundle["contracts"]
+        )
+        self.assertIn(
+            {"path": "AGENTS.md", "scope": "."}, bundle["project_constraints"]
+        )
+        self.assertEqual(bundle["fix_patterns"], [])
+        self.assertIn("tests/test_status.py", bundle["allowed_paths"])
+        self.assertEqual(
+            bundle["exclude"],
+            [
+                "docs/prd.md",
+                "docs/specs/*（其他 Spec）",
+                ".sdd/runtime/**",
+                "历史聊天",
+            ],
+        )
+        self.assertEqual(action["action"], "implement_task")
+        self.assertEqual(action["task"], "T-001")
+        self.assertEqual(
+            action["artifact"], "docs/specs/SPEC-ORDER-001/tasks.md"
+        )
+        self.assertEqual(action["prompt_file"], "sdd/prompts/task.md")
+
+    def test_non_task_step_returns_empty_bundle(self):
+        self.new_spec()
+        action = self.next_action()
+        bundle = action["context_bundle"]
+        self.assertIsNone(bundle["task"])
+        for field in (
+            "frs",
+            "acs",
+            "design_sections",
+            "contracts",
+            "project_constraints",
+            "fix_patterns",
+            "allowed_paths",
+            "exclude",
+        ):
+            self.assertEqual(bundle[field], [])
+        self.assertEqual(action["action"], "write_spec")
+        self.assertEqual(action["artifact"], "docs/specs/SPEC-ORDER-001/spec.md")
+
+    def test_bundle_is_read_only(self):
+        self.prepare_implementing()
+        state_path = self.root / "docs/specs/SPEC-ORDER-001/state.json"
+        events_path = self.root / "docs/specs/SPEC-ORDER-001/events.jsonl"
+        state_before = state_path.read_bytes()
+        events_before = events_path.read_bytes()
+        self.next_action()
+        self.next_action()
+        self.assertEqual(state_path.read_bytes(), state_before)
+        self.assertEqual(events_path.read_bytes(), events_before)
+
+    def test_allowed_paths_from_design_impact(self):
+        design = DESIGN_TEXT.replace(
+            "## 5. 系统架构",
+            """## 4.1 影响范围
+
+| 模块/服务 | 影响 | 兼容性 | 回滚风险 |
+|---|---|---|---|
+| `sdd/scripts/sdd.py` | 增加取消逻辑 | 向后兼容 | 低 |
+| `tests/test_status.py` | 新增单测 | 无 | 低 |
+
+## 5. 系统架构""",
+        )
+        action = self.prepare_implementing(design)
+        allowed = action["context_bundle"]["allowed_paths"]
+        self.assertIn("sdd/scripts/sdd.py", allowed)
+        self.assertIn("tests/test_status.py", allowed)
+
+        self.write(
+            "docs/specs/SPEC-ORDER-001/design.md",
+            DESIGN_TEXT.replace(
+                "- 请求/响应结构：见 `api/order.yaml`。\n", ""
+            ).replace(
+                "- 契约文件：`docs/specs/SPEC-ORDER-001/api/order.yaml`\n", ""
+            ),
+        )
+        task = {
+            "id": "T-999",
+            "description": "无范围任务",
+            "status": "Todo",
+            "frs": ["FR-001"],
+            "acs": ["AC-001-1"],
+            "test": "",
+            "command": "",
+        }
+        bundle = engine.build_context_bundle(
+            self.root,
+            self.root / "docs/specs/SPEC-ORDER-001",
+            self.state(),
+            task,
+        )
+        self.assertEqual(bundle["allowed_paths"], [])
+
+    def test_bundle_excludes_other_specs(self):
+        self.write(
+            "docs/specs/SPEC-OTHER-001/spec.md",
+            SPEC_TEXT.replace("SPEC-ORDER-001", "SPEC-OTHER-001"),
+        )
+        self.write(
+            "docs/specs/SPEC-OTHER-001/api/other.yaml",
+            "openapi: 3.0.0\n",
+        )
+        action = self.prepare_implementing()
+        bundle = action["context_bundle"]
+        rendered = json.dumps(bundle, ensure_ascii=False)
+        self.assertNotIn("SPEC-OTHER-001", rendered)
+        self.assertNotIn("api/other.yaml", rendered)
+        self.assertIn("docs/specs/*（其他 Spec）", bundle["exclude"])
+        self.assertEqual(bundle["fix_patterns"], [])
+
+
 if __name__ == "__main__":
     unittest.main()

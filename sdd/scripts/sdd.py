@@ -2716,6 +2716,267 @@ def run_checks(
     return errors, stage
 
 
+CONTEXT_BUNDLE_FIELDS = (
+    "task",
+    "frs",
+    "acs",
+    "design_sections",
+    "contracts",
+    "project_constraints",
+    "fix_patterns",
+    "allowed_paths",
+    "exclude",
+)
+
+CONTEXT_EXCLUDES = [
+    "docs/prd.md",
+    "docs/specs/*（其他 Spec）",
+    ".sdd/runtime/**",
+    "历史聊天",
+]
+
+CONTEXT_SCOPE_SECTIONS = (
+    ("Spec 覆盖关系", "Spec Coverage"),
+    ("影响范围", "Impact"),
+    ("接口契约", "Interfaces", "Interface Contracts"),
+    ("契约文件", "Contracts", "Contract Files"),
+)
+
+CONTRACT_SUFFIXES = (
+    ".yaml",
+    ".yml",
+    ".json",
+    ".proto",
+    ".avsc",
+    ".graphql",
+    ".wsdl",
+    ".xsd",
+    ".md",
+)
+
+PATH_ROOTS = {
+    "app",
+    "cmd",
+    "deploy",
+    "docs",
+    "dsh",
+    "internal",
+    "lib",
+    "pkg",
+    "scripts",
+    "sdd",
+    "src",
+    "test",
+    "tests",
+}
+
+
+def normalize_relative_path(value: str) -> str:
+    cleaned = value.strip().strip("`'\"")
+    cleaned = cleaned.replace("\\", "/")
+    while cleaned.startswith("./"):
+        cleaned = cleaned[2:]
+    return cleaned
+
+
+def is_path_like(value: str) -> bool:
+    if not value:
+        return False
+    if any(char in value for char in " \t\r\n（）()[]{}<>|"):
+        return False
+    if value.startswith(("http://", "https://", "www.")):
+        return False
+    if re.match(r"^[A-Za-z]:/", value) or value.startswith(("../", "/")):
+        return False
+    if "/" not in value:
+        return False
+    if not re.search(r"[A-Za-z0-9]", value):
+        return False
+    root = value.split("/", 1)[0]
+    last = value.rstrip("/").rsplit("/", 1)[-1]
+    return root in PATH_ROOTS or "." in last
+
+
+def extract_paths(text: str) -> list[str]:
+    candidates = re.findall(r"`([^`\n]+)`", text)
+    candidates.extend(
+        re.findall(
+            r"(?<![\w/.-])((?:[A-Za-z0-9_.-]+/)+[A-Za-z0-9_.*-]+)",
+            text,
+        )
+    )
+    paths: set[str] = set()
+    for candidate in candidates:
+        value = normalize_relative_path(candidate)
+        if is_path_like(value):
+            paths.add(value)
+    return sorted(paths)
+
+
+def is_other_spec_path(value: str, spec_dir: str) -> bool:
+    if not value.startswith("docs/specs/"):
+        return False
+    spec_dir = spec_dir.rstrip("/")
+    return value != spec_dir and not value.startswith(spec_dir + "/")
+
+
+def design_section_refs(
+    text: str, frs: list[str], acs: list[str]
+) -> list[dict[str, str]]:
+    wanted_frs = set(frs)
+    wanted_acs = set(acs)
+    refs: list[dict[str, str]] = []
+    for heading, body in iter_sections(text):
+        body_text = "\n".join(body)
+        hit_acs = sorted(set(extract_acs(body_text)) & wanted_acs)
+        hit_frs = sorted(set(extract_frs(body_text)) & wanted_frs)
+        if not hit_acs and not hit_frs:
+            continue
+        reasons: list[str] = []
+        if hit_acs:
+            reasons.append("覆盖 " + ", ".join(hit_acs))
+        if hit_frs:
+            reasons.append("关联 " + ", ".join(hit_frs))
+        refs.append({"heading": heading, "reason": "；".join(reasons)})
+    return refs
+
+
+def design_scope_paths(text: str, spec_dir: str) -> list[str]:
+    wanted = {
+        normalize_heading(alias)
+        for aliases in CONTEXT_SCOPE_SECTIONS
+        for alias in aliases
+    }
+    chunks: list[str] = []
+    for heading, body in iter_sections(text):
+        if normalize_heading(heading) in wanted:
+            chunks.append("\n".join(body))
+    for line in text.splitlines():
+        if re.search(r"(?i)(契约文件|contract\s*file)", line):
+            chunks.append(line)
+    paths: set[str] = set()
+    for chunk in chunks:
+        for value in extract_paths(chunk):
+            if value == "docs/prd.md" or is_other_spec_path(value, spec_dir):
+                continue
+            paths.add(value)
+    return sorted(paths)
+
+
+def design_contract_paths(text: str, spec_dir: str) -> list[str]:
+    paths = {
+        value
+        for value in design_scope_paths(text, spec_dir)
+        if value.lower().endswith(CONTRACT_SUFFIXES)
+    }
+    return sorted(paths)
+
+
+def context_contract_paths(root: Path) -> list[str]:
+    base = root / "sdd" / "context" / "contracts"
+    if not base.is_dir():
+        return []
+    return sorted(
+        path.relative_to(root).as_posix()
+        for path in base.rglob("*")
+        if path.is_file()
+    )
+
+
+def module_token_to_path(token: str) -> str:
+    value = token.strip().strip("`")
+    value = re.split(r"[#:]", value, maxsplit=1)[0].strip()
+    if not value:
+        return ""
+    if "/" in value or "\\" in value:
+        path = normalize_relative_path(value)
+        return path if is_path_like(path) else ""
+    parts = [part for part in value.split(".") if part]
+    while parts and parts[-1][:1].isupper():
+        parts.pop()
+    if len(parts) < 2 or not all(re.fullmatch(r"[A-Za-z_]\w*", part) for part in parts):
+        return ""
+    return "/".join(parts) + ".py"
+
+
+def task_scope_paths(task: dict[str, Any]) -> list[str]:
+    paths: set[str] = set()
+    test_value = str(task.get("test") or "")
+    for token in re.split(r"[、,，;\s]+", test_value):
+        path = module_token_to_path(token)
+        if path:
+            paths.add(path)
+    command = str(task.get("command") or "")
+    for match in re.finditer(
+        r"(?<![\w.-])([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+)", command
+    ):
+        token = match.group(1)
+        if token.startswith("unittest."):
+            token = token[len("unittest.") :]
+        path = module_token_to_path(token)
+        if path:
+            paths.add(path)
+    for match in re.finditer(r"(?:^|\s)-s\s+([\w./-]+)", command):
+        value = normalize_relative_path(match.group(1)).rstrip("/")
+        if value:
+            paths.add(value + "/")
+    return sorted(paths)
+
+
+def build_context_bundle(
+    root: Path,
+    directory: Path,
+    state: dict[str, Any],
+    task: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    bundle: dict[str, Any] = {
+        "task": None,
+        "frs": [],
+        "acs": [],
+        "design_sections": [],
+        "contracts": [],
+        "project_constraints": [],
+        "fix_patterns": [],
+        "allowed_paths": [],
+        "exclude": [],
+    }
+    if not task:
+        return bundle
+
+    spec_dir = directory.relative_to(root).as_posix()
+    design_text = read_text(directory / "design.md")
+    frs = sorted(set(task.get("frs") or []))
+    acs = sorted(set(task.get("acs") or []))
+    contracts = set(design_contract_paths(design_text, spec_dir))
+    contracts.update(context_contract_paths(root))
+    allowed = set(design_scope_paths(design_text, spec_dir))
+    allowed.update(task_scope_paths(task))
+    allowed = {
+        value
+        for value in allowed
+        if value != "docs/prd.md" and not is_other_spec_path(value, spec_dir)
+    }
+
+    bundle.update(
+        {
+            "task": {
+                "id": str(task.get("id") or ""),
+                "description": str(task.get("description") or ""),
+                "status": str(task.get("status") or "Todo"),
+            },
+            "frs": frs,
+            "acs": acs,
+            "design_sections": design_section_refs(design_text, frs, acs),
+            "contracts": sorted(contracts),
+            "project_constraints": [{"path": "AGENTS.md", "scope": "."}],
+            "fix_patterns": [],
+            "allowed_paths": sorted(allowed),
+            "exclude": list(CONTEXT_EXCLUDES),
+        }
+    )
+    return bundle
+
+
 def build_next_action(
     root: Path, directory: Path, state: dict[str, Any]
 ) -> dict[str, Any]:
@@ -2874,6 +3135,19 @@ def build_next_action(
         raise SddError(f"未知状态：{state_name}")
     if base.get("prompt"):
         base["prompt_file"] = base["prompt"]
+    bundle_task: Optional[dict[str, Any]] = None
+    if base.get("kind") == "task" and base.get("task"):
+        bundle_task = next(
+            (
+                task
+                for task in parse_tasks(read_text(directory / "tasks.md"))
+                if task["id"] == base["task"]
+            ),
+            None,
+        )
+    base["context_bundle"] = build_context_bundle(
+        root, directory, state, bundle_task
+    )
     return base
 
 
