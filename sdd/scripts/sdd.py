@@ -7381,16 +7381,16 @@ def build_impact(
     for record in records:
         for feat in record.get("feat", []):
             if feat not in feat_ids:
-                missing.append(f"{record['id']}: FEAT {feat}")
+                missing.append(feat)
         for fr in record.get("fr", []):
             if fr not in fr_ids:
-                missing.append(f"{record['id']}: FR {fr}")
+                missing.append(fr)
         for ac in record.get("ac", []):
             if ac not in ac_ids:
-                missing.append(f"{record['id']}: AC {ac}")
+                missing.append(ac)
         for task_id in record.get("task", []):
             if task_id not in task_ids:
-                missing.append(f"{record['id']}: Task {task_id}")
+                missing.append(task_id)
     spec_id = str(state.get("spec_id") or directory.name)
     relative_change_set = (
         change_set_path(directory).relative_to(root).as_posix()
@@ -7465,7 +7465,7 @@ def validate_change_record(record: dict[str, Any]) -> list[str]:
     for key in CHANGE_REQUIRED_FIELDS:
         value = record.get(key)
         if isinstance(value, list):
-            if not value:
+            if not value and key in {"feat", "fr", "ac", "task"}:
                 errors.append(f"{record.get('id', 'CHG')} 缺少字段：{key}")
         elif not str(value or "").strip():
             errors.append(f"{record.get('id', 'CHG')} 缺少字段：{key}")
