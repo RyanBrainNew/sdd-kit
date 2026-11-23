@@ -244,6 +244,18 @@ class StatusTest(unittest.TestCase):
         }
         self.assertEqual(before, after)
 
+    def test_trace_unknown_test_selector_reports_missing(self):
+        """[AC-003-4] 不存在的测试选择器进入 missing。"""
+        payload = self.json_command(
+            "trace",
+            "--test",
+            "tests.test_status.StatusTest#does_not_exist",
+            "--json",
+            expect=1,
+        )
+        self.assertFalse(payload["ok"])
+        self.assertIn("不存在", json.dumps(payload["missing"], ensure_ascii=False))
+
 
 class PrdIndexPlacementTests(GitFlowBase):
     def test_new_spec_row_goes_into_main_table(self):
