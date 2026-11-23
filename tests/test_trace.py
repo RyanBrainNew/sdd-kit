@@ -117,6 +117,18 @@ class CommitAuditTests(GitFlowBase):
             errors = engine.check_git(root, SPEC_ID, "IMPLEMENTING")
             self.assertTrue(any("merge-base" in item for item in errors))
 
+    def test_merge_commit_is_skipped(self):
+        """[AC-001-3] merge commit 不要求 trailer。"""
+        self.git("checkout", "-b", "side")
+        self.commit(
+            "%srdcloud-553377 feat(core): side change",
+            ["Spec-Id: SPEC-ORDER-001", "Task-Id: T-001"],
+        )
+        self.git("checkout", "feature")
+        self.git("merge", "--no-ff", "side", "-m", "merge side")
+        errors = engine.check_git(self.root, SPEC_ID, "IMPLEMENTING")
+        self.assertEqual(errors, [])
+
 
 class TraceTests(GitFlowBase):
     def setUp(self):
