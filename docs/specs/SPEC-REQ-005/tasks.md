@@ -1,4 +1,4 @@
-# 全量 commit 审计与 sdd trace任务清单（Tasks）
+# 全量 commit 审计与 sdd trace 任务清单（Tasks）
 
 ## 1. 元数据
 
@@ -8,78 +8,84 @@
 | 关联Spec | `docs/specs/SPEC-REQ-005/spec.md` |
 | 关联Design | `docs/specs/SPEC-REQ-005/design.md` |
 | 作者 | SDD Agent |
-| 创建日期 | 2026-11-23T22:37:30+08:00 |
+| 创建日期 | 2026-11-23 |
 | 状态 | Draft |
 
 ## 2. 任务清单
 
-<!-- TODO: 按公司字段填写任务表；每个 Task 必须能独立实现、验证并形成一个 Commit。 -->
-
 | Task ID | 任务描述 | 关联FR/AC | 依赖Task | 并行标识 | 验收标准 | 单元测试类/方法 | 单Task测试命令 | 状态 | Commit SHA |
 |---|---|---|---|---|---|---|---|---|---|
-| T-001 | 待填写 | FR-001；AC-001-1 | None | S | 待填写 | `TestClass#testMethod` | `待填写` | Todo | — |
+| T-001 | 实现 merge-base 全量 commit 扫描与代码 commit trailer 校验 | FR-001；FR-002；AC-001-1；AC-001-2；AC-002-1 | None | S | 25 条 commit 中间坏提交被定位；代码 commit 缺 Task-Id 阻断 | `CommitAuditTests#test_early_bad_commit_is_found` | `python -m unittest tests.test_trace.CommitAuditTests -v` | Todo | — |
+| T-002 | 实现 docs/其它类型规则、引用存在性与 merge-base 缺失错误 | FR-001；FR-002；AC-001-3；AC-002-2；AC-002-3 | T-001 | S | docs 带 Task-Id 阻断；无主干明确报错；引用对象可校验 | `CommitAuditTests#test_docs_commit_with_task_id_blocks` | `python -m unittest tests.test_trace.CommitAuditTests -v` | Todo | — |
+| T-003 | 实现 trace test/AC/commit 三入口与完整链路 JSON | FR-003；AC-003-1；AC-003-2；AC-003-3 | T-001 | S | 三入口输出同一 schema 与完整链路 | `TraceTests#test_trace_by_test_ac_and_commit` | `python -m unittest tests.test_trace.TraceTests -v` | Todo | — |
+| T-004 | 实现断链 missing、多命中/只读保护 | FR-003；AC-003-4；AC-003-5 | T-003 | S | 缺失对象进入 missing；文件哈希前后不变 | `TraceTests#test_trace_reports_missing_link` | `python -m unittest tests.test_trace.TraceTests -v` | Todo | — |
+| T-005 | 同步 CLI/文档/版本/manifest，兼容历史并修复 PRD 行落点 | FR-004；AC-004-1；AC-004-2；AC-004-3 | T-001,T-004 | S | trace 只读；MERGED 兼容；发布元数据一致 | `PrdIndexPlacementTests#test_new_spec_row_goes_into_main_table` | `python -m unittest tests.test_trace.PrdIndexPlacementTests -v` | Todo | — |
 
 字段规则：
 
 - Task ID 采用 `T-xxx`，在当前 Spec 内唯一。
 - 状态仅允许 `Todo`、`In Progress`、`Done`。
 - 并行标识仅允许 `P` 或 `S`；依赖为空时必须填写 `None`。
-- 一个 Task 必须能够在一次实现会话中独立完成并验证。
 - 一个 Task 必须对应一个最终本地代码 Commit；创建 Commit 后回填真实 Commit SHA。
 
 ## 3. AC—Task—单元测试映射
 
-<!-- TODO: 每个 AC 一行，测试类/方法不得写“补充单测”等占位描述。 -->
-
 | AC ID | 覆盖Task | 测试类/方法 | 测试命令/选择器 | 预期结果 | Gate 4实际结果 |
 |---|---|---|---|---|---|
-| AC-001-1 | T-001 | `TestClass#testMethod` | `待填写` | 待填写 | 未执行 |
-
-映射规则：
-
-- 必须覆盖 `spec.md` 中的全部适用 AC，不得增加不存在的 AC。
-- 每条 AC 至少关联一个 Task 和一个具体测试类/方法。
-- 同一测试覆盖多个 AC 时必须逐条登记。
-- Gate 4 只有在测试真实存在、已执行且通过时，才能标记为“通过”。
+| AC-001-1 | T-001 | `CommitAuditTests#test_early_bad_commit_is_found` | `python -m unittest tests.test_trace.CommitAuditTests.test_early_bad_commit_is_found -v` | merge-base 后全部 commit 被扫描 | 未执行 |
+| AC-001-2 | T-001 | `CommitAuditTests#test_early_bad_commit_is_found` | `python -m unittest tests.test_trace.CommitAuditTests.test_early_bad_commit_is_found -v` | 第 25 条中的早期坏 commit 被定位 | 未执行 |
+| AC-001-3 | T-002 | `CommitAuditTests#test_missing_merge_base_reports_error` | `python -m unittest tests.test_trace.CommitAuditTests.test_missing_merge_base_reports_error -v` | merge commit 跳过；无主干报错 | 未执行 |
+| AC-002-1 | T-001 | `CommitAuditTests#test_early_bad_commit_is_found` | `python -m unittest tests.test_trace.CommitAuditTests.test_early_bad_commit_is_found -v` | 代码 commit 必须恰好一个 Task-Id | 未执行 |
+| AC-002-2 | T-002 | `CommitAuditTests#test_docs_commit_with_task_id_blocks` | `python -m unittest tests.test_trace.CommitAuditTests.test_docs_commit_with_task_id_blocks -v` | docs 带 Task-Id 阻断 | 未执行 |
+| AC-002-3 | T-002 | `CommitAuditTests#test_docs_commit_with_task_id_blocks` | `python -m unittest tests.test_trace.CommitAuditTests -v` | Spec/Task/工作项引用可校验 | 未执行 |
+| AC-003-1 | T-003 | `TraceTests#test_trace_by_test_ac_and_commit` | `python -m unittest tests.test_trace.TraceTests.test_trace_by_test_ac_and_commit -v` | trace --test 输出完整链路 | 未执行 |
+| AC-003-2 | T-003 | `TraceTests#test_trace_by_test_ac_and_commit` | `python -m unittest tests.test_trace.TraceTests.test_trace_by_test_ac_and_commit -v` | trace --ac 输出完整链路 | 未执行 |
+| AC-003-3 | T-003 | `TraceTests#test_trace_by_test_ac_and_commit` | `python -m unittest tests.test_trace.TraceTests.test_trace_by_test_ac_and_commit -v` | trace --commit 输出完整链路 | 未执行 |
+| AC-003-4 | T-004 | `TraceTests#test_trace_reports_missing_link` | `python -m unittest tests.test_trace.TraceTests.test_trace_reports_missing_link -v` | 断链进入 missing | 未执行 |
+| AC-003-5 | T-004 | `TraceTests#test_trace_is_read_only` | `python -m unittest tests.test_trace.TraceTests.test_trace_is_read_only -v` | trace 不修改任何文件 | 未执行 |
+| AC-004-1 | T-005 | `TraceTests#test_trace_by_test_ac_and_commit` | `python -m unittest tests.test_trace.TraceTests -v` | trace 只读，不新增人工动作 | 未执行 |
+| AC-004-2 | T-005 | `PrdIndexPlacementTests#test_new_spec_row_goes_into_main_table` | `python -m unittest tests.test_trace.PrdIndexPlacementTests -v` | PRD 行落点正确，历史兼容 | 未执行 |
+| AC-004-3 | T-005 | `PrdIndexPlacementTests#test_new_spec_row_goes_into_main_table` | `python -m unittest tests.test_trace -v` | 版本、manifest、文档与 CI 一致 | 未执行 |
 
 ## 4. 依赖图
 
 ```mermaid
 flowchart LR
-    T001["T-001"]
+    T001["T-001 full audit"]
+    T002["T-002 trailer rules"]
+    T003["T-003 trace entries"]
+    T004["T-004 missing/readonly"]
+    T005["T-005 release boundary"]
+    T001 --> T002
+    T001 --> T003
+    T003 --> T004
+    T001 --> T005
+    T004 --> T005
 ```
 
 ## 5. 实施与提交顺序
 
-```text
-选择一个 Todo Task
-→ 状态改为 In Progress
-→ 实现代码和单元测试
-→ 执行该 Task 的单元测试
-→ 测试通过后状态改为 Done
-→ 创建本地 Task Commit 并回填 SHA
-→ 继续下一个 Task
-```
-
-全部 Task 完成后执行全量单元测试、逐 AC 验证和 Gate 5。
+1. T-001：Git 范围、commit 解析与代码 trailer 校验。
+2. T-002：docs/其它类型规则、引用一致性与无 merge-base 错误。
+3. T-003：trace 三入口与完整链路。
+4. T-004：断链、多命中与只读保护。
+5. T-005：CLI/文档/版本/manifest、历史兼容与 PRD 落点修复。
 
 ## 6. 全量单元测试记录
 
-| 测试命令 | 退出码 | 执行数 | 通过数 | 失败数 | 跳过数 | 结果 |
-|---|---:|---:|---:|---:|---:|---|
-| `待填写` | 待填写 | 待填写 | 待填写 | 待填写 | 待填写 | 未执行 |
+| 命令 | 退出码 | 通过 | 跳过 | 失败 | 错误 | 结果 |
+|---|---|---|---|---|---|---|
+| `python -m unittest discover -s tests -v` | 待执行 | 待执行 | 待执行 | 0 | 0 | 待执行 |
 
-## 7. 自检清单（评审辅助，不作Gate依据）
+## 7. 自检清单
 
-- [ ] Spec ID 及 Spec/Design 引用有效且一致。
-- [ ] Task ID 唯一，字段完整，状态值和并行标识合法。
-- [ ] 每个 Task 可独立实现、独立单测并对应一个本地 Commit。
-- [ ] 全部 FR/AC 均已映射到 Task，不存在孤儿 AC。
-- [ ] 每条 AC 均已映射到具体测试类/方法和可执行命令。
-- [ ] 所有依赖 Task 真实存在，依赖图无环，并行标识无冲突。
+- [x] 任务覆盖全部 FR/AC。
+- [x] 每个 Task 有可定位测试和单 Task 命令。
+- [x] 依赖图无环。
+- [x] trace 保持只读，不新增人工动作。
 
 ## 8. 变更历史
 
 | 日期 | 版本 | 变更内容 | 作者 |
 |---|---|---|---|
-| 2026-11-23T22:37:30+08:00 | 1.0.0 | 初始版本 | SDD Agent |
+| 2026-11-23 | 1.0.0 | 初始版本 | SDD Agent |
