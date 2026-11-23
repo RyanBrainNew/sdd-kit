@@ -385,8 +385,19 @@ def artifact_sha256(path: Path) -> str:
     return sha256_bytes(data)
 
 
+def artifact_hash_candidates(path: Path) -> set[str]:
+    data = path.read_bytes()
+    candidates = {sha256_bytes(data)}
+    if path.suffix.lower() in TEXT_ARTIFACT_SUFFIXES:
+        canonical = canonical_text_bytes(data)
+        if canonical is not None:
+            candidates.add(sha256_bytes(canonical))
+            candidates.add(sha256_bytes(canonical.replace(b"\n", b"\r\n")))
+    return candidates
+
+
 def artifact_hash_matches(path: Path, expected: str) -> bool:
-    return artifact_sha256(path) == expected
+    return expected in artifact_hash_candidates(path)
 
 
 def task_plan_hash(text: str) -> str:

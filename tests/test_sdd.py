@@ -2017,6 +2017,42 @@ class ArtifactHashTests(unittest.TestCase):
         expected = engine.artifact_sha256(original)
         self.assertFalse(engine.artifact_hash_matches(changed, expected))
 
+    def test_check_accepts_legacy_crlf_hash(self):
+        # [AC-002-1]
+        text = "# title\n\ncontent\n"
+        crlf_path = self.write_artifact("crlf.md", text, "\r\n")
+        lf_path = self.write_artifact("lf.md", text, "\n")
+        legacy_expected = hashlib.sha256(crlf_path.read_bytes()).hexdigest()
+        self.assertTrue(engine.artifact_hash_matches(lf_path, legacy_expected))
+
+    def test_check_rejects_content_change_with_legacy_hash(self):
+        # [AC-002-2]
+        original = self.write_artifact(
+            "legacy-original.md", "# title\n\noriginal\n", "\r\n"
+        )
+        changed = self.write_artifact(
+            "legacy-changed.md", "# title\n\nchanged\n", "\n"
+        )
+        legacy_expected = hashlib.sha256(original.read_bytes()).hexdigest()
+        self.assertFalse(engine.artifact_hash_matches(changed, legacy_expected))
+
+    def test_new_gate_hash_uses_lf(self):
+        # [AC-002-3]
+        text = "# title\n\ncontent\n"
+        crlf_path = self.write_artifact("gate-crlf.md", text, "\r\n")
+        relative, digest, _ = engine.artifact_digest(
+            self.root, self.root, "gate-crlf.md"
+        )
+        self.assertEqual(relative, "gate-crlf.md")
+        self.assertEqual(
+            digest,
+            hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        )
+        self.assertNotEqual(
+            digest,
+            hashlib.sha256(crlf_path.read_bytes()).hexdigest(),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
