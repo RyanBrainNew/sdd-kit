@@ -70,6 +70,8 @@ Agent 不传 `--approver`，也不得代替人执行这些命令。
 Gate 报告会绑定当前产物的 SHA-256。批准后修改 `spec.md`、`design.md`、
 `tasks.md` 的任务计划或 `verification.md`，CI 会失败并要求重新过 Gate 或回退。
 任务执行导致的 `status`、`commit`、`done` 变化不在 `tasks.md` 哈希范围内。
+文本工件按 LF 规范化后计算哈希，并兼容历史 CRLF 哈希；只有行尾变化不视为修改，
+正文变化仍必须阻断。
 
 Spec 创建时会把工作流预设快照到 `docs/specs/<Spec>/workflow.json`；后续修改
 `sdd/workflows/` 不会影响旧 Spec。Agent 不得手工编辑该快照或 `state.json.workflow`。

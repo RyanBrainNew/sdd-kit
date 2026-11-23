@@ -135,6 +135,8 @@ python -m sdd verify-agent
 python -m sdd check --all --stage ci --check-git
 ```
 
+文本工件按 LF 规范化后计算哈希；校验兼容历史 CRLF 哈希，正文变化仍会阻断。
+
 工作流预设只有 `l2-standard`、`l2-hotfix`、`l2-strict` 三个。Spec 创建时会把
 `sdd/workflows/<name>.json` 快照到 `docs/specs/<Spec>/workflow.json`；之后仓库
 预设升级不会改变旧 Spec。`l2-strict` 的 G0–G5 全部需要人工，且验证报告必须有
