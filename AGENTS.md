@@ -79,8 +79,9 @@ python -m sdd manifest --write
 - 所有命令都在仓库根目录执行。
 - 唯一状态机是 `sdd/scripts/sdd.py`。不要手改 `state.json` 或 `events.jsonl`。
 - 不要跳过 `submit` / `submit-task`；`ok=false` 时按 `errors` 修复后重试。
-- `approve`、`merge`、`unblock`、`rewind` 只能由人执行，Agent 不得代替。
-- `l2-standard` 正常流程只有两个人工检查点：Spec 确认、PR 合并；
+- `approve`、`merge`、`unblock`、`rewind`、`waive` 只能由人执行，Agent 不得代替。
+- `l2-standard` 正常流程只有两个人工检查点：Spec 确认、交付确认；
+  交付确认后才创建 PR，PR 的审核合并由管理员在 GitHub 完成；
   `l2-strict` 的 G0–G5 全部需要人工确认。
 - 首次接入由平台团队执行一次 `bootstrap.py`；开发者 clone 后不需要初始化。
 
@@ -143,6 +144,9 @@ python -m sdd resume --spec <spec> --json
    `python -m sdd rewind --spec <spec> --to <stage> --reason "..." --human`。
 - 解除阻塞：人执行
    `python -m sdd unblock --spec <spec> --human --evidence "..."`。
+- 范围化豁免：人执行
+   `python -m sdd waive --spec <spec> --check <id> --scope "..." --reason "..." --expires <iso> --evidence "..." --human`。
+   豁免只对可豁免的非红线 required 检查有效，并绑定 Gate 产物哈希。
 
 人可以用 `python -m sdd inbox --json` 查看所有等待处理的事项；
 用 `python -m sdd events --spec <spec> --json` 和 `python -m sdd metrics --json`

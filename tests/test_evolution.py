@@ -1076,11 +1076,18 @@ class OrderServiceTest(unittest.TestCase):
             "--reason",
             "短期豁免",
             "--expires-at",
-            "2000-01-01",
+            "2099-12-31",
             "--evidence",
             "expired docs-only change",
             "--human",
             "--json",
+        )
+        state_path = self.spec_dir(spec_id) / "state.json"
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        state["waivers"][-1]["expires_at"] = "2000-01-01"
+        state_path.write_text(
+            json.dumps(state, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
         )
         checked = self.run_json(
             "check", "--spec", spec_id, "--stage", "verify", "--json", expect=1

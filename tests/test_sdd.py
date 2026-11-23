@@ -6,7 +6,9 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timedelta
 from pathlib import Path
+from unittest import mock
 
 from sdd.core import Workspace
 from sdd.scripts import sdd as engine
@@ -1481,6 +1483,659 @@ class StatusTest(unittest.TestCase):
         )
         self.assertIn("--human", result.stderr)
         self.assertEqual(self.state()["state"], "DRAFT")
+
+
+class GateClassificationTests(SddFlowBase):
+    def test_required_failure_blocks(self):
+        # [AC-002-1]
+        self.new_spec()
+        self.write(
+            "docs/specs/SPEC-ORDER-001/spec.md",
+            SPEC_TEXT.replace(
+                "- Out-of-Scope：不支持已支付订单退款。",
+                "- Out-of-Scope：待补充",
+            ),
+        )
+        self.run_sdd(
+            "approve",
+            "--spec",
+            SPEC_ID,
+            "--human",
+            "--evidence",
+            "确认",
+            expect=2,
+        )
+        self.assertEqual(self.state()["state"], "DRAFT")
+        report = (
+            self.root / "sdd/reports/SPEC-ORDER-001/gate0-report.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("| 总体结果 | FAILED |", report)
+        self.assertIn("| G0-06 |", report)
+        self.assertIn("| BLOCK |", report)
+
+    def test_advisory_failure_warns(self):
+        # [AC-002-2]
+        self.new_spec()
+        spec_text = SPEC_TEXT
+        self.write("docs/specs/SPEC-ORDER-001/spec.md", spec_text)
+        failure = lambda ctx: (["演示 advisory 失败"], "advisory demo")
+        engine.sync_feat_map(
+            self.root,
+            engine.load_config(self.root),
+            self.state(),
+            spec_text,
+        )
+        with mock.patch.dict(engine.GATE_CHECK_FUNCS, {"G0-07": failure}):
+            config = engine.load_config(self.root)
+            directory = self.root / "docs/specs/SPEC-ORDER-001"
+            ctx = engine.gate_context(
+                self.root, config, directory, self.state()
+            )
+            rows = engine.run_gate_checks("G0", ctx)
+            self.assertEqual(engine.gate_rows_errors(rows), [])
+            self.assertEqual(
+                engine.gate_rows_warnings(rows), ["演示 advisory 失败"]
+            )
+            engine.record_gate(
+                self.root,
+                config,
+                directory,
+                self.state(),
+                "G0",
+                "SPEC_READY",
+                "manual",
+                "demo",
+                rows,
+            )
+        report = (
+            self.root / "sdd/reports/SPEC-ORDER-001/gate0-report.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("| 总体结果 | PASS |", report)
+        self.assertIn("| G0-07 |", report)
+        self.assertIn("| WARN |", report)
+        self.assertIn("| 告警数 | 1 |", report)
+
+    def test_redline_cannot_be_waived(self):
+        # [AC-002-3]
+        self.new_spec()
+        config = engine.load_config(self.root)
+        directory = self.root / "docs/specs/SPEC-ORDER-001"
+        workflow = engine.resolve_workflow(
+            self.root, directory, self.state()
+        )
+        rows = engine.gate_check_results(
+            "G5",
+            ["verification.md 缺少章节：命令"],
+            workflow,
+            self.state(),
+            SPEC_ID,
+            engine.waiver_contexts(directory, "verify"),
+        )
+        row = next(item for item in rows if item["id"] == "G5-01")
+        self.assertEqual(row["result"], "block")
+        self.assertTrue(row["redline"])
+        self.assertEqual(
+            engine.classify_check_result(
+                {"level": "required", "redline": True},
+                ["failed"],
+                {"approver": "human"},
+            ),
+            "block",
+        )
+
+    def test_gate_report_renders_warn_and_block(self):
+        # [AC-002-4]
+        self.new_spec()
+        config = engine.load_config(self.root)
+        directory = self.root / "docs/specs/SPEC-ORDER-001"
+        rows = [
+            {
+                "id": "G4-01",
+                "name": "required check",
+                "level": "required",
+                "result": "block",
+                "detail": "required failed",
+            },
+            {
+                "id": "G4-02",
+                "name": "advisory check",
+                "level": "advisory",
+                "result": "warn",
+                "detail": "advisory failed",
+            },
+        ]
+        path = engine.write_gate_report(
+            self.root,
+            config,
+            directory,
+            self.state(),
+            "G4",
+            "VERIFYING",
+            "auto",
+            "demo",
+            rows,
+            ["required failed"],
+        )
+        report = path.read_text(encoding="utf-8")
+        self.assertIn("| 总体结果 | FAILED |", report)
+        self.assertIn("| G4-01 |", report)
+        self.assertIn("| G4-02 |", report)
+        self.assertIn("| BLOCK |", report)
+        self.assertIn("| WARN |", report)
+
+
+class GateWaiverTests(SddFlowBase):
+    def future_expiry(self):
+        return (datetime.now().astimezone() + timedelta(days=2)).isoformat()
+
+    def waive(
+        self,
+        check="G4-02",
+        *,
+        expect=0,
+        human=True,
+        evidence="补偿控制已记录",
+        expires=None,
+        approver="Reviewer <reviewer@example.com>",
+    ):
+        args = [
+            "waive",
+            "--spec",
+            SPEC_ID,
+            "--check",
+            check,
+            "--scope",
+            "tasks",
+            "--reason",
+            "历史证据缺口已有补偿控制",
+            "--expires",
+            expires or self.future_expiry(),
+            "--evidence",
+            evidence,
+            "--approver",
+            approver,
+            "--json",
+        ]
+        if human:
+            args.append("--human")
+        return self.run_sdd(*args, expect=expect)
+
+    def save_state(self, state):
+        path = self.root / "docs" / "specs" / SPEC_ID / "state.json"
+        path.write_text(
+            json.dumps(state, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+    def g4_rows(self):
+        config = engine.load_config(self.root)
+        directory = self.root / "docs" / "specs" / SPEC_ID
+        state = self.state()
+        workflow = engine.resolve_workflow(
+            self.root, directory, state
+        )
+        return engine.gate_check_results(
+            "G4",
+            ["以下 Task 没有验证证据：T-001"],
+            workflow,
+            state,
+            SPEC_ID,
+            engine.waiver_contexts(directory, "tasks"),
+        )
+
+    def test_waive_records_scope_and_approver(self):
+        # [AC-003-1]
+        self.new_spec()
+        result = self.waive()
+        payload = json.loads(result.stdout)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["kind"], "waiver")
+        self.assertEqual(payload["check"], "G4-02")
+        self.assertEqual(payload["gate"], "G4")
+
+        state = self.state()
+        waiver = state["waivers"][-1]
+        self.assertEqual(waiver["spec"], SPEC_ID)
+        self.assertEqual(waiver["check_id"], "G4-02")
+        self.assertEqual(waiver["gate"], "G4")
+        self.assertEqual(waiver["scope"], "tasks")
+        self.assertEqual(waiver["reason"], "历史证据缺口已有补偿控制")
+        self.assertEqual(waiver["approver"], "Reviewer <reviewer@example.com>")
+        self.assertEqual(waiver["evidence"], "补偿控制已记录")
+        self.assertEqual(waiver["artifacts"][0]["path"],
+                         "docs/specs/SPEC-ORDER-001/tasks.md#plan")
+        self.assertTrue(waiver["artifacts"][0]["sha256"])
+
+        approval = state["approvals"][-1]
+        self.assertEqual(approval["action"], "waiver")
+        self.assertEqual(approval["check_id"], "G4-02")
+        history = [
+            entry
+            for entry in state["history"]
+            if entry.get("action") == "waiver"
+        ][-1]
+        self.assertEqual(history["check_id"], "G4-02")
+        self.assertEqual(history["expires_at"], waiver["expires_at"])
+        event = next(
+            item
+            for item in engine.read_event_log(
+                self.root / "docs" / "specs" / SPEC_ID
+            )
+            if item.get("event") == "waiver_created"
+        )
+        self.assertEqual(event["event"], "waiver_created")
+        self.assertEqual(event["waiver"]["check_id"], "G4-02")
+
+    def test_active_waiver_downgrades_required_to_warn(self):
+        # [AC-003-2]
+        self.new_spec()
+        self.waive()
+        rows = self.g4_rows()
+        row = next(item for item in rows if item["id"] == "G4-02")
+        self.assertEqual(row["result"], "waived")
+        self.assertTrue(row["waiver_id"])
+        self.assertEqual(engine.gate_rows_errors(rows), [])
+
+    def test_expired_or_changed_artifact_revalidates(self):
+        # [AC-003-3]
+        self.new_spec()
+        self.waive()
+        state = self.state()
+        state["waivers"][-1]["expires_at"] = (
+            datetime.now().astimezone() - timedelta(minutes=1)
+        ).isoformat()
+        self.save_state(state)
+        expired = next(
+            item for item in self.g4_rows() if item["id"] == "G4-02"
+        )
+        self.assertEqual(expired["result"], "block")
+        self.assertNotIn("waiver_id", expired)
+
+        state = self.state()
+        state["waivers"][-1]["expires_at"] = self.future_expiry()
+        self.save_state(state)
+        tasks_path = self.root / "docs" / "specs" / SPEC_ID / "tasks.md"
+        tasks_path.write_text(
+            tasks_path.read_text(encoding="utf-8").replace(
+                "| T-001 | 待填写 |",
+                "| T-001 | 计划已变更 |",
+            ),
+            encoding="utf-8",
+        )
+        changed = next(
+            item for item in self.g4_rows() if item["id"] == "G4-02"
+        )
+        self.assertEqual(changed["result"], "block")
+        self.assertEqual(len(self.state()["waivers"]), 1)
+
+    def test_waive_rejects_invalid_check_or_human(self):
+        # [AC-003-4]
+        self.new_spec()
+        no_human = self.waive(expect=2, human=False)
+        self.assertIn("--human", no_human.stderr)
+        unknown = self.waive(check="G9-99", expect=2)
+        self.assertIn("未知检查 ID", unknown.stderr)
+        not_waivable = self.waive(check="G4-01", expect=2)
+        self.assertIn("不允许豁免", not_waivable.stderr)
+        redline = self.waive(check="G5-01", expect=2)
+        self.assertIn("红线", redline.stderr)
+        expired = self.waive(
+            expires=(
+                datetime.now().astimezone() - timedelta(days=1)
+            ).isoformat(),
+            expect=2,
+        )
+        self.assertIn("未来时间", expired.stderr)
+        no_evidence = self.waive(evidence="", expect=2)
+        self.assertIn("--evidence", no_evidence.stderr)
+        self.assertEqual(self.state().get("waivers", []), [])
+        self.assertFalse(
+            any(
+                item.get("action") == "waiver"
+                for item in self.state().get("approvals", [])
+            )
+        )
+
+
+class GateInboxMetricsTests(SddFlowBase):
+    def write_gate_rows(self, spec_id, gate, rows, six_columns=True):
+        if six_columns:
+            header = (
+                "| 检查 ID | 检查项 | 级别 | 结果 | 证据 | 豁免 |\n"
+                "| --- | --- | --- | --- | --- | --- |"
+            )
+        else:
+            header = (
+                "| 检查 ID | 检查项 | 级别 | 结果 | 证据 |\n"
+                "| --- | --- | --- | --- | --- |"
+            )
+        lines = []
+        for row in rows:
+            cells = [
+                row["id"],
+                row.get("name", row["id"]),
+                row.get("level", "required"),
+                row["result"],
+                row.get("detail", "ok"),
+            ]
+            if six_columns:
+                cells.append(row.get("waiver", "—"))
+            lines.append("| " + " | ".join(cells) + " |")
+        self.write(
+            f"sdd/reports/{spec_id}/gate{gate.lstrip('G')}-report.md",
+            "\n".join(
+                [
+                    f"# {gate} report",
+                    "",
+                    "## 1. 元数据",
+                    "",
+                    "| 项 | 内容 |",
+                    "| --- | --- |",
+                    "| 总体结果 | PASS |",
+                    "",
+                    "## 2. 检查项",
+                    "",
+                    header,
+                    *lines,
+                    "",
+                    "## 3. AC 清单",
+                    "",
+                    "| AC ID | 关联 Task | 状态 | 证据 |",
+                    "| --- | --- | --- | --- |",
+                ]
+            ),
+        )
+
+    def test_inbox_surfaces_gate_warnings(self):
+        # [AC-004-1]
+        self.new_spec()
+        self.write_gate_rows(
+            SPEC_ID,
+            "G4",
+            [
+                {
+                    "id": "G4-02",
+                    "level": "required",
+                    "result": "WARN",
+                    "detail": "T-001 证据缺失但已豁免",
+                    "waiver": "waived by Reviewer until 2026-12-31",
+                }
+            ],
+        )
+        inbox = json.loads(self.run_sdd("inbox", "--json").stdout)
+        warning = inbox["items"][0]["warnings"][0]
+        self.assertEqual(warning["spec"], SPEC_ID)
+        self.assertEqual(warning["gate"], "G4")
+        self.assertEqual(warning["check_id"], "G4-02")
+        self.assertEqual(warning["result"], "WAIVED")
+
+        state = self.state()
+        state["state"] = "IMPLEMENTING"
+        path = self.root / "docs" / "specs" / SPEC_ID / "state.json"
+        path.write_text(
+            json.dumps(state, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        warning_only = json.loads(
+            self.run_sdd("inbox", "--json").stdout
+        )
+        self.assertEqual(
+            warning_only["items"][0]["action"], "review_warning"
+        )
+        self.assertEqual(
+            warning_only["items"][0]["warnings"][0]["check_id"], "G4-02"
+        )
+
+    def test_metrics_group_by_check_id(self):
+        # [AC-004-2]
+        self.new_spec()
+        self.new_spec("SPEC-ORDER-002")
+        self.write_gate_rows(
+            SPEC_ID,
+            "G0",
+            [
+                {
+                    "id": "G0-07",
+                    "name": "历史兼容",
+                    "level": "advisory",
+                    "result": "WARN",
+                    "detail": "legacy report",
+                }
+            ],
+        )
+        self.write_gate_rows(
+            SPEC_ID,
+            "G4",
+            [
+                {
+                    "id": "G4-01",
+                    "result": "PASS",
+                    "detail": "all done",
+                },
+                {
+                    "id": "G4-02",
+                    "result": "WARN",
+                    "detail": "evidence gap",
+                    "waiver": "waived by Reviewer until 2026-12-31",
+                },
+            ],
+        )
+        self.write_gate_rows(
+            "SPEC-ORDER-002",
+            "G4",
+            [
+                {
+                    "id": "G4-01",
+                    "result": "BLOCK",
+                    "detail": "T-001 pending",
+                },
+                {
+                    "id": "G4-02",
+                    "result": "PASS",
+                    "detail": "evidence present",
+                },
+            ],
+        )
+        metrics = json.loads(self.run_sdd("metrics", "--json").stdout)
+        first = next(
+            item for item in metrics["specs"] if item["spec"] == SPEC_ID
+        )
+        first_checks = {row["check_id"]: row for row in first["checks"]}
+        self.assertEqual(first_checks["G0-07"]["warn"], 1)
+        self.assertEqual(first_checks["G0-07"]["warn_rate"], 1.0)
+        self.assertEqual(first_checks["G4-02"]["waived"], 1)
+        self.assertEqual(first_checks["G4-02"]["waiver_rate"], 1.0)
+
+        aggregate = {
+            row["check_id"]: row for row in metrics["aggregate"]["checks"]
+        }
+        self.assertEqual(aggregate["G4-01"]["pass"], 1)
+        self.assertEqual(aggregate["G4-01"]["block"], 1)
+        self.assertEqual(aggregate["G4-01"]["block_rate"], 0.5)
+        self.assertEqual(aggregate["G4-02"]["pass"], 1)
+        self.assertEqual(aggregate["G4-02"]["waived"], 1)
+        self.assertEqual(aggregate["G4-02"]["waiver_rate"], 0.5)
+
+    def test_legacy_report_rows_are_compatible(self):
+        # [AC-004-3]
+        self.new_spec()
+        self.write_gate_rows(
+            SPEC_ID,
+            "G0",
+            [
+                {"id": "G0-01", "result": "PASS", "detail": "work item ok"},
+                {"id": "G0-06", "result": "BLOCK", "detail": "scope missing"},
+            ],
+            six_columns=False,
+        )
+        inbox = json.loads(self.run_sdd("inbox", "--json").stdout)
+        self.assertEqual(inbox["items"][0].get("warnings", []), [])
+        metrics = json.loads(self.run_sdd("metrics", "--json").stdout)
+        checks = {
+            row["check_id"]: row
+            for row in metrics["specs"][0]["checks"]
+        }
+        self.assertEqual(checks["G0-01"]["pass"], 1)
+        self.assertEqual(checks["G0-06"]["block"], 1)
+        self.assertIn("block_rate", checks["G0-06"])
+
+
+class GateBoundaryTests(SddFlowBase):
+    def test_waive_is_cli_only_human_action(self):
+        # [AC-005-1]
+        help_result = subprocess.run(
+            [sys.executable, "-m", "sdd", "--help"],
+            cwd=KIT_ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        self.assertEqual(help_result.returncode, 0)
+        self.assertIn("waive", help_result.stdout)
+
+        self.new_spec()
+        expires = (
+            datetime.now().astimezone() + timedelta(days=2)
+        ).isoformat()
+        rejected = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "sdd",
+                "--root",
+                str(self.root),
+                "waive",
+                "--spec",
+                SPEC_ID,
+                "--check",
+                "G4-02",
+                "--scope",
+                "demo",
+                "--reason",
+                "demo",
+                "--expires",
+                expires,
+                "--evidence",
+                "demo",
+            ],
+            cwd=KIT_ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        self.assertEqual(rejected.returncode, 2)
+        self.assertIn("--human", rejected.stderr)
+        self.assertIn("waive", Workspace.AUTOPILOT_CONTRACT["human_only"])
+
+        server_source = (
+            KIT_ROOT / "sdd" / "mcp" / "server.py"
+        ).read_text(encoding="utf-8")
+        service_source = (
+            KIT_ROOT / "sdd" / "mcp" / "service.py"
+        ).read_text(encoding="utf-8")
+        self.assertNotIn("sdd_waive", server_source)
+        self.assertNotIn("def waive(", service_source)
+
+    def test_release_metadata_and_ci_contract(self):
+        # [AC-005-2]
+        version = (KIT_ROOT / "sdd" / "VERSION").read_text(
+            encoding="utf-8"
+        ).strip()
+        self.assertEqual(version, "0.9.5")
+        self.assertIn(
+            f'__version__ = "{version}"',
+            (KIT_ROOT / "sdd" / "__init__.py").read_text(encoding="utf-8"),
+        )
+        self.assertIn(
+            f'VERSION = "{version}"',
+            (KIT_ROOT / "sdd" / "scripts" / "sdd.py").read_text(
+                encoding="utf-8"
+            ),
+        )
+        manifest = json.loads(
+            (KIT_ROOT / "sdd" / "manifest.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(manifest["version"], version)
+        for name in (
+            "sdd/scripts/sdd.py",
+            "sdd/core.py",
+            "sdd/cli.py",
+            "sdd/agent-block.md",
+            "sdd/agent-contract.md",
+        ):
+            digest = hashlib.sha256(
+                (KIT_ROOT / name).read_bytes()
+            ).hexdigest()
+            self.assertEqual(manifest["files"][name], digest)
+
+        workflow = (
+            KIT_ROOT / ".github" / "workflows" / "tests.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn("python -m sdd verify-core", workflow)
+        self.assertIn("python -m sdd verify-agent", workflow)
+        self.assertIn(
+            "python -m sdd check --all --stage ci --check-git",
+            workflow,
+        )
+        self.assertNotIn("continue-on-error", workflow)
+
+
+class GateRegistryTests(SddFlowBase):
+    def test_registry_covers_all_gates(self):
+        # [AC-001-1]
+        self.assertEqual(engine.validate_check_registry(), [])
+        ids = [str(item["id"]) for item in engine.CHECK_REGISTRY_ALL]
+        self.assertEqual(len(ids), len(set(ids)))
+        self.assertEqual(
+            {str(item["gate"]) for item in engine.CHECK_REGISTRY_ALL},
+            set(engine.GATE_STAGES),
+        )
+        for item in engine.CHECK_REGISTRY_ALL:
+            self.assertIn(item["level"], engine.CHECK_LEVELS)
+            self.assertIn(item["trigger"], engine.CHECK_TRIGGERS)
+            self.assertIsInstance(item["waivable"], bool)
+            self.assertIsInstance(item["redline"], bool)
+
+    def test_invalid_registry_metadata_rejected(self):
+        # [AC-001-2]
+        items = [dict(item) for item in engine.CHECK_REGISTRY_ALL]
+        items[0]["trigger"] = "approve"
+        items[1]["redline"] = "no"
+        items[2]["level"] = "optional"
+        items[3]["id"] = "G9-01"
+        items.append(dict(items[4]))
+        rendered = "\n".join(engine.validate_check_registry(tuple(items)))
+        self.assertIn("trigger", rendered)
+        self.assertIn("redline", rendered)
+        self.assertIn("required 或 advisory", rendered)
+        self.assertIn("G9-01", rendered)
+        self.assertIn("检查 ID 重复", rendered)
+
+    def test_legacy_ids_and_reports_supported(self):
+        # [AC-001-3]
+        ids = {str(item["id"]) for item in engine.CHECK_REGISTRY}
+        for check_id in (
+            "G0-01",
+            "G0-02",
+            "G0-03",
+            "G0-04",
+            "G0-05",
+            "G0-06",
+            "G0-07",
+            "G1-01",
+            "G1-02",
+            "G1-03",
+            "G1-04",
+        ):
+            self.assertIn(check_id, ids)
+        legacy = self.root / "legacy-gate-report.md"
+        legacy.write_text(
+            "# Legacy\n\n| 总体结果 | PASS |\n",
+            encoding="utf-8",
+        )
+        self.assertEqual(engine.gate_report_status(legacy), "PASS")
 
 
 class CheckRegistryTests(SddFlowBase):

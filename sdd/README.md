@@ -176,7 +176,7 @@ Review overlay、Fix Pattern、允许路径和排除项。Agent 不得静默扩�
 | `sdd_context` / `sdd_read_artifact` | 读取上下文和工件 |
 | `sdd_report` / `sdd_pr` / `sdd_verify` | 报告、PR、验证 |
 
-不提供 `approve`、`merge`、`unblock`、`rewind`。
+不提供 `approve`、`merge`、`unblock`、`rewind`、`waive`。
 
 本地 MCP：
 

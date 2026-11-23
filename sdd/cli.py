@@ -121,6 +121,13 @@ def _print_human(payload: dict[str, Any]) -> None:
         if payload.get("reopened_tasks"):
             print(f"[sdd] reopened={','.join(payload['reopened_tasks'])}")
         return
+    if payload.get("kind") == "waiver":
+        print(
+            f"[sdd] {payload.get('spec')} waiver "
+            f"{payload.get('check')} on {payload.get('gate')} "
+            f"until {payload.get('expires_at')}"
+        )
+        return
     if payload.get("kind") == "manifest":
         print(
             f"[sdd] wrote sdd/manifest.json "
@@ -456,7 +463,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--check", required=True)
     p.add_argument("--scope", required=True)
     p.add_argument("--reason", required=True)
-    p.add_argument("--expires-at", required=True)
+    p.add_argument("--expires-at", "--expires", dest="expires_at", required=True)
     p.add_argument("--evidence", required=True)
     p.add_argument("--approver")
     p.add_argument("--human", action="store_true")

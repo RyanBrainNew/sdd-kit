@@ -53,7 +53,13 @@ class Workspace:
         "start_new_with": "sdd start-work",
         "submit_stage_with": "sdd submit",
         "submit_task_with": "sdd submit-task",
-        "human_only": ["approve_spec", "confirm_merge", "unblock", "rewind"],
+        "human_only": [
+            "approve_spec",
+            "confirm_merge",
+            "unblock",
+            "rewind",
+            "waive",
+        ],
         "rule": (
             "Do not ask the developer which SDD stage the work is in. "
             "Read next.action, execute it, and submit with next.submit_with. "
@@ -1183,7 +1189,8 @@ class Workspace:
             "producing the requested artifact. Do not ask the developer what "
             "stage the work is in. The CLI re-validates and returns the next "
             "action. A task must be submitted with `sdd submit-task`. Never edit "
-            "state.json. approve, merge, unblock and rewind are human-only."
+            "state.json. approve, merge, unblock, rewind and waive are "
+            "human-only."
         )
 
     def validate_workflow(self, file: str | Path) -> dict[str, Any]:

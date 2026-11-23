@@ -67,7 +67,7 @@ except ImportError:  # pragma: no cover - package import fallback
         validate_review_findings,
     )
 
-VERSION = "0.9.4"
+VERSION = "0.9.5"
 EVENT_SCHEMA = 2
 
 SPEC_SECTIONS = (
@@ -297,6 +297,47 @@ CHECK_REGISTRY = (
         "owner": "planner",
     },
 )
+
+CHECK_LEVELS = {"required", "advisory"}
+CHECK_TRIGGERS = {"doc_pr", "code_pr", "local", "ci", "pipeline"}
+CHECK_TRIGGER_ALIASES = {
+    "approve": "doc_pr",
+    "document": "doc_pr",
+    "code": "code_pr",
+}
+
+
+def normalize_check_registry_item(
+    check_id: str,
+    item: dict[str, Any],
+) -> dict[str, Any]:
+    trigger = str(item.get("trigger") or "local")
+    return {
+        "id": check_id,
+        "gate": str(item.get("gate") or ""),
+        "name": str(item.get("name") or item.get("title") or check_id),
+        "level": str(item.get("level") or "required"),
+        "trigger": CHECK_TRIGGER_ALIASES.get(trigger, trigger),
+        "waivable": bool(item.get("waivable")),
+        "redline": bool(
+            item.get("redline") or check_id in SECURITY_CHECK_IDS
+        ),
+        "evidence": str(item.get("evidence") or ""),
+        "owner": str(item.get("owner") or ""),
+    }
+
+
+def combined_check_registry() -> tuple[dict[str, Any], ...]:
+    items: dict[str, dict[str, Any]] = {}
+    for check_id, item in EXT_CHECK_REGISTRY.items():
+        items[check_id] = normalize_check_registry_item(check_id, item)
+    for item in CHECK_REGISTRY:
+        check_id = str(item["id"])
+        items[check_id] = normalize_check_registry_item(check_id, item)
+    return tuple(items[key] for key in sorted(items))
+
+
+CHECK_REGISTRY_ALL = combined_check_registry()
 
 CHECK_REGISTRY_BY_ID = dict(EXT_CHECK_REGISTRY)
 CHECK_REGISTRY_BY_ID.update(
@@ -3019,6 +3060,15 @@ def waiver_applies(
         return False
     if str(waiver.get("spec") or "") not in {"", "*", spec_id}:
         return False
+    artifact_contexts = {
+        str(item)
+        for item in waiver.get("artifact_contexts", []) or []
+        if str(item)
+    }
+    if artifact_contexts and not artifact_contexts & {
+        str(item) for item in contexts
+    }:
+        return False
     scopes = {
         item.strip()
         for item in re.split(r"[,;，；]", str(waiver.get("scope") or ""))
@@ -3064,10 +3114,24 @@ def waiver_contexts(
         "ci": ["ci", "verification"],
     }.get(stage, ["spec", "design", "tasks", "verification", "ci"])
     tasks = parse_tasks(read_text(directory / "tasks.md"))
-    return [
+    contexts = [
         *base,
         *[f"task:{task['id']}" for task in tasks],
     ]
+    gates = {
+        "spec": ("G0", "G1"),
+        "design": ("G2",),
+        "tasks": ("G3", "G4"),
+        "verify": ("G5",),
+        "ci": ("G0", "G1", "G2", "G3", "G4", "G5"),
+    }.get(stage, tuple(GATE_STAGES))
+    root = directory.parents[2] if len(directory.parents) >= 3 else directory
+    for gate in gates:
+        for artifact in gate_artifact_entries(root, directory, gate):
+            contexts.append(
+                f"artifact:{artifact['path']}:{artifact['sha256']}"
+            )
+    return contexts
 
 
 def apply_check_waivers(
@@ -3611,8 +3675,10 @@ def sync_feat_map(
 
 
 def validate_check_registry(
-    registry: tuple[dict[str, Any], ...] = CHECK_REGISTRY,
+    registry: Optional[tuple[dict[str, Any], ...]] = None,
 ) -> list[str]:
+    if registry is None:
+        registry = CHECK_REGISTRY_ALL
     errors: list[str] = []
     seen: set[str] = set()
     for item in registry:
@@ -3629,12 +3695,34 @@ def validate_check_registry(
             errors.append("检查项缺少非空 ID")
         elif check_id in seen:
             errors.append(f"检查 ID 重复：{check_id}")
+        elif not re.fullmatch(r"G[0-5]-\d{2}", check_id):
+            errors.append(f"{check_id} 的 ID 必须符合 G[0-5]-NN")
         seen.add(check_id)
         if str(item.get("gate") or "") not in GATE_STAGES:
             errors.append(f"{check_id or '(unknown)'} 的 Gate 非法：{item.get('gate')}")
-        if str(item.get("level") or "") not in {"required", "advisory"}:
+        elif check_id and not check_id.startswith(
+            f"{item.get('gate')}-"
+        ):
+            errors.append(
+                f"{check_id} 的 ID 前缀必须与 Gate {item.get('gate')} 一致"
+            )
+        if str(item.get("level") or "") not in CHECK_LEVELS:
             errors.append(
                 f"{check_id or '(unknown)'} 的级别必须是 required 或 advisory"
+            )
+        if str(item.get("trigger") or "") not in CHECK_TRIGGERS:
+            errors.append(
+                f"{check_id or '(unknown)'} 的 trigger 必须是 "
+                + ", ".join(sorted(CHECK_TRIGGERS))
+            )
+        for field in ("waivable", "redline"):
+            if not isinstance(item.get(field), bool):
+                errors.append(
+                    f"{check_id or '(unknown)'} 的 {field} 必须是布尔值"
+                )
+        if item.get("waivable") is True and item.get("redline") is True:
+            errors.append(
+                f"{check_id or '(unknown)'} 不能同时 waivable=true 和 redline=true"
             )
     return errors
 
@@ -3792,17 +3880,52 @@ def run_gate_checks(
                 "level": item["level"],
                 "trigger": item["trigger"],
                 "waivable": item["waivable"],
+                "redline": bool(
+                    item.get("redline")
+                    or item["id"] in SECURITY_CHECK_IDS
+                ),
                 "owner": item["owner"],
-                "result": "block" if item_errors else "pass",
+                "result": classify_check_result(item, item_errors),
                 "detail": detail,
                 "errors": item_errors,
+                "waiver": "",
             }
         )
     return rows
 
 
+def classify_check_result(
+    item: dict[str, Any],
+    errors: list[str],
+    waiver: Optional[dict[str, Any]] = None,
+) -> str:
+    if not errors:
+        return "pass"
+    if item.get("redline") or str(item.get("id") or "") in SECURITY_CHECK_IDS:
+        return "block"
+    if str(item.get("level") or "") == "advisory":
+        return "warn"
+    if waiver is not None:
+        return "waived"
+    return "block"
+
+
 def gate_rows_errors(rows: list[dict[str, Any]]) -> list[str]:
-    return [error for row in rows for error in row.get("errors", [])]
+    return [
+        error
+        for row in rows
+        if str(row.get("result") or "").lower() == "block"
+        for error in row.get("errors", [])
+    ]
+
+
+def gate_rows_warnings(rows: list[dict[str, Any]]) -> list[str]:
+    return [
+        error
+        for row in rows
+        if str(row.get("result") or "").lower() in {"warn", "waived"}
+        for error in row.get("errors", [])
+    ]
 
 
 def check_duplicate_spec_files(root: Path, config: dict[str, Any]) -> list[str]:
@@ -3871,6 +3994,137 @@ def gate_report_status(path: Path) -> str:
         if match:
             return match.group(1).strip().upper()
     return ""
+
+
+GATE_REPORT_RESULT_ALIASES = {
+    "PASS": "pass",
+    "OK": "pass",
+    "WARN": "warn",
+    "WARNING": "warn",
+    "WAIVED": "waived",
+    "BLOCK": "block",
+    "FAIL": "block",
+    "FAILED": "block",
+}
+
+
+def parse_gate_report_checks(
+    report: str,
+    gate: str = "",
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    in_section = False
+    for line in report.splitlines():
+        if re.match(r"^##\s*2\.\s*检查项", line):
+            in_section = True
+            continue
+        if in_section and re.match(r"^##\s+", line):
+            break
+        if not in_section or not line.strip().startswith("|"):
+            continue
+        cells = split_table_row(line)
+        if len(cells) < 4:
+            continue
+        check_id = cells[0].strip().strip("`")
+        if not re.fullmatch(r"G[0-5]-\d{2}", check_id):
+            continue
+        raw_result = cells[3].strip().strip("`").upper()
+        result = GATE_REPORT_RESULT_ALIASES.get(raw_result)
+        if result is None:
+            continue
+        waiver = cells[5].strip() if len(cells) > 5 else ""
+        if waiver in {"—", "-", "N/A", "n/a"}:
+            waiver = ""
+        if result == "warn" and waiver:
+            result = "waived"
+        rows.append(
+            {
+                "gate": gate,
+                "check_id": check_id,
+                "name": cells[1].strip(),
+                "level": cells[2].strip().lower() or "required",
+                "result": result,
+                "detail": cells[4].strip() if len(cells) > 4 else "",
+                "waiver": waiver,
+            }
+        )
+    return rows
+
+
+def collect_gate_check_rows(
+    root: Path,
+    config: dict[str, Any],
+    spec_id: str,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for gate in GATE_STAGES:
+        path = gate_report_path(root, config, spec_id, gate)
+        if not path.is_file():
+            continue
+        report_path = path.relative_to(root).as_posix()
+        for row in parse_gate_report_checks(read_text(path), gate):
+            row["spec"] = spec_id
+            row["report"] = report_path
+            rows.append(row)
+    return rows
+
+
+def summarize_gate_checks(
+    rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    checks: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        check_id = str(row.get("check_id") or "")
+        result = str(row.get("result") or "")
+        if not check_id or result not in {"pass", "warn", "block", "waived"}:
+            continue
+        item = checks.setdefault(
+            check_id,
+            {
+                "check_id": check_id,
+                "gate": str(row.get("gate") or ""),
+                "name": str(row.get("name") or ""),
+                "level": str(row.get("level") or "required"),
+                "pass": 0,
+                "warn": 0,
+                "block": 0,
+                "waived": 0,
+                "total": 0,
+            },
+        )
+        item[result] += 1
+        item["total"] += 1
+    for item in checks.values():
+        total = int(item["total"])
+        for result, rate_name in (
+            ("pass", "pass_rate"),
+            ("warn", "warn_rate"),
+            ("block", "block_rate"),
+            ("waived", "waiver_rate"),
+        ):
+            item[rate_name] = (
+                round(int(item[result]) / total, 4) if total else 0.0
+            )
+    return [checks[key] for key in sorted(checks)]
+
+
+def gate_warning_items(
+    rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "spec": row["spec"],
+            "gate": row["gate"],
+            "check_id": row["check_id"],
+            "level": row["level"],
+            "result": str(row["result"]).upper(),
+            "detail": row["detail"],
+            "waiver": row["waiver"],
+            "report": row["report"],
+        }
+        for row in rows
+        if row["result"] in {"warn", "waived"}
+    ]
 
 
 def parse_artifact_hashes(report: str) -> list[tuple[str, str]]:
@@ -4049,6 +4303,9 @@ def write_gate_report(
     report_path = gate_report_path(root, config, spec_id, gate)
 
     check_rows = normalize_check_rows(gate, checks)
+    warning_rows = [
+        row for row in check_rows if row["result"] == "WARN"
+    ]
     lines = [
         f"# {gate} {label}报告",
         "",
@@ -4064,6 +4321,7 @@ def write_gate_report(
         f"| 检查时间 | {now()} |",
         f"| 执行模式 | {mode} |",
         f"| 总体结果 | {status} |",
+        f"| 告警数 | {len(warning_rows)} |",
         "",
         "## 2. 检查项",
         "",
@@ -4130,9 +4388,15 @@ def write_gate_report(
             "",
         ]
     )
-    if errors:
+    blocking_messages = list(errors or [])
+    warning_messages = [
+        f"{row['id']}：{row['detail'] or '检查失败'}"
+        for row in warning_rows
+    ]
+    if blocking_messages or warning_messages:
         lines.extend(["| 级别 | 问题 |", "| --- | --- |"])
-        lines.extend(f"| BLOCK | {error} |" for error in errors)
+        lines.extend(f"| BLOCK | {error} |" for error in blocking_messages)
+        lines.extend(f"| WARN | {message} |" for message in warning_messages)
     else:
         lines.extend(
             [
@@ -5961,6 +6225,13 @@ def build_inbox_item(
     state_name = str(state.get("state", "UNKNOWN"))
     since = latest_event_at(directory, state) or str(state.get("created_at") or "")
     item: Optional[dict[str, Any]] = None
+    warnings = (
+        []
+        if state_name == "MERGED"
+        else gate_warning_items(
+            collect_gate_check_rows(root, config, spec_id)
+        )
+    )
 
     if state_name == "BLOCKED":
         item = {
@@ -6031,6 +6302,20 @@ def build_inbox_item(
                     '--evidence "人工 Gate 已确认"'
                 ),
             }
+
+    if warnings:
+        if item is None:
+            item = {
+                "spec": spec_id,
+                "state": state_name,
+                "priority": 50,
+                "action": "review_warning",
+                "reason": f"{len(warnings)} 条 Gate 告警待复核",
+                "since": since,
+                "artifact": warnings[0]["report"],
+                "command": None,
+            }
+        item["warnings"] = warnings
 
     if item is None and stale_days is not None:
         since_dt = parse_timestamp(since)
@@ -6183,6 +6468,7 @@ def command_inbox(args: argparse.Namespace, root: Path, config: dict[str, Any]) 
 
 def compute_spec_metrics(
     root: Path,
+    config: dict[str, Any],
     directory: Path,
     state: dict[str, Any],
     since: Optional[datetime],
@@ -6357,6 +6643,9 @@ def compute_spec_metrics(
             event.get("event") == "rewind" for event in events
         ),
         "check_stats": sorted(check_stats.values(), key=lambda item: item["id"]),
+        "checks": summarize_gate_checks(
+            collect_gate_check_rows(root, config, spec_id)
+        ),
         "audit": audit,
     }
 
@@ -6391,12 +6680,21 @@ def command_metrics(
         else []
     )
     specs: list[dict[str, Any]] = []
+    all_check_rows: list[dict[str, Any]] = []
     for directory in directories:
+        state = load_json(directory / "state.json")
         item = compute_spec_metrics(
-            root, directory, load_json(directory / "state.json"), since
+            root, config, directory, state, since
         )
         if item:
             specs.append(item)
+            all_check_rows.extend(
+                collect_gate_check_rows(
+                    root,
+                    config,
+                    str(state.get("spec_id", directory.name)),
+                )
+            )
 
     lead_times = [
         item["lead_time_hours"]
@@ -6494,6 +6792,7 @@ def command_metrics(
                 item["human_interventions"] for item in specs
             ),
             "gate_failures": sum(item["gate_failures"] for item in specs),
+            "checks": summarize_gate_checks(all_check_rows),
             "quality": quality,
         },
     }
@@ -6680,7 +6979,7 @@ def command_waive(
     if definition is None:
         raise SddError(f"未知检查 ID：{check_id}")
     if check_id in SECURITY_CHECK_IDS or not definition.get("waivable"):
-        reason = "安全红线" if check_id in SECURITY_CHECK_IDS else "该检查不可豁免"
+        reason = "安全红线" if check_id in SECURITY_CHECK_IDS else "不允许豁免"
         append_audit_event(
             directory,
             {
@@ -6695,6 +6994,8 @@ def command_waive(
     expires = parse_timestamp(args.expires_at)
     if expires is None:
         raise SddError("--expires-at 需要 ISO 日期或日期时间，例如 2026-12-31")
+    if expires <= datetime.now().astimezone():
+        raise SddError("--expires-at 必须是未来时间")
     approver = resolve_approver(root, args.approver)
     if config.get("require_approver") and approver == "unknown":
         raise SddError("require_approver=true；请用 --approver 提供审批人")
@@ -6709,21 +7010,56 @@ def command_waive(
         ),
         default=0,
     ) + 1
+    gate = str(definition.get("gate") or "")
+    artifacts = gate_artifact_entries(root, directory, gate)
+    artifact_contexts = [
+        f"artifact:{item['path']}:{item['sha256']}"
+        for item in artifacts
+    ]
     record = {
         "id": f"W-{next_number:03d}",
         "check_id": check_id,
+        "gate": gate,
         "spec": spec_id,
         "scope": str(args.scope or "spec").strip(),
+        "artifacts": artifacts,
+        "artifact_contexts": artifact_contexts,
         "reason": str(args.reason or "").strip(),
         "approver": approver,
+        "at": now(),
         "created_at": now(),
         "expires_at": str(args.expires_at),
         "evidence": str(args.evidence or "").strip(),
     }
     for field in WAIVER_REQUIRED_FIELDS:
         if not str(record.get(field) or "").strip():
-            raise SddError(f"豁免字段 {field} 不能为空")
+            flag = {
+                "scope": "--scope",
+                "reason": "--reason",
+                "expires_at": "--expires-at",
+                "evidence": "--evidence",
+            }.get(field, field)
+            raise SddError(f"豁免字段 {flag} 不能为空")
     waivers.append(record)
+    add_history(
+        state,
+        str(state.get("state") or ""),
+        f"waiver {check_id} until {record['expires_at']}",
+        action="waiver",
+        check_id=check_id,
+        gate=gate,
+        expires_at=record["expires_at"],
+        role="approver",
+        actor="human",
+        approver=approver,
+    )
+    state.setdefault("approvals", []).append(
+        {
+            "action": "waiver",
+            **record,
+        }
+    )
+    state["last_approver"] = approver
     append_audit_event(
         directory,
         {
@@ -6738,6 +7074,9 @@ def command_waive(
         "ok": True,
         "kind": "waiver",
         "spec": spec_id,
+        "check": check_id,
+        "gate": gate,
+        "expires_at": record["expires_at"],
         "waiver": record,
     }
     if args.json:
@@ -8487,7 +8826,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--check", required=True, help="check id, e.g. G5-09")
     p.add_argument("--scope", required=True, help="e.g. verification or task:T-001")
     p.add_argument("--reason", required=True)
-    p.add_argument("--expires-at", required=True)
+    p.add_argument("--expires-at", "--expires", dest="expires_at", required=True)
     p.add_argument("--evidence", required=True)
     p.add_argument("--approver", help="approver identity, default: git config user")
     p.add_argument("--human", action="store_true")

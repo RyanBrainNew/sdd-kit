@@ -46,7 +46,7 @@ python -m sdd.mcp.server --registry sdd-mcp.json `
 ## 它不负责什么
 
 - 不替代 dsh/Codex/Claude 改代码；
-- 不暴露 `approve` 和 `merge`，这两个永远是人；
+- 不暴露 `approve`、`merge`、`unblock`、`rewind` 和 `waive`，这些永远是人；
 - 不把 SDD 规则复制进 MCP；规则仍在仓库的 `sdd.py` 和 `config.json`；
 - 不自动合并 PR。
 - 不在 server 看不到的本地 clone 上写文件。
@@ -129,6 +129,7 @@ Agent 可用：
 - `sdd merge`
 - `sdd unblock`
 - `sdd rewind`
+- `sdd waive`
 
 `sdd_start_work` 和 `sdd_create_spec` 支持可选 `workflow` 参数
 （`l2-standard` / `l2-hotfix` / `l2-strict`）；工作流由创建 Spec 的人决定，
