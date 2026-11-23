@@ -1165,6 +1165,33 @@ def resolve_workflow(
     return preset
 
 
+def workflow_stages(workflow: Optional[dict[str, Any]]) -> list[str]:
+    if workflow:
+        stages = workflow.get("stages")
+        if isinstance(stages, list) and stages:
+            return [str(stage) for stage in stages]
+    return list(STAGE_ORDER)
+
+
+def next_declared_stage(
+    workflow: Optional[dict[str, Any]], target: str
+) -> str:
+    stages = workflow_stages(workflow)
+    if target in stages:
+        return target
+    target_index = STAGE_ORDER.index(target)
+    for stage in stages:
+        if STAGE_ORDER.index(stage) >= target_index:
+            return stage
+    return stages[-1]
+
+
+def resolve_declared_transition(
+    workflow: Optional[dict[str, Any]], canonical_target: str
+) -> str:
+    return next_declared_stage(workflow, canonical_target)
+
+
 def workflow_risk_error(
     preset: dict[str, Any],
     risk: str,
@@ -3782,16 +3809,41 @@ def build_next_action(
             }
         )
     elif state_name == "TASKS_READY":
-        base.update(
-            {
-                "action": "start_implementation",
-                "kind": "transition",
-                "step_id": f"{spec_id}:start_implementation",
-                "expected_result": "transition_completed",
-                "prompt": "sdd/prompts/driver.md",
-                "done_when": "sdd complete --evidence '开始实现'",
-            }
-        )
+        try:
+            config = load_config(root)
+            tasks_done = (
+                gate_report_status(
+                    gate_report_path(root, config, spec_id, "G3")
+                )
+                == "PASS"
+            )
+        except SddError:
+            tasks_done = True
+        if tasks_done:
+            base.update(
+                {
+                    "action": "start_implementation",
+                    "kind": "transition",
+                    "step_id": f"{spec_id}:start_implementation",
+                    "expected_result": "transition_completed",
+                    "prompt": "sdd/prompts/driver.md",
+                    "done_when": "sdd complete --evidence '开始实现'",
+                }
+            )
+        else:
+            base.update(
+                {
+                    "action": "write_tasks",
+                    "kind": "artifact",
+                    "step_id": f"{spec_id}:tasks",
+                    "expected_result": "artifact_submitted",
+                    "prompt": "sdd/prompts/tasks.md",
+                    "artifact": f"{relative_dir}/tasks.md",
+                    "done_when": (
+                        "sdd check --stage tasks 通过，然后 sdd complete --evidence ..."
+                    ),
+                }
+            )
     elif state_name == "IMPLEMENTING":
         tasks = parse_tasks(read_text(directory / "tasks.md"))
         pending = [task for task in tasks if not task["done"]]
@@ -4260,6 +4312,8 @@ def pending_manual_gate(
         gate, stage = "G2", "design"
     elif state_name == "DESIGN_READY":
         gate, stage = "G3", "tasks"
+    elif state_name == "TASKS_READY":
+        gate, stage = "G3", "tasks"
     elif state_name == "IMPLEMENTING":
         tasks = parse_tasks(read_text(directory / "tasks.md"))
         if not tasks or not all(task["done"] for task in tasks):
@@ -4270,6 +4324,11 @@ def pending_manual_gate(
     else:
         return None
 
+    spec_id = str(state.get("spec_id", directory.name))
+    if gate_report_status(
+        gate_report_path(root, config, spec_id, gate)
+    ) == "PASS":
+        return None
     if not gate_requires_human(config, gate, state, workflow):
         return None
 
@@ -5030,7 +5089,7 @@ def command_complete(
             )
             transition(
                 state,
-                "VERIFYING",
+                resolve_declared_transition(workflow, "VERIFYING"),
                 "all tasks completed",
                 gate="G4",
                 actor=actor,
@@ -5094,7 +5153,7 @@ def command_complete(
         )
         transition(
             state,
-            "DESIGN_READY",
+            resolve_declared_transition(workflow, "DESIGN_READY"),
             evidence,
             gate="G2",
             actor=actor,
@@ -5145,7 +5204,7 @@ def command_complete(
         )
         transition(
             state,
-            "TASKS_READY",
+            resolve_declared_transition(workflow, "TASKS_READY"),
             evidence,
             gate="G3",
             actor=actor,
@@ -5161,9 +5220,34 @@ def command_complete(
                 eprint(f"- {error}")
             record_check_failure(directory, "tasks", errors, gate="G3")
             raise SddError("tasks 校验失败")
+        if gate_report_status(
+            gate_report_path(root, config, spec_id, "G3")
+        ) != "PASS":
+            mode = gate_mode(config, "G3", state, args.human, workflow)
+            if mode == "manual" and approver:
+                record_gate_approval(
+                    root, directory, state, "G3", approver, evidence
+                )
+            record_gate(
+                root,
+                config,
+                directory,
+                state,
+                "G3",
+                "TASKS_READY",
+                mode,
+                evidence,
+                [
+                    ("Task 字段完整", "PASS", "公司任务表字段完整"),
+                    ("AC 全覆盖", "PASS", "无孤立 AC"),
+                    ("依赖无环", "PASS", "依赖 DAG 校验通过"),
+                    ("测试映射", "PASS", "每个 Task 有测试类和命令"),
+                ],
+                approver=approver if mode == "manual" else None,
+            )
         transition(
             state,
-            "IMPLEMENTING",
+            resolve_declared_transition(workflow, "IMPLEMENTING"),
             evidence,
             actor=actor,
             role="implementer",
@@ -5220,7 +5304,7 @@ def command_complete(
         )
         transition(
             state,
-            "VERIFYING",
+            resolve_declared_transition(workflow, "VERIFYING"),
             evidence,
             gate="G4",
             actor=actor,
@@ -5282,7 +5366,7 @@ def command_complete(
         write_report(root, directory, state)
         transition(
             state,
-            "PR_READY",
+            resolve_declared_transition(workflow, "PR_READY"),
             evidence,
             gate="G5",
             actor=actor,

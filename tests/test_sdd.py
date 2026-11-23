@@ -2088,6 +2088,127 @@ class WorkflowProfileTests(unittest.TestCase):
         )
 
 
+class WorkflowStageTests(SddFlowBase):
+    def write_profile(self, preset):
+        path = self.root / "sdd" / "workflows" / f"{preset['name']}.json"
+        path.write_text(
+            json.dumps(preset, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+    def skip_design_profile(self):
+        preset = valid_v2_profile("l2-skip-design")
+        preset["stages"] = [
+            stage for stage in engine.STAGE_ORDER if stage != "DESIGN_READY"
+        ]
+        preset["artifacts"].pop("DESIGN_READY")
+        preset["required_gates"] = {
+            stage: engine.required_gates(stage) for stage in preset["stages"]
+        }
+        preset["allow_rewind_to"] = [
+            stage
+            for stage in preset["stages"]
+            if stage in engine.REWIND_PLANS
+        ]
+        return preset
+
+    def test_skip_design_stage(self):
+        # [AC-002-1]
+        self.write_profile(self.skip_design_profile())
+        self.new_spec(workflow="l2-skip-design")
+        self.approve_valid_spec()
+        self.assertEqual(self.state()["state"], "SPEC_READY")
+
+        self.write("docs/specs/SPEC-ORDER-001/design.md", DESIGN_TEXT)
+        self.run_sdd("complete", "--spec", SPEC_ID, "--evidence", "design 完成")
+        self.assertEqual(self.state()["state"], "TASKS_READY")
+        states = [entry["state"] for entry in self.state()["history"]]
+        self.assertNotIn("DESIGN_READY", states)
+        self.assertEqual(self.next_action()["action"], "write_tasks")
+
+        self.write("docs/specs/SPEC-ORDER-001/tasks.md", TASKS_TEXT)
+        self.run_sdd("complete", "--spec", SPEC_ID, "--evidence", "tasks 完成")
+        self.assertEqual(self.state()["state"], "IMPLEMENTING")
+        self.assertTrue(
+            (self.root / "sdd/reports/SPEC-ORDER-001/gate3-report.md").is_file()
+        )
+
+    def test_gate_or_checkpoint_conflict_rejected(self):
+        # [AC-002-2]
+        dropped_gate = valid_v2_profile()
+        dropped_gate["required_gates"]["TASKS_READY"] = [
+            gate
+            for gate in dropped_gate["required_gates"]["TASKS_READY"]
+            if gate != "G2"
+        ]
+        rendered = "\n".join(
+            engine.validate_workflow_preset(dropped_gate, "profile.json")
+        )
+        self.assertIn("required_gates.TASKS_READY", rendered)
+
+        dropped_checkpoint = valid_v2_profile()
+        dropped_checkpoint["human_checkpoints"] = [{"type": "approve_spec"}]
+        rendered = "\n".join(
+            engine.validate_workflow_preset(dropped_checkpoint, "profile.json")
+        )
+        self.assertIn("confirm_delivery", rendered)
+
+        skipped_spec = valid_v2_profile()
+        skipped_spec["stages"] = [
+            stage for stage in engine.STAGE_ORDER if stage != "SPEC_READY"
+        ]
+        skipped_spec["artifacts"].pop("SPEC_READY")
+        skipped_spec["required_gates"] = {
+            stage: engine.required_gates(stage)
+            for stage in skipped_spec["stages"]
+        }
+        rendered = "\n".join(
+            engine.validate_workflow_preset(skipped_spec, "profile.json")
+        )
+        self.assertIn("approve_spec", rendered)
+        self.assertIn("SPEC_READY", rendered)
+
+    def test_invalid_stage_order_rejected(self):
+        # [AC-002-3]
+        duplicate = valid_v2_profile()
+        duplicate["stages"] = list(engine.STAGE_ORDER) + ["DESIGN_READY"]
+        rendered = "\n".join(
+            engine.validate_workflow_preset(duplicate, "profile.json")
+        )
+        self.assertIn("stages[8]", rendered)
+        self.assertIn("重复", rendered)
+
+        reversed_stages = valid_v2_profile()
+        reversed_stages["stages"] = [
+            "DRAFT",
+            "DESIGN_READY",
+            "SPEC_READY",
+            "TASKS_READY",
+            "IMPLEMENTING",
+            "VERIFYING",
+            "PR_READY",
+            "MERGED",
+        ]
+        rendered = "\n".join(
+            engine.validate_workflow_preset(reversed_stages, "profile.json")
+        )
+        self.assertIn("stages[2] 必须严格晚于 stages[1]", rendered)
+
+        missing_draft = valid_v2_profile()
+        missing_draft["stages"] = list(engine.STAGE_ORDER[1:])
+        rendered = "\n".join(
+            engine.validate_workflow_preset(missing_draft, "profile.json")
+        )
+        self.assertIn("stages[0] 必须是 DRAFT", rendered)
+
+        missing_merged = valid_v2_profile()
+        missing_merged["stages"] = list(engine.STAGE_ORDER[:-1])
+        rendered = "\n".join(
+            engine.validate_workflow_preset(missing_merged, "profile.json")
+        )
+        self.assertIn("stages[-1] 必须是 MERGED", rendered)
+
+
 class ArtifactHashTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
