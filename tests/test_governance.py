@@ -446,3 +446,19 @@ class GovernanceBoundaryTests(GovernanceFlowBase):
         self.assertIn(f'VERSION = "{version}"', engine_text)
         self.assertRegex(version, r"^\d+\.\d+\.\d+$")
 
+
+class FeatMapSyncTests(unittest.TestCase):
+    def test_separator_rows_are_not_treated_as_data(self):
+        """[AC-004-2] FEAT 映射重复同步不能累积分隔行。"""
+        text = (
+            "## FEAT 映射\n\n"
+            "| FEAT | 工作项 ID | Spec ID | FR | AC |\n"
+            "| --- | --- | --- | --- | --- |\n"
+            "| --- | --- | --- | --- | --- |\n"
+            "| FEAT-001 | WORK-1 | SPEC-REQ-001 | FR-001 | AC-001-1 |\n"
+        )
+        rows = engine.parse_feat_map(text)
+        self.assertEqual(len(rows), 1)
+        rendered = engine.render_feat_map(rows)
+        self.assertEqual(rendered.count("| --- | --- | --- | --- | --- |"), 1)
+

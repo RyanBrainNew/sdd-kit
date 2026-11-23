@@ -3301,6 +3301,11 @@ def parse_feat_map(text: str) -> list[dict[str, str]]:
         cells = split_table_row(stripped)
         if not cells:
             continue
+        if all(
+            re.fullmatch(r":?-{3,}:?", cell.replace(" ", ""))
+            for cell in cells
+        ):
+            continue
         normalized = {normalize_column(cell): index for index, cell in enumerate(cells)}
         if "feat" in normalized and "specid" in normalized:
             header_index = normalized
