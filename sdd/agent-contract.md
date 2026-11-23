@@ -68,6 +68,11 @@ Spec 必须先用 `python -m sdd change --spec <spec> --reason "..."` 登记
 pre-commit 与 CI 都会用 `G1-09` 阻断代码提交。纯文档/配置变更使用
 `sdd change --docs-only` 显式登记，不允许静默跳过。
 
+`check --check-git` 从 `git merge-base` 到 HEAD 审计分支全部 commit，
+不再只看最近 20 条。需要定位链路时使用只读
+`python -m sdd trace --test/--ac/--commit ... --json`；trace 不修改
+state、events、change-set 或任何文件。
+
 当当前阶段的自动检查通过、但 Gate 要求人工时，`submit` / `submit-task` 会返回
 `awaiting_human_approval=true` 和 `human_checkpoint`。Agent 必须停止，
 不要继续调用 `complete`。人可以运行 `python -m sdd inbox --json` 查看所有待办。

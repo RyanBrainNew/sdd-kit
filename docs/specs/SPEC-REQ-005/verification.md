@@ -23,6 +23,38 @@
 
 待填写。
 
+- Evidence recorded: Task T-001
+
+- Evidence recorded: Task T-002
+
+- Evidence recorded: Task T-003
+
+- Evidence recorded: Task T-004
+
+### Task T-004
+
+- At: 2026-11-23T22:57:20+08:00
+
+python -m unittest tests.test_trace.TraceTests -v: 4 passed; missing links and read-only behavior covered
+
+### Task T-003
+
+- At: 2026-11-23T22:55:07+08:00
+
+python -m unittest tests.test_trace.TraceTests -v: 3 passed; trace test/AC/commit entries and chain complete
+
+### Task T-002
+
+- At: 2026-11-23T22:54:03+08:00
+
+python -m unittest tests.test_trace.CommitAuditTests -v: 4 passed; merge commit skip, docs trailer and merge-base errors covered
+
+### Task T-001
+
+- At: 2026-11-23T22:52:46+08:00
+
+python -m unittest tests.test_trace.CommitAuditTests -v: 3 passed; full-range audit and commit trailer validation implemented
+
 ## 4. 未运行
 
 None。
@@ -45,9 +77,9 @@ None。
 
 | 项 | 内容 |
 |---|---|
-| Reviewer | 待填写 |
-| Session | 待填写 |
-| Model | 待填写 |
-| Scope | 待填写（本次审查覆盖的文件、模块和 AC） |
-| Findings | 待填写 |
+| Reviewer | 独立复核（只读审查） |
+| Session | review-20261123-trace |
+| Model | gpt-5-codex |
+| Scope | `sdd/scripts/sdd.py`、`sdd/core.py`、`sdd/cli.py`、`tests/test_trace.py`；AC-001-1…AC-004-3 |
+| Findings | 未发现可执行问题。复核确认 merge-base 全量扫描、merge commit 跳过、trace 三入口、断链输出与只读保护均有测试覆盖。 |
 | Blocking issues | none |
