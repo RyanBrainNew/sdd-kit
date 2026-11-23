@@ -12,9 +12,9 @@
     "digest": "ae89c532988018c3f6d3c222c4a66da2a44981f33c8401d62a632bef66a8e910",
     "snapshot": "workflow.json"
   },
-  "state": "PR_READY",
+  "state": "MERGED",
   "created_at": "2026-11-23T16:37:41+08:00",
-  "updated_at": "2026-11-23T18:28:16+08:00",
+  "updated_at": "2026-11-23T18:35:37+08:00",
   "pr_url": null,
   "history": [
     {
@@ -312,6 +312,17 @@
           "bytes": 44545
         }
       ]
+    },
+    {
+      "state": "MERGED",
+      "at": "2026-11-23T18:35:37+08:00",
+      "evidence": "交付已确认",
+      "actor": "human",
+      "session": "43521a906ffe",
+      "session_source": "repo-fallback",
+      "source": "cli",
+      "role": "approver",
+      "approver": "linjinlong <fflinjinlong@chinatelecom.cn>"
     }
   ],
   "artifact_hashes": {
@@ -341,8 +352,18 @@
       "at": "2026-11-23T17:04:57+08:00",
       "artifact": "docs/specs/SPEC-REQ-003/spec.md",
       "sha256": "cfbf3b7187ecc64ee3254d656135563af78a2cf5d11493cd3d526921df0d21e6"
+    },
+    {
+      "action": "confirm_delivery",
+      "approver": "linjinlong <fflinjinlong@chinatelecom.cn>",
+      "at": "2026-11-23T18:35:37+08:00",
+      "artifact": "docs/specs/SPEC-REQ-003/PR_BODY.md",
+      "sha256": "8c9965000ef36d0a32320d88c55044268ae5821e58151f8a129f5f773cdd8399",
+      "head_sha": "f89ec2fcc60e9b72ad75159d2153cbabb9d6bf04"
     }
   ],
   "last_approver": "linjinlong <fflinjinlong@chinatelecom.cn>",
-  "previous_state": "VERIFYING"
+  "previous_state": "PR_READY",
+  "delivery_confirmed_at": "2026-11-23T18:35:37+08:00",
+  "merged_at": "2026-11-23T18:35:37+08:00"
 }
