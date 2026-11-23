@@ -261,12 +261,12 @@
             </div>
             <div class="code">
               <div class="code-bar"><span>powershell</span><button class="copy" type="button" data-copy>复制</button></div>
-              <pre><code>python bootstrap.py --target "D:\repos\order-api" `
-  --project order-api `
+              <pre><code>cd D:\repos\order-api
+python D:\tools\sdd-kit\bootstrap.py `
   --test-command "python -m pytest -q" `
   --ci gitlab</code></pre>
             </div>
-            <p class="quick-note">复制 <code>sdd/</code> 核心、合并 <code>AGENTS.md</code> 托管块、安装 Hook 与 CI 模板。</p>
+            <p class="quick-note">目标默认当前目录、项目 ID 默认目录名；复制 <code>sdd/</code> 核心、合并 <code>AGENTS.md</code> 托管块、安装 Hook 与 CI 模板。</p>
           </article>
 
           <article class="quick-card">

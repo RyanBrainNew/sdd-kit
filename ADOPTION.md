@@ -22,9 +22,11 @@
 接入：
 
 ```powershell
-python bootstrap.py --target "D:\repos\order-api" --project order-api `
-  --test-command "python -m pytest -q" --ci gitlab
+cd D:\repos\order-api
+python D:\tools\sdd-kit\bootstrap.py --test-command "python -m pytest -q" --ci gitlab
 ```
+
+`--target` 默认当前目录，`--project` 默认取目录名；不写这两个参数即可。
 
 然后：
 

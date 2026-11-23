@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -7,6 +8,32 @@ import bootstrap
 
 
 class BootstrapTest(unittest.TestCase):
+    def test_defaults_target_to_cwd_and_project_to_folder_name(self):
+        with tempfile.TemporaryDirectory() as temp:
+            target = Path(temp) / "order-api"
+            target.mkdir()
+            previous = Path.cwd()
+            try:
+                os.chdir(target)
+                code = bootstrap.main(["--no-hooks"])
+            finally:
+                os.chdir(previous)
+            self.assertEqual(code, 0)
+            self.assertTrue((target / "sdd" / "scripts" / "sdd.py").is_file())
+            config = json.loads(
+                (target / "sdd" / "config.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(config["project"], "order-api")
+
+    def test_refuses_to_bootstrap_the_kit_source_repository(self):
+        with self.assertRaises(SystemExit) as caught:
+            bootstrap.main(["--target", str(bootstrap.KIT_ROOT), "--no-hooks"])
+        self.assertIn("sdd-kit source repository", str(caught.exception))
+        with self.assertRaises(SystemExit):
+            bootstrap.main(
+                ["--target", str(bootstrap.KIT_ROOT / "docs"), "--no-hooks"]
+            )
+
     def test_bootstrap_installs_core_and_local_mcp(self):
         with tempfile.TemporaryDirectory() as temp:
             target = Path(temp)
@@ -123,6 +150,30 @@ class BootstrapTest(unittest.TestCase):
             self.assertEqual(config["test_commands"], ["make test"])
             self.assertTrue(config["require_approver"])
             self.assertTrue(config["require_artifact_hash"])
+
+    def test_force_keeps_project_id_when_not_passed(self):
+        with tempfile.TemporaryDirectory() as temp:
+            target = Path(temp)
+            self.assertEqual(
+                bootstrap.main(
+                    [
+                        "--target",
+                        str(target),
+                        "--project",
+                        "custom-id",
+                        "--no-hooks",
+                    ]
+                ),
+                0,
+            )
+            self.assertEqual(
+                bootstrap.main(["--target", str(target), "--force", "--no-hooks"]),
+                0,
+            )
+            config = json.loads(
+                (target / "sdd" / "config.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(config["project"], "custom-id")
 
 
 if __name__ == "__main__":

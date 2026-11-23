@@ -51,9 +51,12 @@
 接入时由平台团队执行一次：
 
 ```powershell
-python bootstrap.py --target "D:\repos\order-api" --project order-api `
-  --test-command "python -m pytest -q" --ci gitlab
+cd D:\repos\order-api
+python D:\tools\sdd-kit\bootstrap.py
 ```
+
+`--target` 默认当前目录，`--project` 默认沿用已有配置或取目标目录名；只有需要覆盖默认值、
+指定测试命令或安装 CI 模板时才补参数。
 
 `bootstrap.py` 会做这些事：
 
@@ -332,7 +335,7 @@ DRAFT
 | 步骤 | 人做什么 | 命令/产物 |
 |---|---|---|
 | 1 | 选一个试点仓库 | 建议先选一个小型微服务或前端项目 |
-| 2 | 执行 bootstrap | `python bootstrap.py --target ... --project ... --test-command ... --ci ...` |
+| 2 | 执行 bootstrap | 在仓库根目录跑 `python <sdd-kit>/bootstrap.py`，按需补 `--test-command`、`--ci` |
 | 3 | 补项目事实 | 在 `AGENTS.md` 写技术栈、构建、测试命令；在 `sdd/config.json` 配 `test_commands` |
 | 4 | 配 CODEOWNERS | `sdd/` 归平台团队 review |
 | 5 | 开接入 PR | CI 通过后合并 |
@@ -377,7 +380,8 @@ Agent 只消费 `next.action`，产出后用 `next.submit_with` 提交；CLI 重
 ### 5.1 一条命令
 
 ```powershell
-python bootstrap.py --target "D:\repos\order-api" --project order-api `
+cd D:\repos\order-api
+python D:\tools\sdd-kit\bootstrap.py `
   --test-command "python -m pytest -q" --ci gitlab
 ```
 
@@ -385,12 +389,21 @@ python bootstrap.py --target "D:\repos\order-api" --project order-api `
 
 | 参数 | 说明 |
 |---|---|
-| `--target` | 业务仓库根目录 |
-| `--project` | 写入 `sdd/config.json` 的项目 ID |
+| `--target` | 业务仓库根目录，默认当前目录 |
+| `--project` | 写入 `sdd/config.json` 的项目 ID；默认沿用已有值，否则取目标目录名 |
 | `--test-command` | `sdd verify` 执行的测试命令，可重复 |
 | `--ci` | `none` / `github` / `gitlab` / `both` |
 | `--no-hooks` | 不安装 `.githooks` |
 | `--force` | 刷新核心，保留 `config.json`、`context/`、`docs/specs/` |
+
+只做默认接入时，命令可以缩短为：
+
+```powershell
+python D:\tools\sdd-kit\bootstrap.py
+```
+
+等价写法是在 sdd-kit 目录里执行
+`python bootstrap.py --target "D:\repos\order-api" --project order-api`。
 
 ### 5.2 接入后检查
 
