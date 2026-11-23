@@ -12,6 +12,7 @@
 | SDD-HASH-001 | https://github.com/RyanBrainNew/sdd-kit/issues/15 | current | FEAT-003 | SPEC-REQ-001 | 工件哈希 CRLF/LF 规范化与 SDD CI 门禁对齐 | 0 |
 | SDD-PROFILE-001 | https://github.com/RyanBrainNew/sdd-kit/issues/7 | current | FEAT-004 | SPEC-REQ-002 | 工作流 Profile v2：可声明扩展与 workflow validate | 0 |
 | SDD-GATE-002 | https://github.com/RyanBrainNew/sdd-kit/issues/7 | current | FEAT-005 | SPEC-REQ-003 | Gate 检查项分级、人工豁免与按 ID 度量 | 0 |
+| SDD-GOV-001 | https://github.com/RyanBrainNew/sdd-kit/issues/20 | current | FEAT-006 | SPEC-REQ-004 | 审批版本绑定、change-set 与 impact | 0 |
 
 ## FEAT 映射
 
@@ -41,3 +42,7 @@
 | FEAT-005 | SDD-GATE-002 | SPEC-REQ-003 | FR-003 | AC-003-1, AC-003-2, AC-003-3, AC-003-4 |
 | FEAT-005 | SDD-GATE-002 | SPEC-REQ-003 | FR-004 | AC-004-1, AC-004-2, AC-004-3 |
 | FEAT-005 | SDD-GATE-002 | SPEC-REQ-003 | FR-005 | AC-005-1, AC-005-2 |
+| FEAT-006 | SDD-GOV-001 | SPEC-REQ-004 | FR-001 | AC-001-1, AC-001-2, AC-001-3, AC-001-4 |
+| FEAT-006 | SDD-GOV-001 | SPEC-REQ-004 | FR-002 | AC-002-1, AC-002-2, AC-002-3 |
+| FEAT-006 | SDD-GOV-001 | SPEC-REQ-004 | FR-003 | AC-003-1, AC-003-2, AC-003-3, AC-003-4, AC-003-5 |
+| FEAT-006 | SDD-GOV-001 | SPEC-REQ-004 | FR-004 | AC-004-1, AC-004-2, AC-004-3 |
