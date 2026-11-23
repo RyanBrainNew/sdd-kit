@@ -2209,6 +2209,113 @@ class WorkflowStageTests(SddFlowBase):
         self.assertIn("stages[-1] 必须是 MERGED", rendered)
 
 
+class WorkflowRuntimeTests(SddFlowBase):
+    def write_profile(self, preset):
+        path = self.root / "sdd" / "workflows" / f"{preset['name']}.json"
+        path.write_text(
+            json.dumps(preset, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+    def test_gate_checks_filter_advisory(self):
+        # [AC-003-1]
+        self.new_spec()
+        self.write("docs/specs/SPEC-ORDER-001/spec.md", SPEC_TEXT)
+        config = engine.load_config(self.root)
+        directory = self.root / "docs/specs/SPEC-ORDER-001"
+        ctx = engine.gate_context(self.root, config, directory, self.state())
+
+        preset = valid_v2_profile()
+        preset["gate_checks"]["G0"] = [
+            "G0-01",
+            "G0-02",
+            "G0-03",
+            "G0-04",
+            "G0-05",
+            "G0-06",
+        ]
+        ids = [row["id"] for row in engine.run_gate_checks("G0", ctx, preset)]
+        self.assertIn("G0-01", ids)
+        self.assertNotIn("G0-07", ids)
+
+        default_ids = [
+            row["id"] for row in engine.run_gate_checks("G0", ctx)
+        ]
+        self.assertIn("G0-07", default_ids)
+
+        preset["gate_checks"]["G0"].remove("G0-02")
+        rendered = "\n".join(
+            engine.validate_workflow_preset(preset, "profile.json")
+        )
+        self.assertIn("缺少 required 检查", rendered)
+        self.assertIn("G0-02", rendered)
+
+    def test_extra_human_checkpoint(self):
+        # [AC-003-2]
+        preset = valid_v2_profile("l2-human-g3")
+        preset["gates"]["G3"] = "human"
+        preset["human_checkpoints"].append(
+            {"type": "complete_gate", "gate": "G3"}
+        )
+        self.write_profile(preset)
+        self.new_spec(workflow="l2-human-g3")
+        self.approve_valid_spec()
+        self.write("docs/specs/SPEC-ORDER-001/design.md", DESIGN_TEXT)
+        self.run_sdd("complete", "--spec", SPEC_ID, "--evidence", "design 完成")
+        self.assertEqual(self.state()["state"], "DESIGN_READY")
+        self.write("docs/specs/SPEC-ORDER-001/tasks.md", TASKS_TEXT)
+
+        result = self.run_sdd(
+            "complete", "--spec", SPEC_ID, "--evidence", "tasks 完成", expect=2
+        )
+        self.assertIn("G3 需要人工审批", result.stderr)
+        self.assertEqual(self.state()["state"], "DESIGN_READY")
+
+        workspace = Workspace(self.root, session_key="runtime-test")
+        payload = workspace.session(SPEC_ID)
+        checkpoint = payload["human_checkpoint"]
+        self.assertTrue(checkpoint["required"])
+        self.assertEqual(checkpoint["type"], "manual_gate")
+        self.assertEqual(checkpoint["gate"], "G3")
+
+    def test_risk_and_context_rules(self):
+        # [AC-003-3]
+        config = {"risk_stop": ["security"]}
+        preset = valid_v2_profile()
+        self.assertEqual(
+            engine.effective_risk_stop(config, preset),
+            ["data-loss", "security"],
+        )
+        risky = {"risk": "low", "risk_labels": ["data-loss"]}
+        preset["gates"]["G4"] = "auto_if_no_risk"
+        self.assertTrue(engine.gate_requires_human(config, "G4", risky, preset))
+        self.assertTrue(
+            engine.requires_independent_review(config, risky, preset)
+        )
+
+        self.write("docs/knowledge/index.md", "# 知识索引\n")
+        self.write("docs/knowledge/patterns/FP-001.md", "# FP-001\n")
+        self.write("docs/specs/SPEC-ORDER-001/design.md", DESIGN_TEXT)
+        directory = self.root / "docs/specs/SPEC-ORDER-001"
+        self.write("docs/prd.md", "# PRD\n")
+        bundle = engine.build_context_bundle(
+            self.root, directory, {}, None, preset
+        )
+        self.assertIn("docs/knowledge/index.md", bundle["allowed_paths"])
+        self.assertIn(
+            "docs/knowledge/patterns/FP-001.md", bundle["allowed_paths"]
+        )
+        self.assertNotIn("docs/prd.md", bundle["allowed_paths"])
+        self.assertIn("docs/prd.md", bundle["exclude"])
+
+        escaped = valid_v2_profile()
+        escaped["context_rules"]["include"] = ["../outside.md"]
+        rendered = "\n".join(
+            engine.validate_workflow_preset(escaped, "profile.json")
+        )
+        self.assertIn("不能包含 ..", rendered)
+
+
 class ArtifactHashTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

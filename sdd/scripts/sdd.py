@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import fnmatch
 import glob
 import hashlib
 import json
@@ -1192,6 +1193,24 @@ def resolve_declared_transition(
     return next_declared_stage(workflow, canonical_target)
 
 
+def effective_risk_stop(
+    config: dict[str, Any],
+    workflow: Optional[dict[str, Any]] = None,
+) -> list[str]:
+    values = [
+        str(item).strip()
+        for item in config.get("risk_stop", [])
+        if str(item).strip()
+    ]
+    if workflow:
+        values.extend(
+            str(item).strip()
+            for item in workflow.get("risk_stop", []) or []
+            if str(item).strip()
+        )
+    return sorted(set(values))
+
+
 def workflow_risk_error(
     preset: dict[str, Any],
     risk: str,
@@ -1209,7 +1228,7 @@ def workflow_risk_error(
         )
     if policy.get("deny_risk_stop"):
         labels = {str(item) for item in risk_labels}
-        stopped = labels & {str(item) for item in config.get("risk_stop", [])}
+        stopped = labels & set(effective_risk_stop(config, preset))
         if stopped:
             return (
                 f"工作流 {preset['name']} 不允许命中风险标签："
@@ -2056,7 +2075,7 @@ def requires_independent_review(
     }
     stops = {
         str(item).strip().lower()
-        for item in config.get("risk_stop", [])
+        for item in effective_risk_stop(config, workflow)
         if str(item).strip()
     }
     return bool(labels & stops)
@@ -2906,13 +2925,27 @@ GATE_CHECK_FUNCS = {
 }
 
 
-def run_gate_checks(gate: str, ctx: dict[str, Any]) -> list[dict[str, Any]]:
+def run_gate_checks(
+    gate: str,
+    ctx: dict[str, Any],
+    workflow: Optional[dict[str, Any]] = None,
+) -> list[dict[str, Any]]:
     registry_errors = validate_check_registry()
     if registry_errors:
         raise SddError("检查项注册表无效：" + "；".join(registry_errors))
+    selected: Optional[set[str]] = None
+    if isinstance(workflow, dict):
+        gate_checks = workflow.get("gate_checks")
+        if (
+            isinstance(gate_checks, dict)
+            and isinstance(gate_checks.get(gate), list)
+        ):
+            selected = {str(item) for item in gate_checks[gate]}
     rows: list[dict[str, Any]] = []
     for item in CHECK_REGISTRY:
         if str(item.get("gate")) != gate:
+            continue
+        if selected is not None and str(item["id"]) not in selected:
             continue
         func = GATE_CHECK_FUNCS.get(str(item["id"]))
         if func is None:
@@ -3358,7 +3391,7 @@ def gate_requires_human(
     if policy == "human":
         return True
     risk_labels = set(str(item) for item in state.get("risk_labels", []))
-    stop_labels = set(str(item) for item in config.get("risk_stop", []))
+    stop_labels = set(effective_risk_stop(config, workflow))
     is_risky = state.get("risk") == "high" or bool(risk_labels & stop_labels)
     return policy == "auto_if_no_risk" and is_risky
 
@@ -3432,8 +3465,8 @@ def run_checks(
     errors: list[str] = []
 
     if stage in {"spec", "design", "tasks", "verify", "ci"}:
-        errors.extend(gate_rows_errors(run_gate_checks("G0", ctx)))
-        errors.extend(gate_rows_errors(run_gate_checks("G1", ctx)))
+        errors.extend(gate_rows_errors(run_gate_checks("G0", ctx, workflow)))
+        errors.extend(gate_rows_errors(run_gate_checks("G1", ctx, workflow)))
     if stage in {"design", "tasks", "verify", "ci"}:
         errors.extend(check_design(design_text, spec_acs, workflow))
     if stage in {"tasks", "verify", "ci"}:
@@ -3692,11 +3725,72 @@ def task_scope_paths(task: dict[str, Any]) -> list[str]:
     return sorted(paths)
 
 
+def apply_context_rules(
+    root: Path,
+    bundle: dict[str, Any],
+    spec_dir: str,
+    workflow: Optional[dict[str, Any]],
+) -> None:
+    rules = (workflow or {}).get("context_rules")
+    if not isinstance(rules, dict):
+        return
+    includes = [
+        str(pattern).replace("\\", "/")
+        for pattern in rules.get("include", []) or []
+    ]
+    excludes = [
+        str(pattern).replace("\\", "/")
+        for pattern in rules.get("exclude", []) or []
+    ]
+    allowed = set(bundle.get("allowed_paths", []))
+    contracts = set(bundle.get("contracts", []))
+    if includes:
+        matched: list[str] = []
+        for pattern in includes:
+            for raw in glob.glob(str(root / pattern), recursive=True):
+                path = Path(raw)
+                if not path.is_file():
+                    continue
+                relative = path.relative_to(root).as_posix()
+                if relative == "docs/prd.md" or is_other_spec_path(
+                    relative, spec_dir
+                ):
+                    continue
+                if any(fnmatch.fnmatch(relative, item) for item in excludes):
+                    continue
+                try:
+                    if path.stat().st_size > 200 * 1024:
+                        continue
+                except OSError:
+                    continue
+                matched.append(relative)
+        for relative in sorted(set(matched))[:50]:
+            allowed.add(relative)
+            if relative.lower().endswith(CONTRACT_SUFFIXES):
+                contracts.add(relative)
+    if excludes:
+        allowed = {
+            value
+            for value in allowed
+            if not any(fnmatch.fnmatch(value, item) for item in excludes)
+        }
+        contracts = {
+            value
+            for value in contracts
+            if not any(fnmatch.fnmatch(value, item) for item in excludes)
+        }
+        extra = [item for item in excludes if item not in bundle["exclude"]]
+        bundle["exclude"].extend(extra)
+    bundle["allowed_paths"] = sorted(allowed)
+    bundle["contracts"] = sorted(contracts)
+
+
 def build_context_bundle(
     root: Path,
     directory: Path,
     state: dict[str, Any],
     task: Optional[dict[str, Any]] = None,
+    workflow: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     bundle: dict[str, Any] = {
         "task": None,
@@ -3709,10 +3803,11 @@ def build_context_bundle(
         "allowed_paths": [],
         "exclude": [],
     }
+    spec_dir = directory.relative_to(root).as_posix()
     if not task:
+        apply_context_rules(root, bundle, spec_dir, workflow)
         return bundle
 
-    spec_dir = directory.relative_to(root).as_posix()
     design_text = read_text(directory / "design.md")
     frs = sorted(set(task.get("frs") or []))
     acs = sorted(set(task.get("acs") or []))
@@ -3743,6 +3838,7 @@ def build_context_bundle(
             "exclude": list(CONTEXT_EXCLUDES),
         }
     )
+    apply_context_rules(root, bundle, spec_dir, workflow)
     return bundle
 
 
@@ -3957,8 +4053,12 @@ def build_next_action(
             ),
             None,
         )
+    try:
+        workflow = resolve_workflow(root, directory, state)
+    except SddError:
+        workflow = None
     base["context_bundle"] = build_context_bundle(
-        root, directory, state, bundle_task
+        root, directory, state, bundle_task, workflow
     )
     return base
 
@@ -4809,8 +4909,8 @@ def command_approve(
     evidence = args.evidence or "requirement confirmed by human"
     sync_feat_map(root, config, state, read_text(directory / "spec.md"))
     ctx = gate_context(root, config, directory, state)
-    g0_rows = run_gate_checks("G0", ctx)
-    g1_rows = run_gate_checks("G1", ctx)
+    g0_rows = run_gate_checks("G0", ctx, workflow)
+    g1_rows = run_gate_checks("G1", ctx, workflow)
     g0_errors = gate_rows_errors(g0_rows)
     g1_errors = gate_rows_errors(g1_rows)
     try:
