@@ -137,6 +137,32 @@ def _print_human(payload: dict[str, Any]) -> None:
     if payload.get("kind") == "index":
         print(f"[sdd] {payload.get('spec')} index synced: {payload.get('message')}")
         return
+    if payload.get("kind") == "change":
+        print(
+            f"[sdd] {payload.get('spec')} change "
+            f"{payload.get('change_id')} status={payload.get('status')}"
+        )
+        return
+    if payload.get("kind") == "impact":
+        print(f"[sdd] {payload.get('spec')} impact")
+        print(
+            "  FEAT=" + (", ".join(payload.get("feat_ids") or []) or "-")
+            + "  FR=" + (", ".join(payload.get("fr_ids") or []) or "-")
+            + "  AC=" + str(len(payload.get("ac_ids") or []))
+        )
+        print(
+            "  approval_required="
+            + str(payload.get("approval_required")).lower()
+        )
+        if payload.get("missing"):
+            print("  missing=" + "; ".join(payload["missing"]))
+        return
+    if payload.get("kind") == "reapprove":
+        print(
+            f"[sdd] {payload.get('spec')} reapproved; "
+            f"changes={', '.join(payload.get('approved_change_ids') or []) or '-'}"
+        )
+        return
     if payload.get("kind") == "verify":
         output = str(payload.get("stdout") or "").strip()
         if output:
@@ -456,6 +482,56 @@ def build_parser() -> argparse.ArgumentParser:
             _require_human(a),
             w.approve(a.spec, a.evidence, a.approver),
         )[1]
+    )
+
+    p = sub.add_parser(
+        "reapprove",
+        help="human-only re-approval after the approved Spec changes",
+    )
+    p.add_argument("--spec")
+    p.add_argument("--reason", required=True)
+    p.add_argument("--evidence", required=True)
+    p.add_argument("--approver")
+    p.add_argument("--human", action="store_true")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(
+        func=lambda a, w: w.reapprove(
+            a.spec,
+            a.reason,
+            a.evidence,
+            approver=a.approver,
+            human=a.human,
+        )
+    )
+
+    p = sub.add_parser(
+        "impact",
+        help="read-only FEAT/FR/AC/Task/test/code impact view",
+    )
+    p.add_argument("--spec")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(
+        func=lambda a, w: w.impact(a.spec or w._resolve_current_spec())
+    )
+
+    p = sub.add_parser(
+        "change",
+        help="record a change-set before code changes",
+    )
+    p.add_argument("--spec")
+    p.add_argument("--reason", required=True)
+    p.add_argument("--docs-only", action="store_true")
+    p.add_argument("--risk", choices=["low", "medium", "high"])
+    p.add_argument("--rollback")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(
+        func=lambda a, w: w.change(
+            a.spec or w._resolve_current_spec(),
+            a.reason,
+            docs_only=a.docs_only,
+            risk=a.risk,
+            rollback=a.rollback,
+        )
     )
 
     p = sub.add_parser("waive", help="human-only Gate check waiver")

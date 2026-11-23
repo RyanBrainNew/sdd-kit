@@ -57,9 +57,16 @@ python -m sdd resume --json
 `risk_stop` 的需求不允许使用该预设。`l2-strict` 的 G0–G5 全部需要人工确认，
 `verification.md` 还必须有独立审查章节，reviewer session 不能等于实现 session。
 
-`approve`、`merge`、`unblock`、`rewind`、`waive` 只能由人执行；MCP 不暴露这些工具。
+`approve`、`reapprove`、`merge`、`unblock`、`rewind`、`waive` 只能由人执行；
+MCP 不暴露这些工具。
 人工命令可加 `--approver "张三 <zhang@example.com>"`；不传时取 Git 配置。
 Agent 不传 `--approver`，也不得代替人执行这些命令。
+
+`approve` 会把当前 `spec.md` 摘要写入 `approved_spec_digest`。审批后修改
+Spec 必须先用 `python -m sdd change --spec <spec> --reason "..."` 登记
+`change-set.md`，再由人执行 `reapprove`；存在 pending change-set 时
+pre-commit 与 CI 都会用 `G1-09` 阻断代码提交。纯文档/配置变更使用
+`sdd change --docs-only` 显式登记，不允许静默跳过。
 
 当当前阶段的自动检查通过、但 Gate 要求人工时，`submit` / `submit-task` 会返回
 `awaiting_human_approval=true` 和 `human_checkpoint`。Agent 必须停止，

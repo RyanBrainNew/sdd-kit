@@ -9,7 +9,7 @@
 - 所有命令都在仓库根目录执行。
 - 唯一状态机是 `sdd/scripts/sdd.py`。不要手改 `state.json` 或 `events.jsonl`。
 - 不要跳过 `submit` / `submit-task`；`ok=false` 时按 `errors` 修复后重试。
-- `approve`、`merge`、`unblock`、`rewind`、`waive` 只能由人执行，Agent 不得代替。
+- `approve`、`reapprove`、`merge`、`unblock`、`rewind`、`waive` 只能由人执行，Agent 不得代替。
 - `l2-standard` 正常流程只有两个人工检查点：Spec 确认、交付确认；
   交付确认后才创建 PR，PR 的审核合并由管理员在 GitHub 完成；
   `l2-strict` 的 G0–G5 全部需要人工确认。
@@ -70,6 +70,10 @@ python -m sdd resume --spec <spec> --json
 
 例外动作：
 
+- 审批后范围变化：人执行
+  `python -m sdd reapprove --spec <spec> --human --reason "..." --evidence "..."`。
+  Agent 必须先执行 `python -m sdd change --spec <spec> --reason "..."` 登记变更；
+  存在 pending change-set 时不得提交代码。
 - 回退/返工：人执行
    `python -m sdd rewind --spec <spec> --to <stage> --reason "..." --human`。
 - 解除阻塞：人执行

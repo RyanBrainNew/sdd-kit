@@ -1,6 +1,6 @@
 # 标准符合性与核心优势基线
 
-> 适用版本：`sdd-kit 0.9.0`  
+> 适用版本：`sdd-kit 0.9.6`  
 > 对齐依据：集团《SDD 开发规范 v1.0.3》培训口径、P0–P5 / G0–G5 六阶段门禁，
 > 以及面向全国专业公司培训中的 SDD In Action v7 实践。  
 > 结论边界：本文证明 `sdd-kit` 已覆盖 SDD-L2 执行内核的强制路径与证据链；
@@ -26,13 +26,13 @@
 | 条目 | 官方阶段/Gate | 实现方式 | 证据位置 | 缺口 | 状态 |
 |---|---|---|---|---|---|
 | P0 | REQUIREMENT / 需求侧准入 | `start-work` 建 Spec；G0 自动校验工作项、FEAT、PRD 来源和澄清标记，人执行 `approve --human` | `docs/prd-index.md`、`spec.md`、`gate0-report.md`、`events.jsonl` | 无；业务判断仍由产品负责人完成 | 已人工 |
-| P1 | SPECIFY / Spec 准入 | `approve` 内执行 G1；检查章节、FR/AC 闭合、AC 可测试性和占位符 | `spec.md`、G1-01–G1-07、`gate1-report.md` | 无 | 已自动 |
+| P1 | SPECIFY / Spec 准入 | `approve` 内执行 G1；检查章节、FR/AC 闭合、AC 可测试性、占位符和审批摘要绑定 | `spec.md`、G1-01–G1-09、`gate1-report.md` | 无 | 已自动 |
 | P2 | PLAN / 设计评审 | `complete` 设计阶段执行 G2；检查 Design 章节、AC 落点、风险与回滚 | `design.md`、`decisions.md`、G2-01–G2-04、`gate2-report.md` | ADR/OpenAPI 未做语义级自动审查 | 部分实现 |
 | P3 | DECOMPOSE / 任务拆解 | `DESIGN_READY → TASKS_READY` 校验任务表、依赖 DAG、测试定位和知识资产 | `tasks.md`、G3-01–G3-06、`gate3-report.md` | 任务粒度仍由人设定 | 已自动 |
 | P4 | IMPLEMENT / 代码审查 | `start`/`submit-task` 逐 Task 推进；最后一个 Task 完成时执行 G4，校验证据、测试定位与独立 Review | `verification.md`、`verification-evidence.jsonl`、G4-01–G4-05、`gate4-report.md` | 人工 Review 质量仍取决于 Reviewer | 已自动 |
 | P5 | VALIDATE / 规格验证 | `verify` 记录真实命令；G5 校验退出码、AC 覆盖、Gate 链、事件哈希与豁免 | `verification.md`、`verification-evidence.jsonl`、G5-01–G5-10、`gate5-report.md` | 未实现自动语义漂移判定 | 部分实现 |
 | G0 | REQUIREMENT / 需求侧准入 | `approve --human` 前执行 G0 注册项，任一 required 失败即阻断 | G0-01–G0-07、`gate0-report.md` | 无 | 已人工 |
-| G1 | SPECIFY / Spec 准入 | 自动执行 G1 注册项，失败时不允许进入设计阶段 | G1-01–G1-07、`gate1-report.md` | 无 | 已自动 |
+| G1 | SPECIFY / Spec 准入 | 自动执行 G1 注册项，失败时不允许进入设计阶段；审批后摘要变化由 G1-08/G1-09 阻断 | G1-01–G1-09、`gate1-report.md` | 无 | 已自动 |
 | G2 | PLAN / 设计评审 | 设计阶段执行章节、AC 覆盖、方案与回滚检查；风险决定是否人工 | G2-01–G2-04、`gate2-report.md` | Review overlay 主要在 G4/G5 生效，G2 仍以设计文档为主 | 部分实现 |
 | G3 | DECOMPOSE / 任务拆解 | 任务阶段执行字段、AC 覆盖、依赖无环与测试映射检查 | G3-01–G3-06、`gate3-report.md` | 工时估算与并行冲突检查未实现 | 已自动 |
 | G4 | IMPLEMENT / 代码审查 | 校验测试名、AC 覆盖、可复验测试证据与必要的独立 review 证据 | G4-01–G4-05、`gate4-report.md`、`review-findings.json` | Review 结论仍需人判断 | 已自动 |
@@ -52,7 +52,7 @@
 | 官方 Gate | 官方含义 | 状态 | `sdd-kit` 执行动作 | 检查与证据 | 人工节点 | 缺口说明 |
 |---|---|---|---|---|---|---|
 | G0 需求侧准入 | P0 出口 | 已人工 | 人执行 `approve --human`；CLI 先自动校验 PRD、FEAT、工作项和澄清标记 | `G0-01`–`G0-07`、`gate0-report.md`、approval 记录 | Spec 确认 | 无（需要产品负责人给出业务判断） |
-| G1 Spec 准入 | P1 出口 | 已自动 | `approve` 内执行 G1；检查章节、FR/AC 闭合、可测试性和占位符 | `G1-01`–`G1-07`、`gate1-report.md` | 与 G0 同一人工检查点 | 无（G1 不额外增加人工停止点） |
+| G1 Spec 准入 | P1 出口 | 已自动 | `approve` 内执行 G1；检查章节、FR/AC 闭合、可测试性、占位符和审批摘要绑定 | `G1-01`–`G1-09`、`gate1-report.md` | 与 G0 同一人工检查点；范围变化时另有 `reapprove` | 无（正常流程不额外增加人工停止点） |
 | G2 设计评审 | P2 出口 | 部分实现 | `submit design.md` 执行 G2；检查 Design、AC 落点、风险与回滚 | `G2-01`–`G2-04`、`gate2-report.md` | 高风险或 `l2-strict` 时人工 | ADR 与 OpenAPI 尚未做语义级自动审查 |
 | G3 任务拆解 | P3 出口 | 已自动 | `submit tasks.md` 执行 G3；检查字段、DAG、测试映射和知识资产 | `G3-01`–`G3-06`、`gate3-report.md` | 无额外计划内节点 | 任务规模经验值由团队自行约束 |
 | G4 代码审查 | P4 出口 | 已自动 | 最后一个 Task 完成时执行 G4；检查 Task 证据、Review finding 和测试定位 | `G4-01`–`G4-05`、`gate4-report.md`、`review-findings.json` | PR Review / 合并 | 人工 Review 质量仍取决于 Reviewer；工具只校验证据结构 |
@@ -77,7 +77,7 @@
 
 ## 4. 三项核心优势基线
 
-| 核心优势 | 指标 | 目标值 | 采集方式 | 当前结果（0.9.0） |
+| 核心优势 | 指标 | 目标值 | 采集方式 | 当前结果（0.9.6） |
 |---|---|---|---|---|
 | 轻量、使用简单 | 核心第三方依赖数 | 0 | 检查 `sdd/scripts/*.py` 只导入标准库；MCP 依赖只在可选目录 | 0 |
 | 轻量、使用简单 | 核心常驻服务/数据库 | 0 | 架构检查：CLI 直接读写仓库内文件 | 0 |
@@ -93,7 +93,7 @@
 | 合规可溯源 | 验证证据字段 | 命令、目录、时间、退出码、耗时、输出哈希、产物哈希 | `verification-evidence.jsonl` | 全部字段已记录 |
 | 合规可溯源 | 质量回流指标 | 豁免率、逃逸缺陷、重开率、Gate 一次通过率 | `python -m sdd metrics --json` | 4 项均有口径与来源 |
 
-“当前结果”由 0.9.0 的自动测试与 CLI 输出得出；人员能力、业务判断和
+“当前结果”由 0.9.6 的自动测试与 CLI 输出得出；人员能力、业务判断和
 组织审批效率不在工具可承诺的范围内。
 
 ## 5. 可复核证据索引
@@ -106,6 +106,7 @@
 | 可复验测试证据 | `verification-evidence.jsonl` | `python -m unittest tests.test_evolution.EvidenceTests -v` |
 | 声明式工作流 | `sdd/workflows/` | `python -m unittest tests.test_evolution.ProfileTests -v` |
 | 检查分级与人工豁免 | `state.json.waivers`、`events.jsonl` | `python -m unittest tests.test_evolution.WaiverTests -v` |
+| 审批版本绑定与 change-set | `state.json.approved_spec_digest`、`change-set.md` | `python -m unittest tests.test_governance.ApprovalBindingTests tests.test_governance.ChangeSetTests -v` |
 | Review overlay | `sdd/prompts/review/` | `python -m unittest tests.test_evolution.ReviewTests -v` |
 | 知识基线与 Fix Pattern | `docs/knowledge/` | `python -m unittest tests.test_evolution.KnowledgeTests -v` |
 | 指标与审计回放 | `metrics --json`、`events --json` | `python -m unittest tests.test_evolution.MetricsTests.test_metrics_and_audit -v` |

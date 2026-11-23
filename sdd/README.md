@@ -11,15 +11,16 @@
   -> CI 做最终硬校验
 ```
 
-## 1. 人只需要做三件事
+## 1. 人需要做的事
 
 | 时机 | 人做什么 | 命令 |
 |---|---|---|
 | 仓库接入（平台团队，一次） | 执行 bootstrap、补项目事实、配 CODEOWNERS | `python bootstrap.py ...` |
 | 每个需求 | 审 `spec.md` 并确认 | `python -m sdd approve --spec <spec> --human --evidence "需求已确认"` |
+| 审批后范围变化 | 审 change-set 并重新确认 Spec | `python -m sdd reapprove --spec <spec> --human --reason "..." --evidence "需求重新确认"` |
 | 每个需求 | 审 PR、合并并登记 | `python -m sdd merge --spec <spec> --human --evidence "PR merged"` |
 
-`approve`、`merge`、`unblock` 都强制 `--human`；Agent 不得代替。
+`approve`、`reapprove`、`merge`、`unblock` 都强制 `--human`；Agent 不得代替。
 
 ## 2. Agent 会话开始
 
@@ -117,6 +118,7 @@ python -m sdd submit-task --spec SPEC-ORDER-001 --task T-001 --commit abc1234 --
 
 # 人类动作
 python -m sdd approve --spec SPEC-ORDER-001 --human --evidence "需求已确认"
+python -m sdd reapprove --spec SPEC-ORDER-001 --human --reason "AC 调整" --evidence "需求重新确认"
 python -m sdd merge --spec SPEC-ORDER-001 --human --evidence "PR merged"
 python -m sdd unblock --spec SPEC-ORDER-001 --human --evidence "产品已确认"
 python -m sdd rewind --spec SPEC-ORDER-001 --to SPEC_READY --reason "设计遗漏" --human
@@ -176,7 +178,7 @@ Review overlay、Fix Pattern、允许路径和排除项。Agent 不得静默扩�
 | `sdd_context` / `sdd_read_artifact` | 读取上下文和工件 |
 | `sdd_report` / `sdd_pr` / `sdd_verify` | 报告、PR、验证 |
 
-不提供 `approve`、`merge`、`unblock`、`rewind`、`waive`。
+不提供 `approve`、`reapprove`、`merge`、`unblock`、`rewind`、`waive`。
 
 本地 MCP：
 
@@ -231,5 +233,5 @@ Agent 在写 Spec/Design 前先读：
 | Hook 不生效 | `git config core.hooksPath .githooks` |
 | 测试命令为空 | 配置 `sdd/config.json` 的 `test_commands` |
 | Agent 想改 `state.json` | 拒绝；改用 `submit` / `submit-task` / `block` |
-| Agent 想 approve/merge | 拒绝；这是人类动作 |
+| Agent 想 approve/reapprove/merge | 拒绝；这是人类动作 |
 | `verify-core` 失败 | 恢复平台发布版本，或由平台团队重新生成 manifest |

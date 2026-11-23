@@ -2,7 +2,7 @@
 
 > 本文是仓库 README 的完整内容归档，保留全部章节、命令与问答。
 > 项目首页见 [README](../README.md)，架构取舍见 [ARCHITECTURE.md](../ARCHITECTURE.md)。
-> 文中文件路径默认相对仓库根目录。当前版本 0.9.5。
+> 文中文件路径默认相对仓库根目录。当前版本 0.9.6。
 
 ---
 
@@ -15,7 +15,7 @@
 - 可选命名工作流预设：`l2-standard`、`l2-hotfix`、`l2-strict`、`l2-refactor`，Spec 创建时固定版本；
 - MCP 是可选适配器；没有 MCP，`AGENTS.md + CLI + Git Hook + CI` 也能跑完整流程。
 
-当前版本：`0.9.5`。官方 P0–P5 / G0–G5 映射见
+当前版本：`0.9.6`。官方 P0–P5 / G0–G5 映射见
 [标准符合性基线](STANDARD-CONFORMANCE.md)。
 
 ---
@@ -336,6 +336,7 @@ DRAFT
 | 1 | 给一个工作项 | 例如“按 srdcloud-553377 做这次需求”，不需要说当前阶段 |
 | 2 | 审 Spec | 看 `docs/specs/<Spec ID>/spec.md` 的范围、AC、未决问题 |
 | 3 | 执行 Spec 确认 | `python -m sdd approve --spec <Spec ID> --human --evidence "需求已确认"` |
+| 3a | 审批后范围变化 | Agent 先 `python -m sdd change --spec <Spec ID> --reason "..."`；人审 change-set 后执行 `reapprove --human` |
 | 4 | 审最终 PR | 看 `PR_BODY.md`、AC 证据、diff、CI |
 | 5 | 合并并登记 | `python -m sdd merge --spec <Spec ID> --human --evidence "PR merged"` |
 

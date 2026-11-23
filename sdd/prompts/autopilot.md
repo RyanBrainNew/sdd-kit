@@ -96,7 +96,7 @@ sdd_session(project)
 ## 硬规则
 
 - 不直接编辑 `state.json`。
-- 不调用或模拟 `approve`、`merge`、`unblock`。
+- 不调用或模拟 `approve`、`reapprove`、`merge`、`unblock`。
 - 不因为“模型觉得差不多”而跳过 `check`；所有提交都由 server 重新校验。
 - 不把 SDD 规则复制进个人提示词；规则以仓库内 `sdd/scripts/sdd.py` 为准。
 - 不要求开发者记住 `DRAFT`、`SPEC_READY` 等状态名；只展示 `next.action` 和人类检查点。

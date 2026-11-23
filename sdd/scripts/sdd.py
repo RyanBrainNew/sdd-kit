@@ -35,6 +35,7 @@ try:
         declared_code_paths,
         extract_backtick_paths,
         fix_pattern_errors,
+        is_code_path,
         knowledge_record_errors,
         next_feat_number,
         parse_front_matter,
@@ -56,6 +57,7 @@ except ImportError:  # pragma: no cover - package import fallback
         declared_code_paths,
         extract_backtick_paths,
         fix_pattern_errors,
+        is_code_path,
         knowledge_record_errors,
         next_feat_number,
         parse_front_matter,
@@ -67,7 +69,7 @@ except ImportError:  # pragma: no cover - package import fallback
         validate_review_findings,
     )
 
-VERSION = "0.9.5"
+VERSION = "0.9.6"
 EVENT_SCHEMA = 2
 
 SPEC_SECTIONS = (
@@ -3299,6 +3301,11 @@ def parse_feat_map(text: str) -> list[dict[str, str]]:
         cells = split_table_row(stripped)
         if not cells:
             continue
+        if all(
+            re.fullmatch(r":?-{3,}:?", cell.replace(" ", ""))
+            for cell in cells
+        ):
+            continue
         normalized = {normalize_column(cell): index for index, cell in enumerate(cells)}
         if "feat" in normalized and "specid" in normalized:
             header_index = normalized
@@ -4210,6 +4217,8 @@ def check_gates(
                     f"{gate} 绑定的 {relative} 已被修改；"
                     "请重新执行对应 Gate 或 rewind"
                 )
+    errors.extend(approval_digest_errors(root, directory, state))
+    errors.extend(change_set_errors(root, directory, state))
     return errors
 
 
@@ -4306,6 +4315,13 @@ def write_gate_report(
     warning_rows = [
         row for row in check_rows if row["result"] == "WARN"
     ]
+    approval_digest = ""
+    if gate in {"G0", "G1"}:
+        approval_digest = (
+            str(state.get("approved_spec_digest") or "").strip()
+            or current_spec_digest(directory)
+            or "MISSING"
+        )
     lines = [
         f"# {gate} {label}报告",
         "",
@@ -4322,6 +4338,11 @@ def write_gate_report(
         f"| 执行模式 | {mode} |",
         f"| 总体结果 | {status} |",
         f"| 告警数 | {len(warning_rows)} |",
+        *(
+            [f"| 审批 Spec 摘要 | `{approval_digest}` |"]
+            if gate in {"G0", "G1"}
+            else []
+        ),
         "",
         "## 2. 检查项",
         "",
@@ -4801,6 +4822,9 @@ def run_checks(
                 state=state,
             )
         )
+    if stage in {"design", "tasks", "verify", "ci"}:
+        errors.extend(approval_digest_errors(root, directory, state))
+        errors.extend(change_set_errors(root, directory, state))
     if stage == "ci":
         if state.get("state") not in {"PR_READY", "MERGED"}:
             errors.append("CI 检查要求状态为 PR_READY 或 MERGED")
@@ -7108,6 +7132,644 @@ def command_index(
     return 0
 
 
+APPROVAL_ACTIVE_STATES = (
+    "SPEC_READY",
+    "DESIGN_READY",
+    "TASKS_READY",
+    "IMPLEMENTING",
+    "VERIFYING",
+    "PR_READY",
+)
+
+CHANGE_STATUSES = {"pending", "approved", "docs-only"}
+
+CHANGE_FIELD_KEYS = {
+    "status": "status",
+    "reason": "reason",
+    "created-at": "created_at",
+    "impact-feat": "feat",
+    "impact-fr": "fr",
+    "impact-ac": "ac",
+    "impact-task": "task",
+    "impact-tests": "tests",
+    "impact-code-paths": "code_paths",
+    "risk": "risk",
+    "rollback": "rollback",
+    "approval": "approval",
+    "approved-by": "approved_by",
+    "approved-at": "approved_at",
+    "approved-spec-digest": "approved_spec_digest",
+}
+
+CHANGE_REQUIRED_FIELDS = (
+    "status",
+    "reason",
+    "feat",
+    "fr",
+    "ac",
+    "task",
+    "tests",
+    "code_paths",
+    "risk",
+    "rollback",
+    "approval",
+)
+
+
+def change_set_path(directory: Path) -> Path:
+    return directory / "change-set.md"
+
+
+def split_change_refs(value: str) -> list[str]:
+    items: list[str] = []
+    for raw in re.split(r"[,，、;；]+", str(value or "")):
+        item = raw.strip().strip("`").strip()
+        if item and item not in {"-", "—"}:
+            items.append(item)
+    return items
+
+
+def parse_change_set(text: str) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    current: Optional[dict[str, Any]] = None
+    for line in text.splitlines():
+        heading = re.match(r"^##\s+(CHG-\d{3})\b\s*(.*)$", line.strip())
+        if heading:
+            current = {
+                "id": heading.group(1),
+                "title": heading.group(2).strip(),
+                "fields": {},
+            }
+            records.append(current)
+            continue
+        if current is None:
+            continue
+        match = re.match(r"^\s*-\s*([A-Za-z0-9-]+)\s*:\s*(.*)$", line)
+        if match:
+            key = match.group(1).strip().lower()
+            current["fields"][key] = match.group(2).strip()
+    parsed: list[dict[str, Any]] = []
+    for record in records:
+        fields = record["fields"]
+        item: dict[str, Any] = {
+            "id": record["id"],
+            "title": record["title"],
+        }
+        for raw_key, value in fields.items():
+            key = CHANGE_FIELD_KEYS.get(raw_key)
+            if key and key not in item:
+                if key in {"feat", "fr", "ac", "task", "tests", "code_paths"}:
+                    item[key] = split_change_refs(value)
+                else:
+                    item[key] = value
+        for key in CHANGE_REQUIRED_FIELDS:
+            item.setdefault(key, [] if key in {
+                "feat", "fr", "ac", "task", "tests", "code_paths"
+            } else "")
+        parsed.append(item)
+    return parsed
+
+
+def change_set_records(directory: Path) -> list[dict[str, Any]]:
+    path = change_set_path(directory)
+    if not path.is_file():
+        return []
+    return parse_change_set(read_text(path))
+
+
+def pending_change_records(directory: Path) -> list[dict[str, Any]]:
+    return [
+        record
+        for record in change_set_records(directory)
+        if str(record.get("status")) == "pending"
+    ]
+
+
+def docs_only_change_records(directory: Path) -> list[dict[str, Any]]:
+    return [
+        record
+        for record in change_set_records(directory)
+        if str(record.get("status")) == "docs-only"
+    ]
+
+
+def current_spec_digest(directory: Path) -> str:
+    path = directory / "spec.md"
+    if not path.is_file():
+        return ""
+    return artifact_sha256(path)
+
+
+def approval_digest_errors(
+    root: Path,
+    directory: Path,
+    state: dict[str, Any],
+) -> list[str]:
+    state_name = str(state.get("state") or "")
+    if state_name in {"DRAFT", "MERGED"}:
+        return []
+    spec_id = str(state.get("spec_id") or directory.name)
+    expected = str(state.get("approved_spec_digest") or "").strip()
+    relative = (directory / "spec.md").relative_to(root).as_posix()
+    if not expected:
+        return [
+            f"G1-08 旧 Spec {spec_id} 缺少审批版本绑定"
+            f"（approved_spec_digest）；请人类执行 "
+            f"`python -m sdd reapprove --spec {spec_id} --human "
+            f"--reason legacy-migration --evidence \"迁移审批版本\"`"
+        ]
+    actual = current_spec_digest(directory)
+    if not actual:
+        return [f"G1-08 审批绑定的 Spec 文件不存在：{relative}"]
+    if actual != expected:
+        return [
+            f"G1-08 Spec {spec_id} 在审批后被修改"
+            f"（审批摘要 {expected[:12]}…，当前 {actual[:12]}…）；"
+            f"请先执行 `python -m sdd change --spec {spec_id} "
+            f"--reason \"...\"` 登记变更，再由人类执行 "
+            f"`python -m sdd reapprove --spec {spec_id} --human "
+            f"--reason \"...\" --evidence \"...\"`"
+        ]
+    return []
+
+
+def change_set_errors(
+    root: Path,
+    directory: Path,
+    state: dict[str, Any],
+) -> list[str]:
+    state_name = str(state.get("state") or "")
+    if state_name in {"DRAFT", "MERGED"}:
+        return []
+    pending = pending_change_records(directory)
+    if not pending:
+        return []
+    spec_id = str(state.get("spec_id") or directory.name)
+    ids = ", ".join(str(record["id"]) for record in pending)
+    return [
+        f"G1-09 存在未批准的 change-set：{ids}；"
+        f"请先更新文档与 change-set，再由人类执行 "
+        f"`python -m sdd reapprove --spec {spec_id} --human "
+        f"--reason \"...\" --evidence \"...\"`"
+    ]
+
+
+def active_approval_specs(
+    root: Path, config: dict[str, Any]
+) -> list[tuple[Path, dict[str, Any]]]:
+    base = spec_root(root, config)
+    if not base.is_dir():
+        return []
+    active: list[tuple[Path, dict[str, Any]]] = []
+    for directory in sorted(base.iterdir()):
+        if not directory.is_dir():
+            continue
+        state_path = directory / "state.json"
+        if not state_path.is_file():
+            continue
+        state = load_json(state_path)
+        if str(state.get("state") or "") in APPROVAL_ACTIVE_STATES:
+            active.append((directory, state))
+    return active
+
+
+def test_selectors_from_tasks(tasks: list[dict[str, Any]]) -> list[str]:
+    selectors: list[str] = []
+    for task in tasks:
+        for item in split_change_refs(str(task.get("test") or "")):
+            if item and item not in selectors:
+                selectors.append(item)
+    return selectors
+
+
+def build_impact(
+    root: Path,
+    config: dict[str, Any],
+    directory: Path,
+    state: dict[str, Any],
+) -> dict[str, Any]:
+    spec_text = read_text(directory / "spec.md")
+    design_text = read_text(directory / "design.md")
+    tasks_text = read_text(directory / "tasks.md")
+    tasks = parse_tasks(tasks_text)
+    feat_ids = sorted(set(FEAT_RE.findall(spec_text)))
+    fr_ids = sorted(set(extract_frs(spec_text)))
+    ac_ids = sorted(set(extract_acs(spec_text)))
+    task_ids = [str(task["id"]) for task in tasks]
+    test_selectors = test_selectors_from_tasks(tasks)
+    code_paths = sorted(
+        set(
+            [
+                *declared_code_paths(tasks_text),
+                *declared_code_paths(design_text),
+                *declared_code_paths(spec_text),
+            ]
+        )
+    )
+    records = change_set_records(directory)
+    pending_ids = [
+        str(record["id"])
+        for record in records
+        if str(record.get("status")) == "pending"
+    ]
+    actual = current_spec_digest(directory)
+    expected = str(state.get("approved_spec_digest") or "")
+    digest_changed = bool(
+        expected
+        and actual
+        and expected != actual
+    ) or (
+        str(state.get("state") or "") not in {"DRAFT", "MERGED"}
+        and not expected
+    )
+    missing: list[str] = []
+    for task in tasks:
+        for fr in task.get("frs", []):
+            if fr not in fr_ids:
+                missing.append(fr)
+        for ac in task.get("acs", []):
+            if ac not in ac_ids:
+                missing.append(ac)
+    for record in records:
+        for feat in record.get("feat", []):
+            if feat not in feat_ids:
+                missing.append(feat)
+        for fr in record.get("fr", []):
+            if fr not in fr_ids:
+                missing.append(fr)
+        for ac in record.get("ac", []):
+            if ac not in ac_ids:
+                missing.append(ac)
+        for task_id in record.get("task", []):
+            if task_id not in task_ids:
+                missing.append(task_id)
+    spec_id = str(state.get("spec_id") or directory.name)
+    relative_change_set = (
+        change_set_path(directory).relative_to(root).as_posix()
+    )
+    return {
+        "schema": 1,
+        "spec": spec_id,
+        "feat_ids": feat_ids,
+        "fr_ids": fr_ids,
+        "ac_ids": ac_ids,
+        "task_ids": task_ids,
+        "test_selectors": test_selectors,
+        "code_paths": code_paths,
+        "approval_required": bool(pending_ids or digest_changed),
+        "digest_changed": digest_changed,
+        "approved_spec_digest": expected or None,
+        "current_spec_digest": actual or None,
+        "pending_change_ids": pending_ids,
+        "missing": sorted(set(missing)),
+        "change_set": relative_change_set,
+    }
+
+
+def render_change_record(record: dict[str, Any]) -> str:
+    def joined(key: str) -> str:
+        values = record.get(key) or []
+        if not values:
+            return "-"
+        if key in {"tests", "code_paths"}:
+            return ", ".join(f"`{value}`" for value in values)
+        return ", ".join(str(value) for value in values)
+
+    title = str(record.get("title") or "").strip()
+    heading = f"## {record['id']}" + (f" {title}" if title else "")
+    return "\n".join(
+        [
+            heading,
+            f"- Status: {record.get('status') or 'pending'}",
+            f"- Reason: {record.get('reason') or '-'}",
+            f"- Created-At: {record.get('created_at') or now()}",
+            f"- Impact-FEAT: {joined('feat')}",
+            f"- Impact-FR: {joined('fr')}",
+            f"- Impact-AC: {joined('ac')}",
+            f"- Impact-Task: {joined('task')}",
+            f"- Impact-Tests: {joined('tests')}",
+            f"- Impact-Code-Paths: {joined('code_paths')}",
+            f"- Risk: {record.get('risk') or 'low'}",
+            f"- Rollback: {record.get('rollback') or '-'}",
+            f"- Approval: {record.get('approval') or 'pending'}",
+            f"- Approved-By: {record.get('approved_by') or '-'}",
+            f"- Approved-At: {record.get('approved_at') or '-'}",
+            "- Approved-Spec-Digest: "
+            + (record.get("approved_spec_digest") or "-"),
+        ]
+    )
+
+
+def render_change_set(records: list[dict[str, Any]]) -> str:
+    lines = [
+        "# 变更集（Change Set）",
+        "",
+        "> 本文件由 `python -m sdd change` 生成或更新；审批状态由人工 "
+        "`reapprove` 回写。",
+        "",
+    ]
+    for record in records:
+        lines.append(render_change_record(record))
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def validate_change_record(record: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    for key in CHANGE_REQUIRED_FIELDS:
+        value = record.get(key)
+        if isinstance(value, list):
+            if not value and key in {"feat", "fr", "ac"}:
+                errors.append(f"{record.get('id', 'CHG')} 缺少字段：{key}")
+        elif not str(value or "").strip():
+            errors.append(f"{record.get('id', 'CHG')} 缺少字段：{key}")
+    return errors
+
+
+def approve_pending_changes(
+    directory: Path,
+    approver: str,
+    digest: str,
+    reason: str,
+) -> list[str]:
+    records = change_set_records(directory)
+    approved: list[str] = []
+    changed = False
+    for record in records:
+        if str(record.get("status")) != "pending":
+            continue
+        record["status"] = "approved"
+        record["approval"] = "approved"
+        record["approved_by"] = approver
+        record["approved_at"] = now()
+        record["approved_spec_digest"] = digest
+        record["reason"] = record.get("reason") or reason
+        approved.append(str(record["id"]))
+        changed = True
+    if changed:
+        write_text(change_set_path(directory), render_change_set(records))
+    return approved
+
+
+def refresh_approval_reports(
+    root: Path,
+    config: dict[str, Any],
+    directory: Path,
+    state: dict[str, Any],
+    evidence: str,
+    approver: str,
+    g0_rows: list[dict[str, Any]],
+    g1_rows: list[dict[str, Any]],
+) -> None:
+    state_name = str(state.get("state") or "SPEC_READY")
+    workflow = resolve_workflow(root, directory, state)
+    for gate, rows in (("G0", g0_rows), ("G1", g1_rows)):
+        checks = [
+            (
+                f"{row['id']} {row['name']}",
+                "PASS" if row["result"] == "pass" else "FAILED",
+                str(row["detail"]),
+            )
+            for row in rows
+        ]
+        write_gate_report(
+            root,
+            config,
+            directory,
+            state,
+            gate,
+            state_name,
+            "manual",
+            evidence,
+            checks,
+            [],
+            approver,
+        )
+        hashes: dict[str, str] = {}
+        for name in GATE_ARTIFACTS.get(gate, ()):
+            relative, digest, _ = artifact_digest(root, directory, name)
+            if digest != "MISSING":
+                hashes[relative] = digest
+        if hashes:
+            state.setdefault("artifact_hashes", {})[gate] = hashes
+    _ = workflow
+
+
+def command_impact(
+    args: argparse.Namespace, root: Path, config: dict[str, Any]
+) -> int:
+    spec_id, directory, state = resolve_spec(root, config, args.spec)
+    payload = build_impact(root, config, directory, state)
+    payload["ok"] = True
+    payload["kind"] = "impact"
+    if getattr(args, "json", False):
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        print(f"[sdd] {spec_id} impact")
+        print(
+            "  FEAT=" + (", ".join(payload["feat_ids"]) or "-")
+            + "  FR=" + (", ".join(payload["fr_ids"]) or "-")
+            + "  AC=" + str(len(payload["ac_ids"]))
+        )
+        print(
+            "  Tasks=" + (", ".join(payload["task_ids"]) or "-")
+            + "  approval_required="
+            + str(payload["approval_required"]).lower()
+        )
+        if payload["missing"]:
+            print("  missing=" + "; ".join(payload["missing"]))
+    return 0
+
+
+def command_change(
+    args: argparse.Namespace, root: Path, config: dict[str, Any]
+) -> int:
+    spec_id, directory, state = resolve_spec(root, config, args.spec)
+    current = str(state.get("state") or "DRAFT")
+    if current == "DRAFT":
+        raise SddError("Spec 还没有审批；先由人类执行 approve 再登记 change-set")
+    if current == "MERGED":
+        raise SddError("MERGED Spec 不允许新建 change-set")
+    reason = str(args.reason or "").strip()
+    if not reason:
+        raise SddError("change 需要非空 --reason")
+    impact = build_impact(root, config, directory, state)
+    if impact["missing"]:
+        raise SddError(
+            "change-set 引用了不存在的对象："
+            + "; ".join(impact["missing"])
+        )
+    records = change_set_records(directory)
+    next_number = 1 + max(
+        [
+            int(str(record["id"]).split("-")[1])
+            for record in records
+            if re.fullmatch(r"CHG-\d{3}", str(record["id"]))
+        ]
+        or [0]
+    )
+    change_id = f"CHG-{next_number:03d}"
+    docs_only = bool(getattr(args, "docs_only", False))
+    record: dict[str, Any] = {
+        "id": change_id,
+        "title": "纯文档/配置变更" if docs_only else "",
+        "status": "docs-only" if docs_only else "pending",
+        "reason": reason,
+        "created_at": now(),
+        "feat": impact["feat_ids"],
+        "fr": impact["fr_ids"],
+        "ac": impact["ac_ids"],
+        "task": impact["task_ids"],
+        "tests": impact["test_selectors"],
+        "code_paths": impact["code_paths"],
+        "risk": getattr(args, "risk", None) or state.get("risk") or "low",
+        "rollback": getattr(args, "rollback", None)
+        or "回退本次变更相关 commit",
+        "approval": "exempt" if docs_only else "pending",
+        "approved_by": "",
+        "approved_at": "",
+        "approved_spec_digest": "",
+    }
+    errors = validate_change_record(record)
+    if errors:
+        raise SddError("change-set 字段不完整：" + "; ".join(errors))
+    records.append(record)
+    path = change_set_path(directory)
+    write_text(path, render_change_set(records))
+    append_audit_event(
+        directory,
+        {
+            "event": "change_recorded",
+            "change_id": change_id,
+            "status": record["status"],
+            "reason": reason,
+            "actor": "agent",
+            "role": "implementer",
+        },
+    )
+    payload = {
+        "ok": True,
+        "kind": "change",
+        "spec": spec_id,
+        "change_id": change_id,
+        "status": record["status"],
+        "approval_required": not docs_only,
+        "change_set": path.relative_to(root).as_posix(),
+    }
+    if getattr(args, "json", False):
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        print(
+            f"[sdd] {spec_id} change {change_id} "
+            f"status={record['status']}"
+        )
+    return 0
+
+
+def command_reapprove(
+    args: argparse.Namespace, root: Path, config: dict[str, Any]
+) -> int:
+    spec_id, directory, state = resolve_spec(root, config, args.spec)
+    current = str(state.get("state") or "DRAFT")
+    if current == "DRAFT":
+        raise SddError("DRAFT Spec 需要先执行 approve，不能直接 reapprove")
+    if current == "MERGED":
+        raise SddError("MERGED Spec 不允许 reapprove")
+    if not args.human:
+        raise SddError(
+            "reapprove 需要 --human；agent 不允许代替人类重新确认需求"
+        )
+    reason = str(args.reason or "").strip()
+    evidence = str(args.evidence or "").strip()
+    if not reason:
+        raise SddError("reapprove 需要非空 --reason")
+    if not evidence:
+        raise SddError("reapprove 需要非空 --evidence")
+    approver = resolve_approver(root, getattr(args, "approver", None))
+    if config.get("require_approver") and approver == "unknown":
+        raise SddError("require_approver=true；请用 --approver 提供审批人")
+    spec_text = read_text(directory / "spec.md")
+    sync_feat_map(root, config, state, spec_text)
+    workflow = resolve_workflow(root, directory, state)
+    ctx = gate_context(root, config, directory, state)
+    g0_rows = run_gate_checks("G0", ctx, workflow)
+    g1_rows = run_gate_checks("G1", ctx, workflow)
+    errors = list(gate_rows_errors(g0_rows)) + list(gate_rows_errors(g1_rows))
+    errors.extend(
+        check_prd_index(root, config, state, spec_text, require_feat=True)
+    )
+    if errors:
+        for error in errors:
+            eprint(f"- {error}")
+        record_check_failure(directory, "spec", errors, gate="G0/G1")
+        raise SddError("reapprove 的 G0/G1 校验失败")
+    spec_path = directory / "spec.md"
+    digest = artifact_sha256(spec_path)
+    previous = str(state.get("approved_spec_digest") or "")
+    approved_at = now()
+    state["approved_spec_digest"] = digest
+    state["approved_at"] = approved_at
+    state["approved_by"] = approver
+    state["approval_evidence"] = evidence
+    state.setdefault("approvals", []).append(
+        {
+            "action": "reapprove_spec",
+            "approver": approver,
+            "at": approved_at,
+            "reason": reason,
+            "evidence": evidence,
+            "previous_digest": previous,
+            "sha256": digest,
+            "artifact": spec_path.relative_to(root).as_posix(),
+        }
+    )
+    approved_changes = approve_pending_changes(
+        directory, approver, digest, reason
+    )
+    state["last_approver"] = approver
+    refresh_approval_reports(
+        root,
+        config,
+        directory,
+        state,
+        evidence,
+        approver,
+        g0_rows,
+        g1_rows,
+    )
+    save_state(directory, state)
+    append_audit_event(
+        directory,
+        {
+            "event": "reapprove_spec",
+            "reason": reason,
+            "evidence": evidence,
+            "previous_digest": previous,
+            "approved_spec_digest": digest,
+            "approved_change_ids": approved_changes,
+            "approver": approver,
+            "actor": "human",
+            "role": "approver",
+        },
+    )
+    payload = {
+        "ok": True,
+        "kind": "reapprove",
+        "spec": spec_id,
+        "approved_spec_digest": digest,
+        "approved_change_ids": approved_changes,
+        "next": build_next_action(root, directory, state),
+    }
+    if getattr(args, "json", False):
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        print(
+            f"[sdd] {spec_id} reapproved; "
+            f"changes={', '.join(approved_changes) or '-'}"
+        )
+    return 0
+
+
 def command_approve(
     args: argparse.Namespace, root: Path, config: dict[str, Any]
 ) -> int:
@@ -7191,13 +7853,19 @@ def command_approve(
     if g0_errors or g1_errors:
         raise SddError("spec 校验失败，不能 approve")
     spec_path = directory / "spec.md"
+    approved_at = now()
+    approved_digest = artifact_sha256(spec_path) if spec_path.is_file() else ""
+    state["approved_spec_digest"] = approved_digest
+    state["approved_at"] = approved_at
+    state["approved_by"] = approver
+    state["approval_evidence"] = evidence
     state.setdefault("approvals", []).append(
         {
             "action": "approve_spec",
             "approver": approver,
-            "at": now(),
+            "at": approved_at,
             "artifact": spec_path.relative_to(root).as_posix(),
-            "sha256": artifact_sha256(spec_path) if spec_path.is_file() else "",
+            "sha256": approved_digest,
         }
     )
     state["last_approver"] = approver
@@ -8557,6 +9225,17 @@ def hook_pre_commit(root: Path, config: dict[str, Any]) -> int:
             text = git_show(root, path)
             if CLARIFY_RE.search(text):
                 errors.append(f"{path}: 还有 [NEEDS CLARIFICATION] 标记")
+    staged_code = [path for path in paths if is_code_path(path)]
+    for directory, state in active_approval_specs(root, config):
+        spec_id = str(state.get("spec_id") or directory.name)
+        errors.extend(approval_digest_errors(root, directory, state))
+        if staged_code:
+            errors.extend(change_set_errors(root, directory, state))
+            if docs_only_change_records(directory):
+                errors.append(
+                    f"G1-09 {spec_id} 的 change-set 声明 docs-only，"
+                    "但暂存区包含代码：" + ", ".join(staged_code)
+                )
     if errors:
         for error in errors:
             print(f"[SDD][BLOCK] {error}", file=sys.stderr)
@@ -8820,6 +9499,38 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--approver", help="approver identity, default: git config user")
     p.add_argument("--human", action="store_true")
     p.set_defaults(func=command_approve)
+
+    p = sub.add_parser(
+        "reapprove",
+        help="human-only re-approval after the approved Spec changes",
+    )
+    add_spec_option(p)
+    p.add_argument("--reason", required=True)
+    p.add_argument("--evidence", required=True)
+    p.add_argument("--approver", help="approver identity, default: git config user")
+    p.add_argument("--human", action="store_true")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=command_reapprove)
+
+    p = sub.add_parser(
+        "impact",
+        help="read-only FEAT/FR/AC/Task/test/code impact view",
+    )
+    add_spec_option(p)
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=command_impact)
+
+    p = sub.add_parser(
+        "change",
+        help="record a change-set before code changes",
+    )
+    add_spec_option(p)
+    p.add_argument("--reason", required=True)
+    p.add_argument("--docs-only", action="store_true")
+    p.add_argument("--risk", choices=["low", "medium", "high"])
+    p.add_argument("--rollback")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=command_change)
 
     p = sub.add_parser("waive", help="human-only Gate check waiver")
     add_spec_option(p)
