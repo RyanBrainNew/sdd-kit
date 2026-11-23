@@ -1159,6 +1159,7 @@ def resolve_workflow(
             )
         return preset
 
+    config = load_config(root)
     preset = load_workflow_preset(
         root,
         str(config.get("workflow") or DEFAULT_WORKFLOW),
