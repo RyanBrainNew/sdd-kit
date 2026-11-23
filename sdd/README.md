@@ -124,6 +124,7 @@ python -m sdd approve --spec SPEC-ORDER-001 --human --evidence "需求已确认"
 python -m sdd merge --spec SPEC-ORDER-001 --human --evidence "交付已确认"
 python -m sdd unblock --spec SPEC-ORDER-001 --human --evidence "产品已确认"
 python -m sdd rewind --spec SPEC-ORDER-001 --to SPEC_READY --reason "设计遗漏" --human
+python -m sdd waive --spec SPEC-ORDER-001 --check G4-02 --scope "仅本 Spec" --reason "补偿控制已上线" --expires 2026-12-31 --evidence "监控已启用" --human
 
 # 报告与 PR
 python -m sdd report --spec SPEC-ORDER-001 --json
@@ -169,7 +170,7 @@ python -m sdd workflow validate --file sdd/workflows/l2-refactor.json
 | `sdd_context` / `sdd_read_artifact` | 读取上下文和工件 |
 | `sdd_report` / `sdd_pr` / `sdd_verify` | 报告、PR、验证 |
 
-不提供 `approve`、`merge`、`unblock`、`rewind`。
+不提供 `approve`、`merge`、`unblock`、`rewind`、`waive`。
 
 本地 MCP：
 

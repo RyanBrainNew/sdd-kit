@@ -66,6 +66,7 @@ class SddMcpServerTest(unittest.TestCase):
         self.assertIn("sdd_reserve_spec_id", names)
         self.assertNotIn("sdd_approve", names)
         self.assertNotIn("sdd_merge", names)
+        self.assertNotIn("sdd_waive", names)
         self.assertFalse(getattr(result, "is_error", getattr(result, "isError", False)))
 
     def test_local_root_mode_health(self):

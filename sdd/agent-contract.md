@@ -56,7 +56,7 @@ GitHub 完成，不产生额外的 SDD 状态 PR。
 `risk_stop` 的需求不允许使用该预设。`l2-strict` 的 G0–G5 全部需要人工确认，
 `verification.md` 还必须有独立审查章节，reviewer session 不能等于实现 session。
 
-`approve`、`merge`、`unblock`、`rewind` 只能由人执行；MCP 不暴露这些工具。
+`approve`、`merge`、`unblock`、`rewind`、`waive` 只能由人执行；MCP 不暴露这些工具。
 人工命令可加 `--approver "张三 <zhang@example.com>"`；不传时取 Git 配置。
 Agent 不传 `--approver`，也不得代替人执行这些命令。
 
@@ -66,6 +66,10 @@ Agent 不传 `--approver`，也不得代替人执行这些命令。
 
 `rewind` 只允许回到更早阶段，并且必须带 `--reason`。它会归档被作废的工件、
 移动 Gate 报告、重置相关 Task，并在 `events.jsonl` 记录 `rewind` 事件。
+
+`waive` 只接受可豁免且非 `redline` 的 required 检查，并要求 `--scope`、
+`--reason`、未来 `--expires` 和 `--evidence`。豁免绑定当前 Spec 与 Gate 产物
+哈希；产物变化或到期后自动失效。`G5-01` 等安全/证据链红线永远不可豁免。
 
 Gate 报告会绑定当前产物的 SHA-256。批准后修改 `spec.md`、`design.md`、
 `tasks.md` 的任务计划或 `verification.md`，CI 会失败并要求重新过 Gate 或回退。

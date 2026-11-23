@@ -2,7 +2,7 @@
 
 > 本文是仓库 README 的完整内容归档，保留全部章节、命令与问答。
 > 项目首页见 [README](../README.md)，架构取舍见 [ARCHITECTURE.md](../ARCHITECTURE.md)。
-> 文中文件路径默认相对仓库根目录。当前版本 0.9.4。
+> 文中文件路径默认相对仓库根目录。当前版本 0.9.5。
 
 ---
 
@@ -16,7 +16,7 @@
 - 可选命名工作流预设：`l2-standard`、`l2-hotfix`、`l2-strict`，Spec 创建时固定版本；
 - MCP 是可选适配器；没有 MCP，`AGENTS.md + CLI + Git Hook + CI` 也能跑完整流程。
 
-当前版本：`0.9.4`。
+当前版本：`0.9.5`。
 
 ---
 
@@ -145,7 +145,7 @@ MCP 只是把同一套 CLI 能力包装成结构化工具，方便 Agent 调用�
 | `sdd_block` | 记录阻塞 |
 | `sdd_read_artifact` / `sdd_context` | 读取工件、服务卡、契约、ADR |
 
-**故意不提供** `approve`、`merge`、`unblock`、`rewind`。这些永远由人执行。
+**故意不提供** `approve`、`merge`、`unblock`、`rewind`、`waive`。这些永远由人执行。
 
 初期建议只用 CLI；等需要统一版本、统一上下文、统一审计入口时，再部署一个共享 MCP server。
 
@@ -635,6 +635,22 @@ PR 由管理员审阅并合并，不再需要第二个状态 PR。
 `git config user.name` / `user.email`。`--human` 只表示“这是人工动作”，
 不提供身份认证；真正的硬控制仍是分支保护、CODEOWNERS 和 PR review。
 
+G0–G5 的自动检查都有稳定 ID，并分为 `required`、`advisory` 和不可降级的
+`redline`。required 失败阻断；advisory 失败只产生 WARN；只有允许豁免的
+非红线 required 检查才能由人记录范围化豁免：
+
+```powershell
+python -m sdd waive --spec SPEC-ORDER-001 --check G4-02 `
+  --scope "仅本 Spec 的历史证据缺口" `
+  --reason "补偿控制已上线" `
+  --expires 2026-12-31 `
+  --evidence "监控与人工复核已启用" `
+  --human --approver "张三 <zhang@example.com>"
+```
+
+豁免绑定检查 ID、Gate、Spec 和 Gate 产物哈希；到期或产物变化后自动失效。
+`G5-01` 等安全/证据链红线永远不可豁免。`waive` 只在 CLI 暴露，MCP 不提供。
+
 `events.jsonl` 从 0.7.0 起写入 `schema: 2`，新增 `role`、`session`、
 `session_source`、`artifacts`、`approver` 等字段，并记录 `check_failed`
 事件。旧事件保持原样，不回写。
@@ -650,10 +666,15 @@ python -m sdd inbox --stale-days 7
 python -m sdd rewind --spec SPEC-ORDER-001 --to SPEC_READY `
   --reason "验证发现设计遗漏" --human --approver "张三 <zhang@example.com>"
 
-# 只读指标：lead time、阶段耗时、返工、人工介入、Gate 失败、AC 覆盖
+# 只读指标：lead time、阶段耗时、返工、人工介入、Gate 失败、AC 覆盖、按检查 ID 的 pass/warn/block/waived
 python -m sdd metrics --json
 python -m sdd metrics --since 2026-11-01 --json
 ```
+
+`inbox` 会把最新 Gate 报告中的 WARN/WAIVED 行作为 `warnings[]` 附到对应
+Spec，并在没有其他人工事项时生成 `review_warning` 待办。`metrics --json` 的
+`specs[].checks` 与 `aggregate.checks` 按检查 ID 输出各状态次数、通过率、
+告警率、阻断率和豁免率；旧五列报告仍按 PASS/BLOCK 读取。
 
 `rewind` 的规则：
 
@@ -1066,7 +1087,7 @@ Windows 下 Hook 由 Git Bash 执行。不要用 `--no-verify` 绕过。
 
 拒绝。状态只能通过 `python -m sdd` 改变。
 
-### 14.8 Agent 想 `approve` / `merge` / `unblock`
+### 14.8 Agent 想 `approve` / `merge` / `unblock` / `rewind` / `waive`
 
 拒绝。这些是人工动作，CLI 强制 `--human`，MCP 不暴露。
 

@@ -1909,6 +1909,108 @@ class GateInboxMetricsTests(SddFlowBase):
         self.assertIn("block_rate", checks["G0-06"])
 
 
+class GateBoundaryTests(SddFlowBase):
+    def test_waive_is_cli_only_human_action(self):
+        # [AC-005-1]
+        help_result = subprocess.run(
+            [sys.executable, "-m", "sdd", "--help"],
+            cwd=KIT_ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        self.assertEqual(help_result.returncode, 0)
+        self.assertIn("waive", help_result.stdout)
+
+        self.new_spec()
+        expires = (
+            datetime.now().astimezone() + timedelta(days=2)
+        ).isoformat()
+        rejected = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "sdd",
+                "--root",
+                str(self.root),
+                "waive",
+                "--spec",
+                SPEC_ID,
+                "--check",
+                "G4-02",
+                "--scope",
+                "demo",
+                "--reason",
+                "demo",
+                "--expires",
+                expires,
+                "--evidence",
+                "demo",
+            ],
+            cwd=KIT_ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        self.assertEqual(rejected.returncode, 2)
+        self.assertIn("--human", rejected.stderr)
+        self.assertIn("waive", Workspace.AUTOPILOT_CONTRACT["human_only"])
+
+        server_source = (
+            KIT_ROOT / "sdd" / "mcp" / "server.py"
+        ).read_text(encoding="utf-8")
+        service_source = (
+            KIT_ROOT / "sdd" / "mcp" / "service.py"
+        ).read_text(encoding="utf-8")
+        self.assertNotIn("sdd_waive", server_source)
+        self.assertNotIn("def waive(", service_source)
+
+    def test_release_metadata_and_ci_contract(self):
+        # [AC-005-2]
+        version = (KIT_ROOT / "sdd" / "VERSION").read_text(
+            encoding="utf-8"
+        ).strip()
+        self.assertEqual(version, "0.9.5")
+        self.assertIn(
+            f'__version__ = "{version}"',
+            (KIT_ROOT / "sdd" / "__init__.py").read_text(encoding="utf-8"),
+        )
+        self.assertIn(
+            f'VERSION = "{version}"',
+            (KIT_ROOT / "sdd" / "scripts" / "sdd.py").read_text(
+                encoding="utf-8"
+            ),
+        )
+        manifest = json.loads(
+            (KIT_ROOT / "sdd" / "manifest.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(manifest["version"], version)
+        for name in (
+            "sdd/scripts/sdd.py",
+            "sdd/core.py",
+            "sdd/cli.py",
+            "sdd/agent-block.md",
+            "sdd/agent-contract.md",
+        ):
+            digest = hashlib.sha256(
+                (KIT_ROOT / name).read_bytes()
+            ).hexdigest()
+            self.assertEqual(manifest["files"][name], digest)
+
+        workflow = (
+            KIT_ROOT / ".github" / "workflows" / "tests.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn("python -m sdd verify-core", workflow)
+        self.assertIn("python -m sdd verify-agent", workflow)
+        self.assertIn(
+            "python -m sdd check --all --stage ci --check-git",
+            workflow,
+        )
+        self.assertNotIn("continue-on-error", workflow)
+
+
 class GateRegistryTests(SddFlowBase):
     def test_registry_covers_all_gates(self):
         # [AC-001-1]

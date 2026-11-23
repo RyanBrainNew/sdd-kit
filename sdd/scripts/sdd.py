@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any, Iterable, Optional
 
 
-VERSION = "0.9.4"
+VERSION = "0.9.5"
 EVENT_SCHEMA = 2
 
 SPEC_SECTIONS = (

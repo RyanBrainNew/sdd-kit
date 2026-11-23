@@ -7,7 +7,7 @@
 **开发者只说一次需求，Agent 按仓库里的 `next.action` 自动推进。你只在两个地方出现：确认 Spec，确认交付。**
 
 [![tests](https://github.com/RyanBrainNew/sdd-kit/actions/workflows/tests.yml/badge.svg)](https://github.com/RyanBrainNew/sdd-kit/actions/workflows/tests.yml)
-![version](https://img.shields.io/badge/version-0.9.4-5ee7a8)
+![version](https://img.shields.io/badge/version-0.9.5-5ee7a8)
 ![python](https://img.shields.io/badge/python-3.11%2B-3776AB)
 ![license](https://img.shields.io/badge/license-Apache--2.0-5ee7a8)
 [![site](https://img.shields.io/badge/site-GitHub%20Pages-5ee7a8)](https://ryanbrainnew.github.io/sdd-kit/)
@@ -25,20 +25,21 @@ SDD Kit 把公司 SDD-L2 的流程做成**仓库自带的默认开发路径**，
   `l2-refactor`；Spec 创建时固定版本。
 - **任何 Agent 都能接入**：Claude Code、Cursor、Kiro 或自研 Agent，只要能执行 shell，就调用同一个 CLI。
 - **零初始化**：平台团队 bootstrap 一次，开发者 `git clone` 后直接开始。
-- **流程能被强制**：Git Hook 与 CI 校验工件，`approve`、`merge`、`unblock`、`rewind` 强制由人执行。
+- **流程能被强制**：Git Hook 与 CI 校验工件，`approve`、`merge`、`unblock`、
+  `rewind`、`waive` 强制由人执行。
 
 <img src="docs/assets/site-preview.png" alt="SDD Kit 官网首屏" width="100%">
 
-## 当前形态（0.8.0）
+## 当前形态（0.9.5）
 
 | 维度 | 当前实现 |
 |---|---|
 | CLI 入口 | `python -m sdd resume / start-work / submit / submit-task / check` |
 | 状态机 | `DRAFT` → `SPEC_READY` → `DESIGN_READY` → `TASKS_READY` → `IMPLEMENTING` → `VERIFYING` → `PR_READY` → `MERGED` |
 | 工作流 | `l2-standard` 默认；`l2-hotfix` 用轻量设计并拒绝高风险；`l2-strict` 的 G0–G5 全部人工；`l2-refactor` 使用 schema 2 声明检查组合与上下文 |
-| 人工边界 | 正常流程只有 Spec 确认、交付确认两个计划内检查点；交付确认后才创建 PR；`unblock`、`rewind` 是例外动作 |
-| 证据链 | Gate 报告、产物 SHA-256、`state.json`、`events.jsonl`、测试证据都随 Git 提交 |
-| 可运维 | `board`、`inbox`、`metrics`、`events` 已可用；`rewind` 是人工回退动作 |
+| 人工边界 | 正常流程只有 Spec 确认、交付确认两个计划内检查点；交付确认后才创建 PR；`unblock`、`rewind`、`waive` 是人工例外动作 |
+| 证据链 | G0–G5 稳定检查 ID、`pass/warn/block`、产物 SHA-256、`state.json`、`events.jsonl`、测试证据都随 Git 提交 |
+| 可运维 | `board`、`inbox`、`metrics`、`events` 已可用；告警可按 Spec/Gate/检查 ID 追溯 |
 | 集成 | MCP 是可选薄适配；同时提供 GitHub Actions 与 GitLab CI 模板 |
 | 官方门面 | `site/` 由 GitHub Pages 发布；本 README 只保留首页和导航 |
 
@@ -145,6 +146,7 @@ LF 规范化，历史 CRLF 哈希仍可验证，Windows 与 Linux 工作区不�
 | `python -m sdd approve --spec <id> --human --evidence "..."` | 人 | 确认 Spec |
 | `python -m sdd merge --spec <id> --human --evidence "..."` | 人 | 确认交付（之后才开 PR） |
 | `python -m sdd rewind --spec <id> --to <stage> --reason "..." --human` | 人 | 回退到更早阶段并保留审计 |
+| `python -m sdd waive --spec <id> --check <check-id> --scope "..." --reason "..." --expires <iso> --evidence "..." --human` | 人 | 对可豁免检查记录有范围、有期限的人工豁免 |
 | `python -m sdd check --all --stage ci` | CI | 校验全部工件、Gate 与 Git 状态 |
 
 ## 仓库结构
@@ -211,6 +213,7 @@ Gate 报告单独写入 `sdd/reports/<Spec ID>/`，与 `docs/` 下的 Spec 工�
 | 已交付 | 0.7.0 | `rewind`、`inbox`、`metrics`、事件 v2、产物哈希、审批身份 |
 | 已交付 | 0.8.0 | 三套命名工作流、Spec 快照、`l2-strict` 独立审查、Apache-2.0 与官网 |
 | 已交付 | 0.9.4 | schema 2 工作流 Profile、`workflow validate`、`l2-refactor` 示范预设 |
+| 已交付 | 0.9.5 | G0–G5 稳定检查 ID、`pass/warn/block`、范围化人工豁免、告警与按 ID 指标 |
 | 未开发（0.9.0） | [#1](https://github.com/RyanBrainNew/sdd-kit/issues/1) | 只读单文件 HTML 运行视图 `sdd view` |
 | 未开发（0.9.0） | [#2](https://github.com/RyanBrainNew/sdd-kit/issues/2) | 外部 runner 接入契约 `deploy/runner/CONTRACT.md` |
 | 未开发（后续） | [#3](https://github.com/RyanBrainNew/sdd-kit/issues/3) | 固定预设升级 `upgrade-workflow` |
@@ -278,7 +281,7 @@ python -m sdd manifest --write
 2. 从 `main` 切分支，保持 diff 聚焦。
 3. 修改核心时同步更新测试、README、`sdd/agent-contract.md` 和相关提示词。
 4. 提交前运行上面的全部校验命令。
-5. 人工动作 `approve`、`merge`、`unblock`、`rewind` 只能由人执行，CI 会拒绝 Agent 代办。
+5. 人工动作 `approve`、`merge`、`unblock`、`rewind`、`waive` 只能由人执行，CI 会拒绝 Agent 代办。
 
 ## 许可证
 
@@ -291,6 +294,6 @@ Copyright 2026 RyanBrainNew
 
 <div align="center">
 
-**SDD Kit 0.9.4** · 把 SDD 装进仓库
+**SDD Kit 0.9.5** · 把 SDD 装进仓库
 
 </div>
