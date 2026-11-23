@@ -26,8 +26,18 @@ def build_parser() -> argparse.ArgumentParser:
         prog="bootstrap.py",
         description="Install the repository-local SDD core into a project",
     )
-    parser.add_argument("--target", required=True, help="target project root")
-    parser.add_argument("--project", required=True, help="project id in sdd/config.json")
+    parser.add_argument(
+        "--target",
+        default=".",
+        help="target project root (default: current directory)",
+    )
+    parser.add_argument(
+        "--project",
+        help=(
+            "project id in sdd/config.json "
+            "(default: existing value, otherwise the target directory name)"
+        ),
+    )
     parser.add_argument(
         "--test-command",
         action="append",
@@ -88,6 +98,11 @@ def bootstrap(args: argparse.Namespace) -> int:
     target = Path(args.target).expanduser().resolve()
     if not target.is_dir():
         raise SystemExit(f"target is not a directory: {target}")
+    if target == KIT_ROOT or KIT_ROOT in target.parents:
+        raise SystemExit(
+            "target is inside the sdd-kit source repository; "
+            "run bootstrap from the project directory or pass --target <project root>"
+        )
 
     sdd_target = target / "sdd"
     if sdd_target.exists() and not args.force:
@@ -96,20 +111,29 @@ def bootstrap(args: argparse.Namespace) -> int:
             "(existing specs and context are preserved)"
         )
 
-    if args.dry_run:
-        print(f"[dry-run] copy {KIT_ROOT / 'sdd'} -> {sdd_target}")
-        print(f"[dry-run] write {target / 'sdd' / 'config.json'}")
-        print("[dry-run] merge the managed SDD block into AGENTS.md")
-        print("[dry-run] write sdd/manifest.json")
-        print(f"[dry-run] init hooks={not args.no_hooks} ci={args.ci}")
-        return 0
-
     config_path = sdd_target / "config.json"
     existing_config = (
         json.loads(config_path.read_text(encoding="utf-8"))
         if config_path.is_file()
         else {}
     )
+    project = args.project or existing_config.get("project") or target.name
+    if not project:
+        raise SystemExit(
+            "could not derive a project id from the target directory; "
+            "pass --project <id>"
+        )
+
+    if args.dry_run:
+        print(f"[dry-run] target {target}")
+        print(f"[dry-run] project {project}")
+        print(f"[dry-run] copy {KIT_ROOT / 'sdd'} -> {sdd_target}")
+        print(f"[dry-run] write {config_path}")
+        print("[dry-run] merge the managed SDD block into AGENTS.md")
+        print("[dry-run] write sdd/manifest.json")
+        print(f"[dry-run] init hooks={not args.no_hooks} ci={args.ci}")
+        return 0
+
     sdd_target.mkdir(parents=True, exist_ok=True)
     shutil.copytree(
         KIT_ROOT / "sdd",
@@ -120,7 +144,7 @@ def bootstrap(args: argparse.Namespace) -> int:
 
     config = json.loads(config_path.read_text(encoding="utf-8"))
     config.update(existing_config)
-    config["project"] = args.project
+    config["project"] = project
     config["sdd_level"] = "L2"
     if not existing_config:
         config["require_approver"] = True
@@ -179,8 +203,14 @@ def bootstrap(args: argparse.Namespace) -> int:
     print("")
     print("[sdd] bootstrap complete")
     print("[sdd] next: fill project facts in AGENTS.md (stack, build, test commands)")
-    if not args.test_command:
+    if not config.get("test_commands"):
         print("[sdd] warning: test_commands is empty; add it before sdd verify")
+    elif not args.test_command:
+        print(
+            "[sdd] test commands: "
+            + " | ".join(config["test_commands"])
+            + " (override with --test-command)"
+        )
     print(
         "[sdd] first spec: python -m sdd start-work "
         '--work-item srdcloud-123 --title "..." --json'

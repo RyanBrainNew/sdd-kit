@@ -88,11 +88,21 @@ Spec 创建时会把预设快照写入 `docs/specs/<Spec>/workflow.json`；之�
 ### 1. 平台团队：每个仓库接入一次
 
 ```powershell
-python bootstrap.py --target "D:\repos\order-api" --project order-api `
-  --test-command "python -m pytest -q" --ci gitlab
+cd D:\repos\order-api
+python D:\tools\sdd-kit\bootstrap.py
 ```
 
-它会复制 `sdd/` 核心、合并 `AGENTS.md` 托管块、写入 manifest、安装 Git Hook 与 CI 模板。已有 `AGENTS.md` 不会被覆盖。
+目标默认是当前目录，项目 ID 默认取目录名 `order-api`，所以不需要再传 `--target` 和
+`--project`。它会复制 `sdd/` 核心、合并 `AGENTS.md` 托管块、写入 manifest、安装 Git Hook
+与 CI 模板；已有 `AGENTS.md` 不会被覆盖。
+
+仓库用 pytest 或需要 CI 模板时再补参数：
+
+```powershell
+python D:\tools\sdd-kit\bootstrap.py --test-command "python -m pytest -q" --ci gitlab
+```
+
+在 sdd-kit 目录内执行 `python bootstrap.py --target "D:\repos\order-api"` 也等价。
 
 ### 2. 开发者：每次会话恢复
 
