@@ -4865,7 +4865,12 @@ def check_git(root: Path, spec_id: str, state: str = "DRAFT") -> list[str]:
         }
     shas = git_commits_since(root, base)
     if not shas:
-        return []
+        _, recent, _ = git_read(root, ["log", "-20", "--pretty=%B"])
+        if f"Spec-Id: {spec_id}" in recent:
+            return []
+        return [
+            f"merge-base {base[:7]} 之后没有 `Spec-Id: {spec_id}` 的 commit"
+        ]
     errors: list[str] = []
     seen_spec = False
     for sha in shas:
