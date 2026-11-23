@@ -1975,6 +1975,119 @@ class ContextBundleTests(SddFlowBase):
         self.assertEqual(bundle["fix_patterns"], [])
 
 
+def valid_v2_profile(name="l2-refactor"):
+    return {
+        "schema": 2,
+        "name": name,
+        "version": 1,
+        "description": "行为保持型改造流程",
+        "stages": list(engine.STAGE_ORDER),
+        "artifacts": {
+            "DRAFT": "spec.md",
+            "SPEC_READY": "design.md",
+            "DESIGN_READY": "tasks.md",
+            "TASKS_READY": "tasks.md",
+            "IMPLEMENTING": "tasks.md",
+            "VERIFYING": "verification.md",
+            "PR_READY": "PR_BODY.md",
+        },
+        "gates": {
+            "G0": "human",
+            "G1": "auto",
+            "G2": "auto",
+            "G3": "auto",
+            "G4": "auto",
+            "G5": "auto",
+        },
+        "required_gates": {
+            stage: engine.required_gates(stage) for stage in engine.STAGE_ORDER
+        },
+        "gate_checks": {
+            "G0": ["G0-01", "G0-02", "G0-03", "G0-04", "G0-05", "G0-06"],
+            "G1": ["G1-01", "G1-02", "G1-03", "G1-04"],
+        },
+        "human_checkpoints": [
+            {"type": "approve_spec"},
+            {"type": "confirm_delivery"},
+        ],
+        "design_mode": "full",
+        "review_required": False,
+        "risk_stop": ["data-loss"],
+        "context_rules": {
+            "include": ["docs/knowledge/**"],
+            "exclude": ["docs/prd.md"],
+        },
+        "allow_rewind_to": [
+            "DRAFT",
+            "SPEC_READY",
+            "DESIGN_READY",
+            "TASKS_READY",
+            "IMPLEMENTING",
+            "VERIFYING",
+        ],
+    }
+
+
+class WorkflowProfileTests(unittest.TestCase):
+    def test_valid_v2_profile(self):
+        # [AC-001-1]
+        preset = valid_v2_profile()
+        self.assertEqual(
+            engine.validate_workflow_preset(preset, "l2-refactor.json"), []
+        )
+        digest = engine.workflow_digest(preset)
+        self.assertRegex(digest, r"^[0-9a-f]{64}$")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            shutil.copytree(KIT_ROOT / "sdd", root / "sdd")
+            path = root / "sdd" / "workflows" / "l2-refactor.json"
+            path.write_text(
+                json.dumps(preset, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            loaded = engine.load_workflow_preset(root, "l2-refactor")
+            self.assertEqual(loaded["schema"], 2)
+            self.assertEqual(
+                engine.workflow_digest(loaded), engine.workflow_digest(preset)
+            )
+
+    def test_unknown_fields_report_paths(self):
+        # [AC-001-2]
+        preset = valid_v2_profile()
+        preset["unexpected"] = True
+        preset["context_rules"]["bogus"] = []
+        errors = engine.validate_workflow_preset(preset, "profile.json")
+        rendered = "\n".join(errors)
+        self.assertIn("$.unexpected", rendered)
+        self.assertIn("context_rules.bogus", rendered)
+
+    def test_schema1_snapshot_unchanged(self):
+        # [AC-001-3]
+        self.assertEqual(engine.WORKFLOW_SCHEMA, 1)
+        for name in ("l2-standard", "l2-hotfix", "l2-strict"):
+            preset = json.loads(
+                (KIT_ROOT / "sdd" / "workflows" / f"{name}.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(
+                engine.validate_workflow_preset(preset, f"{name}.json"), []
+            )
+        standard = json.loads(
+            (KIT_ROOT / "sdd" / "workflows" / "l2-standard.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(
+            engine.workflow_digest(standard),
+            "ae89c532988018c3f6d3c222c4a66da2a44981f33c8401d62a632bef66a8e910",
+        )
+        standard["legacy_extension"] = True
+        self.assertEqual(
+            engine.validate_workflow_preset(standard, "l2-standard.json"), []
+        )
+
+
 class ArtifactHashTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

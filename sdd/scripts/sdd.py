@@ -268,9 +268,51 @@ STAGE_ORDER = (
 )
 
 WORKFLOW_SCHEMA = 1
+WORKFLOW_SCHEMA_V2 = 2
+WORKFLOW_SCHEMAS = {WORKFLOW_SCHEMA, WORKFLOW_SCHEMA_V2}
 DEFAULT_WORKFLOW = "l2-standard"
 WORKFLOW_POLICIES = {"human", "auto", "auto_if_no_risk"}
 WORKFLOW_DESIGN_MODES = {"full", "lite"}
+WORKFLOW_V2_FIELDS = {
+    "schema",
+    "name",
+    "version",
+    "description",
+    "stages",
+    "artifacts",
+    "gates",
+    "required_gates",
+    "gate_checks",
+    "human_checkpoints",
+    "design_mode",
+    "review_required",
+    "risk_stop",
+    "context_rules",
+    "allow_rewind_to",
+    "risk_policy",
+}
+HUMAN_CHECKPOINT_TYPES = {"approve_spec", "confirm_delivery", "complete_gate"}
+HUMAN_CHECKPOINT_FIELDS = {"type", "gate"}
+CONTEXT_RULE_FIELDS = {"include", "exclude"}
+RISK_POLICY_FIELDS = {"max_risk", "deny_risk_stop"}
+CANONICAL_STAGE_ARTIFACTS = {
+    "DRAFT": "spec.md",
+    "SPEC_READY": "design.md",
+    "DESIGN_READY": "tasks.md",
+    "TASKS_READY": "tasks.md",
+    "IMPLEMENTING": "tasks.md",
+    "VERIFYING": "verification.md",
+    "PR_READY": "PR_BODY.md",
+}
+GATE_OWNER_STAGE = {
+    "G0": "SPEC_READY",
+    "G1": "SPEC_READY",
+    "G2": "DESIGN_READY",
+    "G3": "TASKS_READY",
+    "G4": "VERIFYING",
+    "G5": "PR_READY",
+}
+WORKFLOW_REQUIRED_STAGES = {"IMPLEMENTING", "VERIFYING"}
 RISK_RANK = {"low": 0, "medium": 1, "high": 2}
 LEGACY_STANDARD_GATES = {
     "G0": "human",
@@ -587,6 +629,22 @@ def workflow_defaults() -> dict[str, list[str]]:
 def validate_workflow_preset(
     preset: dict[str, Any], source: str
 ) -> list[str]:
+    if not isinstance(preset, dict):
+        return [f"{source} 必须是 JSON 对象"]
+    schema = preset.get("schema")
+    if schema == WORKFLOW_SCHEMA:
+        return validate_workflow_v1(preset, source)
+    if schema == WORKFLOW_SCHEMA_V2:
+        return validate_workflow_v2(preset, source)
+    return [
+        f"{source} 的 schema 必须是 "
+        + " 或 ".join(str(item) for item in sorted(WORKFLOW_SCHEMAS))
+    ]
+
+
+def validate_workflow_v1(
+    preset: dict[str, Any], source: str
+) -> list[str]:
     errors: list[str] = []
     if not isinstance(preset, dict):
         return [f"{source} 必须是 JSON 对象"]
@@ -664,6 +722,340 @@ def validate_workflow_preset(
         if not isinstance(risk_policy, dict):
             errors.append(f"{source} 的 risk_policy 必须是对象")
         else:
+            max_risk = risk_policy.get("max_risk")
+            if max_risk is not None and max_risk not in RISK_RANK:
+                errors.append(
+                    f"{source} 的 risk_policy.max_risk 必须是 low/medium/high"
+                )
+            if "deny_risk_stop" in risk_policy and not isinstance(
+                risk_policy["deny_risk_stop"], bool
+            ):
+                errors.append(
+                    f"{source} 的 risk_policy.deny_risk_stop 必须是布尔值"
+                )
+    return errors
+
+
+def validate_workflow_stages(
+    stages: Any, source: str
+) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(stages, list) or not stages:
+        return [f"{source} 的 stages 必须是非空数组"]
+    seen: dict[str, int] = {}
+    for index, stage in enumerate(stages):
+        path = f"stages[{index}]"
+        if not isinstance(stage, str):
+            errors.append(f"{source} 的 {path} 必须是字符串")
+            continue
+        if stage not in STAGE_ORDER:
+            errors.append(f"{source} 的 {path} 不是规范阶段：{stage}")
+            continue
+        if stage in seen:
+            errors.append(
+                f"{source} 的 {path} 重复出现：{stage}（已在 stages[{seen[stage]}]）"
+            )
+            continue
+        seen[stage] = index
+    if errors:
+        return errors
+    if stages[0] != "DRAFT":
+        errors.append(f"{source} 的 stages[0] 必须是 DRAFT")
+    if stages[-1] != "MERGED":
+        errors.append(f"{source} 的 stages[-1] 必须是 MERGED")
+    for index in range(1, len(stages)):
+        previous = STAGE_ORDER.index(stages[index - 1])
+        current = STAGE_ORDER.index(stages[index])
+        if current <= previous:
+            errors.append(
+                f"{source} 的 stages[{index}] 必须严格晚于 stages[{index - 1}]"
+            )
+    for stage in STAGE_ORDER:
+        if stage in seen:
+            continue
+        if stage in WORKFLOW_REQUIRED_STAGES:
+            errors.append(
+                f"{source} 的 stages 不能省略 {stage}；该阶段承载不可跳过的执行工作"
+            )
+    return errors
+
+
+def context_rule_pattern_errors(
+    source: str, path: str, value: Any
+) -> list[str]:
+    if not isinstance(value, str) or not value.strip():
+        return [f"{source} 的 {path} 必须是非空字符串"]
+    pattern = value.strip().replace("\\", "/")
+    errors: list[str] = []
+    if pattern.startswith("/") or re.match(r"^[A-Za-z]:", pattern):
+        errors.append(f"{source} 的 {path} 不能是绝对路径：{value}")
+    if ".." in pattern.split("/"):
+        errors.append(f"{source} 的 {path} 不能包含 ..：{value}")
+    if pattern == "docs/specs" or pattern.startswith("docs/specs/"):
+        errors.append(f"{source} 的 {path} 不能引用 docs/specs 目录：{value}")
+    if pattern == ".sdd" or pattern.startswith(".sdd/"):
+        errors.append(f"{source} 的 {path} 不能引用 .sdd 运行目录：{value}")
+    return errors
+
+
+def validate_workflow_v2(
+    preset: dict[str, Any], source: str
+) -> list[str]:
+    errors: list[str] = []
+    for key in sorted(set(preset) - WORKFLOW_V2_FIELDS):
+        errors.append(
+            f"{source} 的 $.{key} 不是 schema 2 支持的字段"
+        )
+    if preset.get("schema") != WORKFLOW_SCHEMA_V2:
+        errors.append(f"{source} 的 schema 必须是 {WORKFLOW_SCHEMA_V2}")
+    name = str(preset.get("name") or "")
+    if not re.fullmatch(r"[a-z][a-z0-9-]*", name):
+        errors.append(f"{source} 的 name 必须是小写字母、数字和短横线")
+    version = preset.get("version")
+    if not isinstance(version, int) or version < 1:
+        errors.append(f"{source} 的 version 必须是正整数")
+    description = preset.get("description")
+    if not isinstance(description, str) or not description.strip():
+        errors.append(f"{source} 的 description 必须是非空说明")
+
+    stages = preset.get("stages")
+    stage_errors = validate_workflow_stages(stages, source)
+    errors.extend(stage_errors)
+    declared = (
+        [stage for stage in stages if isinstance(stage, str)]
+        if isinstance(stages, list) and not stage_errors
+        else []
+    )
+    declared_set = set(declared)
+
+    artifacts = preset.get("artifacts")
+    if not isinstance(artifacts, dict):
+        errors.append(f"{source} 的 artifacts 必须是对象")
+    else:
+        for stage, artifact in artifacts.items():
+            path = f"artifacts.{stage}"
+            if stage not in STAGE_ORDER:
+                errors.append(f"{source} 的 {path} 包含未知阶段：{stage}")
+                continue
+            if declared_set and stage not in declared_set:
+                errors.append(f"{source} 的 {path} 指向未声明的阶段：{stage}")
+                continue
+            canonical = CANONICAL_STAGE_ARTIFACTS.get(str(stage))
+            if canonical is None:
+                errors.append(f"{source} 的 {path} 没有可声明的规范产物")
+            elif artifact != canonical:
+                errors.append(
+                    f"{source} 的 {path} 必须是 {canonical}（不允许重命名产物）"
+                )
+        if declared_set:
+            for stage in declared:
+                if stage == "MERGED":
+                    continue
+                if stage not in artifacts:
+                    errors.append(
+                        f"{source} 的 artifacts.{stage} 缺失；每个已声明阶段必须映射产物"
+                    )
+
+    gates = preset.get("gates")
+    if not isinstance(gates, dict):
+        errors.append(f"{source} 的 gates 必须是对象")
+    else:
+        missing = [gate for gate in GATE_STAGES if gate not in gates]
+        if missing:
+            errors.append(f"{source} 的 gates 缺少：" + ", ".join(missing))
+        for gate, policy in gates.items():
+            path = f"gates.{gate}"
+            if gate not in GATE_STAGES:
+                errors.append(f"{source} 的 {path} 是未知 Gate：{gate}")
+            elif str(policy) not in WORKFLOW_POLICIES:
+                errors.append(
+                    f"{source} 的 {path} 必须是 "
+                    + ", ".join(sorted(WORKFLOW_POLICIES))
+                )
+
+    required = preset.get("required_gates")
+    if not isinstance(required, dict):
+        errors.append(f"{source} 的 required_gates 必须是对象")
+    else:
+        for stage in required:
+            if stage not in STAGE_ORDER:
+                errors.append(
+                    f"{source} 的 required_gates.{stage} 是未知阶段"
+                )
+            elif declared_set and stage not in declared_set:
+                errors.append(
+                    f"{source} 的 required_gates.{stage} 指向未声明的阶段"
+                )
+        if declared_set:
+            for stage in declared:
+                expected = required_gates(stage)
+                actual = required.get(stage)
+                if actual != expected:
+                    errors.append(
+                        f"{source} 的 required_gates.{stage} 必须是 {expected}"
+                    )
+
+    gate_checks = preset.get("gate_checks")
+    if gate_checks is not None:
+        if not isinstance(gate_checks, dict):
+            errors.append(f"{source} 的 gate_checks 必须是对象")
+        else:
+            known_by_gate: dict[str, set[str]] = {}
+            required_by_gate: dict[str, set[str]] = {}
+            for item in CHECK_REGISTRY:
+                gate = str(item["gate"])
+                known_by_gate.setdefault(gate, set()).add(str(item["id"]))
+                if item["level"] == "required":
+                    required_by_gate.setdefault(gate, set()).add(str(item["id"]))
+            for gate, checks in gate_checks.items():
+                path = f"gate_checks.{gate}"
+                if gate not in GATE_STAGES:
+                    errors.append(f"{source} 的 {path} 是未知 Gate：{gate}")
+                    continue
+                if not isinstance(checks, list) or not all(
+                    isinstance(check, str) for check in checks
+                ):
+                    errors.append(f"{source} 的 {path} 必须是检查 ID 数组")
+                    continue
+                duplicates = sorted(
+                    {check for check in checks if checks.count(check) > 1}
+                )
+                if duplicates:
+                    errors.append(
+                        f"{source} 的 {path} 包含重复检查：" + ", ".join(duplicates)
+                    )
+                unknown = sorted(set(checks) - known_by_gate.get(gate, set()))
+                if unknown:
+                    errors.append(
+                        f"{source} 的 {path} 包含未知检查 ID：" + ", ".join(unknown)
+                    )
+                missing = sorted(required_by_gate.get(gate, set()) - set(checks))
+                if missing:
+                    errors.append(
+                        f"{source} 的 {path} 缺少 required 检查："
+                        + ", ".join(missing)
+                    )
+
+    checkpoints = preset.get("human_checkpoints")
+    if not isinstance(checkpoints, list) or not checkpoints:
+        errors.append(f"{source} 的 human_checkpoints 必须是非空数组")
+    else:
+        seen_types: set[str] = set()
+        for index, item in enumerate(checkpoints):
+            path = f"human_checkpoints[{index}]"
+            if not isinstance(item, dict):
+                errors.append(f"{source} 的 {path} 必须是对象")
+                continue
+            for key in sorted(set(item) - HUMAN_CHECKPOINT_FIELDS):
+                errors.append(
+                    f"{source} 的 {path}.{key} 不是支持的字段"
+                )
+            checkpoint_type = item.get("type")
+            if checkpoint_type not in HUMAN_CHECKPOINT_TYPES:
+                errors.append(
+                    f"{source} 的 {path}.type 必须是 "
+                    + ", ".join(sorted(HUMAN_CHECKPOINT_TYPES))
+                )
+                continue
+            seen_types.add(str(checkpoint_type))
+            if checkpoint_type == "complete_gate":
+                gate = item.get("gate")
+                if gate not in GATE_STAGES:
+                    errors.append(
+                        f"{source} 的 {path}.gate 必须是 G0–G5"
+                    )
+                    continue
+                if isinstance(gates, dict) and str(gates.get(gate)) != "human":
+                    errors.append(
+                        f"{source} 的 {path}.gate 只能绑定 gates 中策略为 human 的 Gate"
+                    )
+                owner = GATE_OWNER_STAGE.get(str(gate))
+                if declared_set and owner and owner not in declared_set:
+                    errors.append(
+                        f"{source} 的 {path}.gate 无法绑定到被省略阶段 {owner}"
+                    )
+            elif "gate" in item:
+                errors.append(
+                    f"{source} 的 {path}.gate 只允许出现在 complete_gate"
+                )
+        missing_types = {"approve_spec", "confirm_delivery"} - seen_types
+        for missing in sorted(missing_types):
+            errors.append(
+                f"{source} 的 human_checkpoints 缺少 {missing}"
+            )
+        if declared_set and "SPEC_READY" not in declared_set:
+            errors.append(
+                f"{source} 的 human_checkpoints.approve_spec 无法绑定到被省略阶段 SPEC_READY"
+            )
+        if declared_set and "PR_READY" not in declared_set:
+            errors.append(
+                f"{source} 的 human_checkpoints.confirm_delivery 无法绑定到被省略阶段 PR_READY"
+            )
+
+    design_mode = str(preset.get("design_mode") or "")
+    if design_mode not in WORKFLOW_DESIGN_MODES:
+        errors.append(f"{source} 的 design_mode 必须是 full 或 lite")
+    review_required = preset.get("review_required")
+    if not isinstance(review_required, bool):
+        errors.append(f"{source} 的 review_required 必须是布尔值")
+
+    risk_stop = preset.get("risk_stop")
+    if risk_stop is not None:
+        if not isinstance(risk_stop, list) or not all(
+            isinstance(item, str) and item.strip() for item in risk_stop
+        ):
+            errors.append(f"{source} 的 risk_stop 必须是非空字符串数组")
+
+    context_rules = preset.get("context_rules")
+    if context_rules is not None:
+        if not isinstance(context_rules, dict):
+            errors.append(f"{source} 的 context_rules 必须是对象")
+        else:
+            for key in sorted(set(context_rules) - CONTEXT_RULE_FIELDS):
+                errors.append(
+                    f"{source} 的 context_rules.{key} 不是支持的字段"
+                )
+            for key in ("include", "exclude"):
+                values = context_rules.get(key)
+                if values is None:
+                    continue
+                if not isinstance(values, list):
+                    errors.append(
+                        f"{source} 的 context_rules.{key} 必须是数组"
+                    )
+                    continue
+                for index, value in enumerate(values):
+                    errors.extend(
+                        context_rule_pattern_errors(
+                            source,
+                            f"context_rules.{key}[{index}]",
+                            value,
+                        )
+                    )
+
+    allow_rewind = preset.get("allow_rewind_to")
+    if not isinstance(allow_rewind, list):
+        errors.append(f"{source} 的 allow_rewind_to 必须是数组")
+    else:
+        for stage in allow_rewind:
+            if stage not in REWIND_PLANS:
+                errors.append(
+                    f"{source} 的 allow_rewind_to 包含不支持的目标：{stage}"
+                )
+            elif declared_set and stage not in declared_set:
+                errors.append(
+                    f"{source} 的 allow_rewind_to 包含未声明的阶段：{stage}"
+                )
+
+    risk_policy = preset.get("risk_policy")
+    if risk_policy is not None:
+        if not isinstance(risk_policy, dict):
+            errors.append(f"{source} 的 risk_policy 必须是对象")
+        else:
+            for key in sorted(set(risk_policy) - RISK_POLICY_FIELDS):
+                errors.append(
+                    f"{source} 的 risk_policy.{key} 不是支持的字段"
+                )
             max_risk = risk_policy.get("max_risk")
             if max_risk is not None and max_risk not in RISK_RANK:
                 errors.append(
