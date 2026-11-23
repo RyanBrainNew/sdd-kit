@@ -55,6 +55,7 @@ class Workspace:
         "submit_task_with": "sdd submit-task",
         "human_only": [
             "approve_spec",
+            "reapprove_spec",
             "confirm_merge",
             "unblock",
             "rewind",
@@ -957,6 +958,66 @@ class Workspace:
             "next": self._agent_next(resolved),
             "session": self.session_info(),
         }
+
+    def reapprove(
+        self,
+        spec: str | None,
+        reason: str,
+        evidence: str,
+        approver: str | None = None,
+        human: bool = False,
+    ) -> dict[str, Any]:
+        if not human:
+            raise ValueError("reapprove 是人工动作；必须显式传入 --human")
+        args = ["reapprove"]
+        if spec:
+            args.extend(["--spec", spec])
+        args.extend(
+            [
+                "--human",
+                "--reason",
+                reason,
+                "--evidence",
+                evidence,
+                "--json",
+            ]
+        )
+        if approver:
+            args.extend(["--approver", approver])
+        payload = self._json(self._run(args))
+        resolved = spec or self._resolve_current_spec()
+        self.bind_session(resolved)
+        payload.setdefault("spec", resolved)
+        payload["next"] = self._agent_next(resolved)
+        payload["session"] = self.session_info()
+        return payload
+
+    def impact(self, spec: str | None) -> dict[str, Any]:
+        args = ["impact"]
+        if spec:
+            args.extend(["--spec", spec])
+        args.append("--json")
+        return self._json(self._run(args))
+
+    def change(
+        self,
+        spec: str | None,
+        reason: str,
+        docs_only: bool = False,
+        risk: str | None = None,
+        rollback: str | None = None,
+    ) -> dict[str, Any]:
+        args = ["change"]
+        if spec:
+            args.extend(["--spec", spec])
+        args.extend(["--reason", reason, "--json"])
+        if docs_only:
+            args.append("--docs-only")
+        if risk:
+            args.extend(["--risk", risk])
+        if rollback:
+            args.extend(["--rollback", rollback])
+        return self._json(self._run(args))
 
     def merge(
         self, spec: str | None, evidence: str, approver: str | None = None
