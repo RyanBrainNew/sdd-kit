@@ -15,11 +15,11 @@
 
 | Task ID | 任务描述 | 关联FR/AC | 依赖Task | 并行标识 | 验收标准 | 单元测试类/方法 | 单Task测试命令 | 状态 | Commit SHA |
 |---|---|---|---|---|---|---|---|---|---|
-| T-001 | 增加 schema 2 校验、严格字段白名单和 workflow validate 核心入口 | FR-001；AC-001-1；AC-001-2；AC-001-3 | None | S | 合法 v2 profile 通过；未知字段带路径报错；schema 1 行为不变 | `WorkflowProfileTests#test_valid_v2_profile` | `python -m unittest tests.test_sdd.WorkflowProfileTests -v` | Todo | — |
-| T-002 | 实现阶段子序列校验与安全跳过，保留强制 Gate 和人工检查点 | FR-002；AC-002-1；AC-002-2；AC-002-3 | T-001 | S | 省略阶段可推进；跳过强制 Gate/检查点被拒绝；非法顺序报错 | `WorkflowStageTests#test_skip_design_stage` | `python -m unittest tests.test_sdd.WorkflowStageTests -v` | Todo | — |
-| T-003 | 让 gate_checks、human_checkpoints、risk_stop、context_rules 在运行时生效 | FR-003；AC-003-1；AC-003-2；AC-003-3 | T-002 | S | advisory 可裁剪、required 不可裁剪；额外检查点可见；风险与上下文规则生效 | `WorkflowRuntimeTests#test_gate_checks_filter_advisory` | `python -m unittest tests.test_sdd.WorkflowRuntimeTests -v` | Todo | — |
-| T-004 | 新增 `workflow validate` CLI，输出结构化结果与字段错误 | FR-004；AC-004-1；AC-004-2 | T-001 | S | 合法 profile 返回 0 和 digest；坏文件返回非 0 且不写状态 | `WorkflowCliTests#test_workflow_validate_json` | `python -m unittest tests.test_cli.WorkflowCliTests -v` | Todo | — |
-| T-005 | 新增 l2-refactor 示范 profile，并同步文档、版本、manifest 与兼容测试 | FR-005；AC-005-1；AC-005-2；AC-005-3 | T-003,T-004 | S | l2-refactor 可创建 Spec 到 PR_READY；旧 Spec 不漂移；CI 全绿 | `WorkflowProfileTests#test_l2_refactor_flow` | `python -m unittest tests.test_sdd.WorkflowProfileTests -v` | Todo | — |
+| T-001 | 增加 schema 2 校验、严格字段白名单和 workflow validate 核心入口 | FR-001；AC-001-1；AC-001-2；AC-001-3 | None | S | 合法 v2 profile 通过；未知字段带路径报错；schema 1 行为不变 | `WorkflowProfileTests#test_valid_v2_profile` | `python -m unittest tests.test_sdd.WorkflowProfileTests -v` | Done | 44f461e |
+| T-002 | 实现阶段子序列校验与安全跳过，保留强制 Gate 和人工检查点 | FR-002；AC-002-1；AC-002-2；AC-002-3 | T-001 | S | 省略阶段可推进；跳过强制 Gate/检查点被拒绝；非法顺序报错 | `WorkflowStageTests#test_skip_design_stage` | `python -m unittest tests.test_sdd.WorkflowStageTests -v` | Done | 1b439eb |
+| T-003 | 让 gate_checks、human_checkpoints、risk_stop、context_rules 在运行时生效 | FR-003；AC-003-1；AC-003-2；AC-003-3 | T-002 | S | advisory 可裁剪、required 不可裁剪；额外检查点可见；风险与上下文规则生效 | `WorkflowRuntimeTests#test_gate_checks_filter_advisory` | `python -m unittest tests.test_sdd.WorkflowRuntimeTests -v` | Done | 86dcafb |
+| T-004 | 新增 `workflow validate` CLI，输出结构化结果与字段错误 | FR-004；AC-004-1；AC-004-2 | T-001 | S | 合法 profile 返回 0 和 digest；坏文件返回非 0 且不写状态 | `WorkflowCliTests#test_workflow_validate_json` | `python -m unittest tests.test_cli.WorkflowCliTests -v` | Done | 2d8dafb |
+| T-005 | 新增 l2-refactor 示范 profile，并同步文档、版本、manifest 与兼容测试 | FR-005；AC-005-1；AC-005-2；AC-005-3 | T-003,T-004 | S | l2-refactor 可创建 Spec 到 PR_READY；旧 Spec 不漂移；CI 全绿 | `WorkflowProfileTests#test_l2_refactor_flow` | `python -m unittest tests.test_sdd.WorkflowProfileTests -v` | Done | 5de101d |
 
 字段规则：
 

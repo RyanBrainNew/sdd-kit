@@ -12,9 +12,9 @@
     "digest": "ae89c532988018c3f6d3c222c4a66da2a44981f33c8401d62a632bef66a8e910",
     "snapshot": "workflow.json"
   },
-  "state": "IMPLEMENTING",
+  "state": "PR_READY",
   "created_at": "2026-11-23T14:33:04+08:00",
-  "updated_at": "2026-11-23T14:45:25+08:00",
+  "updated_at": "2026-11-23T15:59:40+08:00",
   "pr_url": null,
   "history": [
     {
@@ -89,6 +89,169 @@
       "session_source": "CODEX_THREAD_ID",
       "source": "cli",
       "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-23T14:57:54+08:00",
+      "evidence": "task started",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_start",
+      "task": "T-001",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-23T14:57:54+08:00",
+      "evidence": "python -m unittest tests.test_sdd.WorkflowProfileTests -v: 3 passed (schema v2, unknown field paths, schema 1 unchanged)",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_done",
+      "task": "T-001",
+      "commit": "44f461e",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-23T15:03:28+08:00",
+      "evidence": "task started",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_start",
+      "task": "T-002",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-23T15:03:29+08:00",
+      "evidence": "python -m unittest tests.test_sdd.WorkflowStageTests -v: 3 passed; SddFlowTest/CliTest regression 41 passed",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_done",
+      "task": "T-002",
+      "commit": "1b439eb",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-23T15:10:31+08:00",
+      "evidence": "task started",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_start",
+      "task": "T-003",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-23T15:10:32+08:00",
+      "evidence": "python -m unittest tests.test_sdd.WorkflowRuntimeTests -v: 3 passed; ContextBundle/CheckRegistry/CLI regression 19 passed",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_done",
+      "task": "T-003",
+      "commit": "86dcafb",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-23T15:13:29+08:00",
+      "evidence": "task started",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_start",
+      "task": "T-004",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-23T15:13:29+08:00",
+      "evidence": "python -m unittest tests.test_cli.WorkflowCliTests -v: 2 passed",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_done",
+      "task": "T-004",
+      "commit": "2d8dafb",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-23T15:24:26+08:00",
+      "evidence": "task started",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_start",
+      "task": "T-005",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-23T15:24:27+08:00",
+      "evidence": "python -m unittest tests.test_sdd.WorkflowProfileTests tests.test_ci_contract.CiWorkflowTests -v: 6 passed; manifest 44 files; verify-core/verify-agent passed",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_done",
+      "task": "T-005",
+      "commit": "5de101d",
+      "role": "implementer"
+    },
+    {
+      "state": "VERIFYING",
+      "at": "2026-11-23T15:24:27+08:00",
+      "evidence": "all tasks completed",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "gate": "G4",
+      "role": "implementer",
+      "approver": null,
+      "artifacts": [
+        {
+          "path": "docs/specs/SPEC-REQ-002/tasks.md#plan",
+          "sha256": "8fc08539b2e828881746c6826fd185fc256e9546b5717f2bf2723fc9b26425e3",
+          "bytes": 7839
+        }
+      ]
+    },
+    {
+      "state": "PR_READY",
+      "at": "2026-11-23T15:59:40+08:00",
+      "evidence": "verification.md submitted via CLI and checked",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "gate": "G5",
+      "role": "verifier",
+      "approver": null,
+      "artifacts": [
+        {
+          "path": "docs/specs/SPEC-REQ-002/verification.md",
+          "sha256": "13bcdc86f695d44f1aeebd11e6de6743ba294c53d8535969cd46d217c4ae4dc9",
+          "bytes": 25200
+        }
+      ]
     }
   ],
   "artifact_hashes": {
@@ -103,6 +266,12 @@
     },
     "G3": {
       "docs/specs/SPEC-REQ-002/tasks.md#plan": "8fc08539b2e828881746c6826fd185fc256e9546b5717f2bf2723fc9b26425e3"
+    },
+    "G4": {
+      "docs/specs/SPEC-REQ-002/tasks.md#plan": "8fc08539b2e828881746c6826fd185fc256e9546b5717f2bf2723fc9b26425e3"
+    },
+    "G5": {
+      "docs/specs/SPEC-REQ-002/verification.md": "13bcdc86f695d44f1aeebd11e6de6743ba294c53d8535969cd46d217c4ae4dc9"
     }
   },
   "approvals": [
@@ -115,5 +284,5 @@
     }
   ],
   "last_approver": "linjinlong <fflinjinlong@chinatelecom.cn>",
-  "previous_state": "TASKS_READY"
+  "previous_state": "VERIFYING"
 }
