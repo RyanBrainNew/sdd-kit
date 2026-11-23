@@ -136,6 +136,8 @@ python -m sdd check --all --stage ci --check-git
 ```
 
 文本工件按 LF 规范化后计算哈希；校验兼容历史 CRLF 哈希，正文变化仍会阻断。
+`--check-git` 只要求未合并 Spec 的最近提交带 `Spec-Id` trailer；已 `MERGED`
+的历史 Spec 以 `state.json` 审计记录为准，不受 20 个提交窗口限制。
 
 工作流预设只有 `l2-standard`、`l2-hotfix`、`l2-strict` 三个。Spec 创建时会把
 `sdd/workflows/<name>.json` 快照到 `docs/specs/<Spec>/workflow.json`；之后仓库

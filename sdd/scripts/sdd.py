@@ -2964,7 +2964,9 @@ def gate_mode(
     return "auto"
 
 
-def check_git(root: Path, spec_id: str) -> list[str]:
+def check_git(root: Path, spec_id: str, state: str = "DRAFT") -> list[str]:
+    if state == "MERGED":
+        return []
     if not (root / ".git").exists():
         return ["--check-git 需要 Git 仓库"]
     result = subprocess.run(
@@ -3061,7 +3063,9 @@ def run_checks(
                 )
         errors.extend(check_duplicate_spec_files(root, config))
         if check_git_trailer:
-            errors.extend(check_git(root, spec_id))
+            errors.extend(
+                check_git(root, spec_id, str(state.get("state", "DRAFT")))
+            )
 
     return errors, stage
 

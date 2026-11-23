@@ -87,6 +87,8 @@ Spec 创建时会把工作流预设快照到 `docs/specs/<Spec>/workflow.json`�
 - 一次只做一个实现任务。
 - 每个代码 Commit 只关联一个 Task，并带 `Spec-Id` / `Task-Id` trailer。
 - CI 必须通过 `python -m sdd check --all --stage ci --check-git`。
+- `--check-git` 的最近提交 trailer 要求只约束未合并 Spec；已 `MERGED` 的历史
+  Spec 以 `state.json` 审计记录为准。
 - 核心和模板由平台团队维护；业务仓库不要修改 `sdd/core.py`、`sdd/templates/`、`sdd/prompts/`。
 - `sdd/manifest.json` 与 `sdd/VERSION` 必须提交；CI 用 manifest 校验核心没有被误改。
 

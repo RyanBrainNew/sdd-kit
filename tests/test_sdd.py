@@ -2054,5 +2054,33 @@ class ArtifactHashTests(unittest.TestCase):
         )
 
 
+class GitTrailerTests(unittest.TestCase):
+    def test_recent_trailer_only_applies_to_active_specs(self):
+        # [AC-003-3]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+            subprocess.run(
+                ["git", "config", "user.email", "test@example.invalid"],
+                cwd=root,
+                check=True,
+            )
+            subprocess.run(
+                ["git", "config", "user.name", "SDD Test"],
+                cwd=root,
+                check=True,
+            )
+            (root / "note.txt").write_text("no trailer\n", encoding="utf-8")
+            subprocess.run(["git", "add", "note.txt"], cwd=root, check=True)
+            subprocess.run(
+                ["git", "commit", "-q", "-m", "init"],
+                cwd=root,
+                check=True,
+            )
+
+            self.assertTrue(engine.check_git(root, SPEC_ID, "DRAFT"))
+            self.assertEqual(engine.check_git(root, SPEC_ID, "MERGED"), [])
+
+
 if __name__ == "__main__":
     unittest.main()

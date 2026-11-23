@@ -1,11 +1,11 @@
 {
   "kind": "manifest",
-  "version": "0.9.2",
+  "version": "0.9.3",
   "files": {
-    "sdd/__init__.py": "9593a113f3846389f322010afab09396c6ea1a2a064ec54797fed5737ba41b2c",
+    "sdd/__init__.py": "b9e1481281791bbf098f7cae7c89edf0903dbd1f80d852b36fb70d36e1cc868a",
     "sdd/__main__.py": "3d2438ae92f4746e9ffaa1f837b1fe803f6281091d1f31f8c95643716f257d9a",
     "sdd/agent-block.md": "2e525503b21ee53666615cb001647312645c1c5c0e1ba91583897d9849752d2a",
-    "sdd/agent-contract.md": "7004a81ec82844677fdab1d3f036411dbb93f7b59073a4ced8808b7a4695d62a",
+    "sdd/agent-contract.md": "f71aecd6490f1c874beb1a0a54406f765fe7a82b2cb1224550bd4261446515fa",
     "sdd/agents.py": "0683be7fda8ebb6c900f56ce13164c36c4338f7849bd82b2e1403fbc1ffc4d39",
     "sdd/ci/github-actions.yml": "0b6c73229299ef3a8ca497da8a2d58f1e1b723597f56f6bf9b4f30f9d5cd5567",
     "sdd/ci/gitlab-ci.yml": "98474f464906e13e4cd0cc830e8cf426bb22944e72163f0a5fd9a6d1a10075c0",
@@ -32,7 +32,7 @@
     "sdd/prompts/task.md": "15bd56b007d99da5c40436ae3ebdd35076d668b30cc2ac824736f9f88b390438",
     "sdd/prompts/tasks.md": "96b083de0e0b3ffe764b15facd575df9da01a7dbbcdaf385331a82e98d22ac59",
     "sdd/prompts/verify.md": "f544cf567f58f77c0bb3100ddbd81bedea5bc1346f1bf4510128bba604c71d21",
-    "sdd/scripts/sdd.py": "73ac8ef534bd137fe232b49208ebbb14921d40e6837330c12d76901a875d4dff",
+    "sdd/scripts/sdd.py": "509b4c4bd737235848666071b3cd41c08d5e008417421ac7736b7e5f9b229bc8",
     "sdd/templates/decisions.md": "233ef0b90c3b764878807b88c883eb8c4230ca83e4f8fda12ea8425237a7d43e",
     "sdd/templates/design-lite.md": "a1a19ec1381137b3e903d93bb7e70ff32e28bc6fa639c4aa90842dc18164f635",
     "sdd/templates/design.md": "43dffc70c89fb9a2f49b72eced49564bd1c3f7f0fefb0f9165dcb1c12dd08cfa",
@@ -41,7 +41,7 @@
     "sdd/templates/tasks.md": "61e4ff4655c19a2a4df8e5be176032c6848bf39d987f8ef291d92140cbb4186b",
     "sdd/templates/verification-strict.md": "612d64943c76255dd20dfb3d67d9fd1cd3409e9c3d2690b4b175773c3fc5a1ac",
     "sdd/templates/verification.md": "71daae67facedc56da3bb5bcfb992bf2a0b00d1e420395e8105e1551b234beb8",
-    "sdd/VERSION": "f34248c2449a022d41c918d1e995ad85859a1e9f0e6f89d0af23ae4a55519f71",
+    "sdd/VERSION": "38ecaa1e4c36c6691944c83df7671fca8b86f5cbf2d4e22c0012aa52df14b149",
     "sdd/workflows/l2-hotfix.json": "1f5eb1ea9f52b20ae8b37a5746cbda184e9741f8beff206e6daf1b61f8ae3d66",
     "sdd/workflows/l2-standard.json": "5442733b3f9fba82e7dc62f30ee2e528113ccac0717a4b105a898eeb38f6fe70",
     "sdd/workflows/l2-strict.json": "a2dc487ca611a2939143770c3921e1f6ebfc68f8877a3380a678aee5e0162b0b"
