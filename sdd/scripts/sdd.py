@@ -9224,12 +9224,13 @@ def hook_pre_commit(root: Path, config: dict[str, Any]) -> int:
     for directory, state in active_approval_specs(root, config):
         spec_id = str(state.get("spec_id") or directory.name)
         errors.extend(approval_digest_errors(root, directory, state))
-        errors.extend(change_set_errors(root, directory, state))
-        if staged_code and docs_only_change_records(directory):
-            errors.append(
-                f"G1-09 {spec_id} 的 change-set 声明 docs-only，"
-                "但暂存区包含代码：" + ", ".join(staged_code)
-            )
+        if staged_code:
+            errors.extend(change_set_errors(root, directory, state))
+            if docs_only_change_records(directory):
+                errors.append(
+                    f"G1-09 {spec_id} 的 change-set 声明 docs-only，"
+                    "但暂存区包含代码：" + ", ".join(staged_code)
+                )
     if errors:
         for error in errors:
             print(f"[SDD][BLOCK] {error}", file=sys.stderr)
