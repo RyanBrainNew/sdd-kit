@@ -2028,7 +2028,7 @@ def valid_v2_profile(name="l2-refactor"):
     }
 
 
-class WorkflowProfileTests(unittest.TestCase):
+class WorkflowProfileTests(SddFlowBase):
     def test_valid_v2_profile(self):
         # [AC-001-1]
         preset = valid_v2_profile()
@@ -2086,6 +2086,46 @@ class WorkflowProfileTests(unittest.TestCase):
         self.assertEqual(
             engine.validate_workflow_preset(standard, "l2-standard.json"), []
         )
+
+    def test_l2_refactor_flow(self):
+        # [AC-005-1]
+        self.new_spec(workflow="l2-refactor")
+        state = self.state()
+        self.assertEqual(state["workflow"]["name"], "l2-refactor")
+        snapshot = json.loads(
+            (self.root / "docs/specs/SPEC-ORDER-001/workflow.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(snapshot["schema"], 2)
+        self.assertEqual(
+            state["workflow"]["digest"], engine.workflow_digest(snapshot)
+        )
+
+        self.approve_valid_spec()
+        self.complete_design()
+        self.complete_tasks()
+        self.run_sdd("complete", "--spec", SPEC_ID, "--evidence", "开始实现")
+        self.finish_implementation()
+        self.finish_verification()
+        self.assertEqual(self.state()["state"], "PR_READY")
+
+    def test_old_specs_stay_stable(self):
+        # [AC-005-2]
+        for spec in ("SPEC-DEVTOOLS-002", "SPEC-REQ-001"):
+            directory = KIT_ROOT / "docs" / "specs" / spec
+            state = json.loads(
+                (directory / "state.json").read_text(encoding="utf-8")
+            )
+            snapshot = json.loads(
+                (directory / "workflow.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                engine.validate_workflow_preset(snapshot, "workflow.json"), []
+            )
+            self.assertEqual(
+                state["workflow"]["digest"], engine.workflow_digest(snapshot)
+            )
 
 
 class WorkflowStageTests(SddFlowBase):
