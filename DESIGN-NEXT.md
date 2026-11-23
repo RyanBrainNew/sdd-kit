@@ -1,8 +1,9 @@
 # sdd-kit 下一阶段设计方案
 
-> 状态：已确认（六项按推荐）；0.7.0 和 0.8.0 已实现  
+> 状态：已确认（六项按推荐）；0.7.0、0.8.0 和 0.9.0 已实现  
 > 日期：2026-11-18  
-> 范围：0.7.0 可运维性、0.8.0 工作流预设、0.9.0 只读视图与 runner 契约  
+> 范围：0.7.0 可运维性、0.8.0 工作流预设、0.9.0 治理与证据内核；
+> 只读视图与 runner 契约为后续候选
 > 结论：不引入自由 DAG，不引入服务端；在现有单状态机上补齐回退、待办、证据绑定和指标。
 
 ## 0. 一分钟版
@@ -65,7 +66,8 @@
 | --- | --- | --- | --- |
 | 0.7.0 | 可运维性 | `rewind`、`inbox`、事件 v2、产物哈希、审批身份、`metrics`、`complete --human` 修复 | 低到中 |
 | 0.8.0 | 工作流预设 | `l2-standard`、`l2-hotfix`、`l2-strict`，Spec 固定预设版本（已实现） | 中 |
-| 0.9.0 | 可见性 | 只读 HTML 运行视图、runner 契约 | 低 |
+| 0.9.0 | 治理与证据 | 标准符合性、context bundle、可复验证据、Profile v2、检查分级、Review、知识回流、审计指标（已实现） | 中 |
+| 0.10.0 | 可见性 | 只读 HTML 运行视图、runner 契约 | 低 |
 
 0.7.0 不改阶段图，只补命令和证据。0.8.0 才把阶段图参数化。
 
@@ -737,7 +739,7 @@ python -m sdd upgrade-workflow --spec SPEC-ORDER-001 `
 
 ---
 
-## 6. 0.9.0 只读视图与 runner
+## 6. 0.10.0 只读视图与 runner
 
 ### 6.1 `sdd view`
 
@@ -794,7 +796,7 @@ Docker 沙箱属于 runner，不属于 `sdd-kit` 核心。
 | `sdd/agent-contract.md` | 同步新命令和边界 | 同步预设规则 |
 | `README.md`、`ARCHITECTURE.md` | 同步 | 同步 |
 | `bootstrap.py` | 写入新配置默认值 | 复制 `sdd/workflows/` |
-| `deploy/runner/CONTRACT.md` | 无 | 0.9.0 新增 |
+| `deploy/runner/CONTRACT.md` | 无 | 0.10.0 新增 |
 | `sdd/manifest.json`、`sdd/VERSION` | 升到 0.7.0 | 升到 0.8.0 |
 
 版本号同时改 `sdd/__init__.py` 和 `sdd/scripts/sdd.py` 的 `VERSION`。`Workspace.AUTOPILOT_CONTRACT["human_only"]` 要加入 `rewind` 和 `upgrade_workflow`。
@@ -923,7 +925,7 @@ python -m sdd check --all --stage ci --check-git
 | D9 | 配置与预设优先级 | 配置覆盖预设 | 预设覆盖配置 | 项目自治 |
 | D10 | 是否把预设固定进 Spec | 是，`name/version/digest` | 只读当前配置 | 可重复性 |
 | D11 | `metrics` 是否含成本 | 不含 | 记录可选 usage | 数据可信度 |
-| D12 | 是否做只读 HTML 视图 | 0.9 做 | 不做 | 展示效果 |
+| D12 | 是否做只读 HTML 视图 | 0.10 做 | 不做 | 展示效果 |
 | D13 | MCP 暴露范围 | 只加 `sdd_inbox` | 也暴露 `metrics` | 边界清晰 |
 | D14 | 版本节奏 | 0.7 → 0.8 → 0.9 | 合并成一个大版本 | 交付风险 |
 | D15 | 是否修 `complete --human` | 是，0.7 必修 | 单独热修 | 现有缺口 |
@@ -968,7 +970,7 @@ python -m sdd check --all --stage ci --check-git
 4. 独立审查校验。
 5. 试点一个业务仓库。
 
-### 第四步：0.9.0，展示与 runner
+### 第四步：0.10.0，展示与 runner
 
 1. `sdd view --html`。
 2. `deploy/runner/CONTRACT.md`。

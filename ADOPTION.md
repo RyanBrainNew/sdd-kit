@@ -9,6 +9,8 @@
 3. **不让工程师记命令**：Agent 读 `sdd/README.md`，运行 `python -m sdd resume`。
 4. **不追求一次全量接入**：先一个仓库、一个小需求。
 5. **不把流程做成审批链**：人只在需求确认和 PR 合并出现。
+6. **先证明 L2 强制路径，再谈 L3/L4 增强**：覆盖与缺口以
+   [标准符合性基线](docs/STANDARD-CONFORMANCE.md) 为准。
 
 ## 2. 第一周：单仓库试点
 
@@ -41,6 +43,12 @@ python D:\tools\sdd-kit\bootstrap.py --test-command "python -m pytest -q" --ci g
 - 哪些提示词让 Agent 走偏？
 - 哪些步骤可以自动化掉？
 
+同时抽取三组证据：
+
+- `events --json` 的审计链是否有效；
+- `metrics --json` 的豁免率、逃逸缺陷、重开率和 Gate 一次通过率；
+- 中高风险需求是否有独立 Review，阻断 finding 是否关闭。
+
 ## 3. 第二周：模板化
 
 根据试点结果做三件事：
@@ -58,7 +66,8 @@ python D:\tools\sdd-kit\bootstrap.py --test-command "python -m pytest -q" --ci g
 1. 前端项目；
 2. 非核心后端服务；
 3. 核心服务；
-4. 高风险变更走 strict 模式。
+4. 高风险变更走 strict 模式；
+5. 存量重构使用 `l2-refactor`，不修改核心状态机。
 
 每个仓库只需要：
 
@@ -137,6 +146,9 @@ CI 会自动检查工件和追溯关系，不通过就补，不要绕过。
 
 - 新需求 Spec → PR 的 lead time；
 - `sdd check` 一次通过率；
+- 按检查 ID 的通过率、告警率和阻断率；
+- 人工豁免率及其到期重校验次数；
+- 逃逸缺陷数、Spec 重开率和 Gate 一次通过率；
 - PR 中 AC 证据缺失比例；
 - 人工介入次数；
 - 因上下文缺失导致的返工次数。
@@ -148,6 +160,7 @@ CI 会自动检查工件和追溯关系，不通过就补，不要绕过。
 - 不要要求所有人使用同一个 IDE 或 Agent；
 - 不要把 `approve` / `merge` 自动化；
 - 不要用“文档数量”衡量成功；
+- 不要把 `warn` 当作 `pass`，也不要把人工豁免当成默认路径；
 - 不要在第一个月就接全量微服务；
 - 不要为了全自动而绕过高风险 Gate；
 - 不要把 MCP 当成能直接改所有人本地仓库的魔法。

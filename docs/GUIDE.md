@@ -11,12 +11,12 @@
 - 平台团队维护一份 `sdd/` 核心，仓库接入一次，之后开发者 `git clone` 即用；
 - 任何能读仓库文件、能执行 shell 的 Agent 都能接入，不绑定 Kiro、Cursor 或某个 IDE；
 - 开发者只说一次工作项，Agent 按 `next.action` 自动调研、写工件、推进阶段；
-- 正常流程只有两个人类检查点：**Spec 确认**和 **交付确认**；
-  交付确认后 Agent 才创建 PR，PR 的审核合并由管理员完成；
-- 可选命名工作流预设：`l2-standard`、`l2-hotfix`、`l2-strict`，Spec 创建时固定版本；
+- 正常流程只有两个人类检查点：**Spec 确认**和 **PR 合并**；
+- 可选命名工作流预设：`l2-standard`、`l2-hotfix`、`l2-strict`、`l2-refactor`，Spec 创建时固定版本；
 - MCP 是可选适配器；没有 MCP，`AGENTS.md + CLI + Git Hook + CI` 也能跑完整流程。
 
-当前版本：`0.9.4`。
+当前版本：`0.9.4`。官方 P0–P5 / G0–G5 映射见
+[标准符合性基线](STANDARD-CONFORMANCE.md)。
 
 ---
 
@@ -51,12 +51,9 @@
 接入时由平台团队执行一次：
 
 ```powershell
-cd D:\repos\order-api
-python D:\tools\sdd-kit\bootstrap.py
+python bootstrap.py --target "D:\repos\order-api" --project order-api `
+  --test-command "python -m pytest -q" --ci gitlab
 ```
-
-`--target` 默认当前目录，`--project` 默认沿用已有配置或取目标目录名；只有需要覆盖默认值、
-指定测试命令或安装 CI 模板时才补参数。
 
 `bootstrap.py` 会做这些事：
 
@@ -121,8 +118,7 @@ AGENTS.md
   -> 人 approve --human
   -> Agent 继续
   -> python -m sdd report
-  -> 人 merge --human（确认交付）
-  -> Agent 创建 PR
+  -> 人 merge --human
   -> CI: verify-core / verify-agent / check
 ```
 
@@ -297,11 +293,8 @@ sequenceDiagram
   Agent->>CLI: report
   CLI->>Repo: 生成 PR_BODY.md
 
-  Note over Dev,CI: 人类检查点 2：确认交付，执行 merge --human
+  Note over Dev,CI: 人类检查点 2：审 PR、合并，执行 merge --human
   Dev->>CLI: merge --spec ... --human
-  CLI->>Repo: 状态进入 MERGED
-  Agent->>Repo: 提交确认状态、创建 PR、记录 URL
-  Note over Dev,CI: 管理员在 GitHub 审阅并合并 PR
   CI->>Repo: verify-core / verify-agent / check --all --stage ci --check-git
 ```
 
@@ -315,14 +308,10 @@ DRAFT
   -> IMPLEMENTING          （自动开始实现）
   -> VERIFYING             （所有 Task 完成）
   -> PR_READY              （submit verification.md）
-  -> MERGED                （人 merge --human，确认交付）
-  -> PR                    （Agent 创建 PR，管理员合并）
+  -> MERGED                （人 merge --human）
 
 任意阶段 -> BLOCKED -> 原状态（人 unblock --human）
 ```
-
-`MERGED` 现在表示“人工已确认交付”，PR 由 Agent 在确认后创建，再由管理员合并。
-旧的 `MERGED` Spec 没有 `delivery_confirmed_at`，仍按 legacy 规则校验。
 
 ---
 
@@ -335,7 +324,7 @@ DRAFT
 | 步骤 | 人做什么 | 命令/产物 |
 |---|---|---|
 | 1 | 选一个试点仓库 | 建议先选一个小型微服务或前端项目 |
-| 2 | 执行 bootstrap | 在仓库根目录跑 `python <sdd-kit>/bootstrap.py`，按需补 `--test-command`、`--ci` |
+| 2 | 执行 bootstrap | `python bootstrap.py --target ... --project ... --test-command ... --ci ...` |
 | 3 | 补项目事实 | 在 `AGENTS.md` 写技术栈、构建、测试命令；在 `sdd/config.json` 配 `test_commands` |
 | 4 | 配 CODEOWNERS | `sdd/` 归平台团队 review |
 | 5 | 开接入 PR | CI 通过后合并 |
@@ -347,12 +336,10 @@ DRAFT
 | 1 | 给一个工作项 | 例如“按 srdcloud-553377 做这次需求”，不需要说当前阶段 |
 | 2 | 审 Spec | 看 `docs/specs/<Spec ID>/spec.md` 的范围、AC、未决问题 |
 | 3 | 执行 Spec 确认 | `python -m sdd approve --spec <Spec ID> --human --evidence "需求已确认"` |
-| 4 | 审交付证据 | 看 `PR_BODY.md`、AC 证据、diff、CI |
-| 5 | 确认交付 | `python -m sdd merge --spec <Spec ID> --human --evidence "交付已确认"` |
-| 6 | 管理员合并 PR | Agent 用 `PR_BODY.md` 开 PR 后，管理员审阅并合并 |
+| 4 | 审最终 PR | 看 `PR_BODY.md`、AC 证据、diff、CI |
+| 5 | 合并并登记 | `python -m sdd merge --spec <Spec ID> --human --evidence "PR merged"` |
 
-第 6 步是普通 GitHub 合并，不是额外的 SDD 检查点；正常流程仍然只有
-Spec 确认和交付确认两个 SDD 停止点。
+**这就是正常流程的全部人工步骤。**
 
 ### 4.3 例外：什么时候人会额外被打断？
 
@@ -380,8 +367,7 @@ Agent 只消费 `next.action`，产出后用 `next.submit_with` 提交；CLI 重
 ### 5.1 一条命令
 
 ```powershell
-cd D:\repos\order-api
-python D:\tools\sdd-kit\bootstrap.py `
+python bootstrap.py --target "D:\repos\order-api" --project order-api `
   --test-command "python -m pytest -q" --ci gitlab
 ```
 
@@ -389,21 +375,12 @@ python D:\tools\sdd-kit\bootstrap.py `
 
 | 参数 | 说明 |
 |---|---|
-| `--target` | 业务仓库根目录，默认当前目录 |
-| `--project` | 写入 `sdd/config.json` 的项目 ID；默认沿用已有值，否则取目标目录名 |
+| `--target` | 业务仓库根目录 |
+| `--project` | 写入 `sdd/config.json` 的项目 ID |
 | `--test-command` | `sdd verify` 执行的测试命令，可重复 |
 | `--ci` | `none` / `github` / `gitlab` / `both` |
 | `--no-hooks` | 不安装 `.githooks` |
 | `--force` | 刷新核心，保留 `config.json`、`context/`、`docs/specs/` |
-
-只做默认接入时，命令可以缩短为：
-
-```powershell
-python D:\tools\sdd-kit\bootstrap.py
-```
-
-等价写法是在 sdd-kit 目录里执行
-`python bootstrap.py --target "D:\repos\order-api" --project order-api`。
 
 ### 5.2 接入后检查
 
@@ -432,7 +409,8 @@ python -m sdd check --all --stage ci --check-git
 | `require_approver` | CI 要求 `state.json` 中至少有一条带有效审批人的记录；人工命令可加 `--approver` |
 | `require_artifact_hash` | Gate 报告必须包含产物哈希；旧报告在升级期只告警 |
 
-0.8.0 新增 `workflow` 配置和三个命名预设；`bootstrap.py` 对新仓库写入
+0.8.0 起支持 `workflow` 配置和命名预设；0.9.0 增加 Profile v2 与
+`l2-refactor`。`bootstrap.py` 对新仓库写入
 `l2-standard`。需要项目级覆盖单个 Gate 时使用 `gate_overrides`，不要改预设文件。
 
 不要编造项目事实。Agent 无法从仓库确认时，应先检查代码和配置；仍无法确认，再问一个具体问题。
@@ -448,7 +426,7 @@ python -m sdd check --all --stage ci --check-git
 | `l2-standard` | 默认 L2 需求 | G0 人工；G2 高风险时人工；其余自动 |
 | `l2-hotfix` | 紧急修复，低/中风险 | 仍写 `design.md`，但使用轻量设计模板；G2 自动；高风险和 `risk_stop` 标签直接拒绝 |
 | `l2-strict` | 安全、数据迁移、破坏性变更 | G0–G5 全部人工；`verification.md` 必须有独立审查，且 reviewer session 不能等于实现 session |
-| `l2-refactor` | 行为保持型改造 | schema 2；保留全部阶段和人工检查点；裁剪 advisory 检查；上下文纳入 `docs/knowledge/**` |
+| `l2-refactor` | 行为保持型存量改造 | schema 2；保留全部阶段和人工检查点；强调改动边界、回归证据和可回滚；上下文纳入 `docs/knowledge/**` |
 
 schema 2 profile 可以声明 `stages`、`artifacts`、`gates`、`required_gates`、
 `gate_checks`、`human_checkpoints`、`risk_stop` 和 `context_rules`。校验规则：
@@ -480,6 +458,13 @@ python -m sdd start-work --work-item srdcloud-553377 --title "订单取消" `
 python -m sdd new SPEC-PAY-002 --title "支付数据迁移" `
   --work-item srdcloud-600001 --workflow l2-strict --risk high `
   --risk-label data_migration
+
+# 存量重构
+python -m sdd start-work --work-item srdcloud-553377 --title "订单模块重构" `
+  --workflow l2-refactor --risk medium
+
+# 校验声明式 Profile
+python -m sdd workflow validate --file sdd/workflows/l2-refactor.json --json
 ```
 
 优先级是：`sdd/config.json.gate_overrides` > 旧版 `config.json.gates`（仅当整份
@@ -588,38 +573,27 @@ python -m sdd submit --spec SPEC-ORDER-001 --artifact verification.md `
 
 默认会执行 `sdd/config.json` 的 `test_commands` 并追加证据。如果测试必须在别的环境跑，本地跑完后用 `--no-run-commands` 提交，但证据必须真实。
 
-### 6.7 生成 PR 正文
+### 6.7 生成 PR 并登记
 
 ```powershell
 python -m sdd report --spec SPEC-ORDER-001 --json
 ```
 
-先生成 `PR_BODY.md`，**不要创建 PR**。
-
-### 6.8 人工确认交付
-
-```powershell
-python -m sdd merge --spec SPEC-ORDER-001 --human --evidence "交付已确认"
-```
-
-没有 `--human` 会被拒绝。确认前 CLI 会再跑一次 CI 级校验。确认后状态进入
-`MERGED`，此时还没有 PR。
-
-### 6.9 创建 PR 并登记
-
-Agent 提交并推送 `sdd merge` 写入的 `state.json` / `events.jsonl`，然后用
-`PR_BODY.md` 创建 PR：
+用生成的 `PR_BODY.md` 开 PR，然后：
 
 ```powershell
 python -m sdd pr --spec SPEC-ORDER-001 --url "https://example.invalid/pr/1"
 ```
 
-如果这两个审计文件还没提交，`sdd pr --url` 会拒绝登记，避免 PR 里缺少
-`MERGED` 状态而再次产生一个补状态 PR。
+### 6.8 人审 PR 并合并
 
-PR 由管理员审阅并合并，不再需要第二个状态 PR。
+```powershell
+python -m sdd merge --spec SPEC-ORDER-001 --human --evidence "PR #1 已合并"
+```
 
-### 6.10 证据绑定与审计
+没有 `--human` 会被拒绝。合并前 CLI 会再跑一次 CI 级校验。
+
+### 6.9 证据绑定与审计
 
 每次记录 Gate 时，CLI 会把绑定产物的 SHA-256 写进 Gate 报告和
 `state.json.artifact_hashes`。`check --stage ci` 会重新计算并比对：
@@ -637,9 +611,12 @@ PR 由管理员审阅并合并，不再需要第二个状态 PR。
 
 `events.jsonl` 从 0.7.0 起写入 `schema: 2`，新增 `role`、`session`、
 `session_source`、`artifacts`、`approver` 等字段，并记录 `check_failed`
-事件。旧事件保持原样，不回写。
+事件。0.9.0 起新事件带 `prev_sha256` / `event_sha256`，Gate 结果以
+`gate_result` 事件记录结构化检查、状态、产物和下一步。旧事件保持原样，
+读取时标记为 legacy；手工篡改会使 `events --json` 的 `audit.valid` 变为 false，
+并使 G5/CI 失败。
 
-### 6.11 待办、回退与指标
+### 6.10 待办、回退与指标
 
 ```powershell
 # 所有等人处理的事项：DRAFT、PR_READY、BLOCKED、人工 Gate、长期无事件
@@ -650,9 +627,14 @@ python -m sdd inbox --stale-days 7
 python -m sdd rewind --spec SPEC-ORDER-001 --to SPEC_READY `
   --reason "验证发现设计遗漏" --human --approver "张三 <zhang@example.com>"
 
-# 只读指标：lead time、阶段耗时、返工、人工介入、Gate 失败、AC 覆盖
+# 只读指标：lead time、阶段耗时、返工、人工介入、Gate 失败、AC 覆盖、
+# 按检查 ID 的通过/告警/阻断/豁免统计、豁免率、逃逸缺陷、重开率、
+# Gate 一次通过率
 python -m sdd metrics --json
 python -m sdd metrics --since 2026-11-01 --json
+
+# 审计回放：每个迁移的事件哈希、actor、前后状态、证据、产物和下一步
+python -m sdd events --spec SPEC-ORDER-001 --json
 ```
 
 `rewind` 的规则：
@@ -664,7 +646,7 @@ python -m sdd metrics --since 2026-11-01 --json
 - `--to DESIGN_READY` 保留已批准的 `design.md`，只作废 G3–G5；要重写设计，用 `--to SPEC_READY`。
 
 `sdd board` 目前仍是文本/JSON 看板，没有 HTML 面板。单文件 HTML 运行视图
-（`sdd view --html`）在 `DESIGN-NEXT.md` 中列为 0.9.0 能力，尚未实现。
+仍属于后续候选能力，尚未实现。
 
 ---
 
@@ -733,7 +715,7 @@ python -m sdd metrics --since 2026-11-01 --json
 3. 状态写进当前工作区；
 4. 工件跟代码一起 commit、push、开 PR；
 5. CI 跑 `verify-core` / `verify-agent` / `check`；
-6. 人工确认交付后，Spec、`state.json` 和 `events.jsonl` 随 PR 一起进主干。
+6. 合并后 Spec 和 `state.json` 一起进主干。
 
 优点：不改代码位置、每个开发者独立工作区、接入成本最低。  
 代价：共享 MCP 不能替别人写本地文件，只能做上下文和只读查询。
@@ -958,12 +940,6 @@ Matt 的方法
 
 ```text
 AGENTS.md                     # 项目规则 + SDD 托管块
-README.md                     # 首页：定位、接入、目录和路线图
-ARCHITECTURE.md               # 设计取舍
-DESIGN-NEXT.md                # 后续版本设计
-ADOPTION.md                   # 推广步骤
-LANDSCAPE.md                  # 开源方案对照
-bootstrap.py                  # 业务仓库接入
 sdd/
   VERSION                     # 核心版本
   manifest.json               # 受保护文件哈希
@@ -980,9 +956,6 @@ sdd/
   ci/                         # GitHub / GitLab 模板
   mcp/                        # 可选 MCP 适配器
 docs/
-  GUIDE.md                    # 完整指南
-  GITHUB-ABOUT.md             # 仓库 About 文案与 Homepage
-  assets/site-preview.png     # 官网首屏截图
   prd-index.md
   specs/
     SPEC-ORDER-001/
@@ -992,36 +965,17 @@ docs/
       verification.md
       gates.md
       decisions.md
-      context.md
-      unknowns.md
-      workflow.json
       state.json
-      events.jsonl
       PR_BODY.md
 sdd/reports/
   SPEC-ORDER-001/
     gate0-report.md
     ...
     gate5-report.md
-site/                         # GitHub Pages 官网，只发布这个目录
-ci/                           # 本仓库测试工作流
-tests/                        # 单元、CLI、站点与集成测试
-deploy/                       # 共享 MCP 部署示例
-dsh/                          # dsh / harness 薄适配约定
 .sdd/runtime/sessions/        # 本地会话指针，已 gitignore
 ```
 
-`docs/specs/<Spec>/` 是每次需求的 SDD 审计面：`spec.md`、`design.md`、`tasks.md`
-和 `verification.md` 由 Agent 产出并经 CLI 校验；`gates.md`、`state.json` 和
-`events.jsonl` 只能由 CLI 写；`PR_BODY.md` 由 `sdd report` 生成。
-
-`docs/` 与 `site/` 刻意分离：Pages 工作流只上传 `site/`，不会发布 Spec、Gate 报告
-或业务上下文。`deploy/`、`dsh/`、`site/`、`ci/` 和 `tests/` 只留在 `sdd-kit`
-源仓库，不复制到业务仓库。
-
-未开发能力以 GitHub Issues 为准：`sdd view`、外部 runner 契约、`upgrade-workflow`、
-审批版本绑定、`change-set` / `impact`、全量 commit 审计和 `trace` 见
-[Issues](https://github.com/RyanBrainNew/sdd-kit/issues)。
+`deploy/` 和 `dsh/` 只留在 `sdd-kit` 源仓库，不复制到业务仓库。
 
 ---
 
@@ -1081,6 +1035,9 @@ Windows 下 Hook 由 Git Bash 执行。不要用 `--no-verify` 绕过。
 ```powershell
 $env:PYTHONIOENCODING='utf-8'
 python -m unittest discover -s tests -v
+python -m sdd verify-core
+python -m sdd verify-agent
+python -m sdd check --all --stage ci --check-git
 ```
 
 只跑 CLI 和 AGENTS 相关：
@@ -1104,7 +1061,8 @@ python sdd/mcp/smoke_client.py http://127.0.0.1:8765/mcp
 - 不自动合并 PR；
 - 不替人确认需求；
 - 不伪造测试结果；
-- 不保证 L2 全量认证；未覆盖项见 `ADOPTION.md` / `sdd/README.md`；
+- 不保证官方认证；L2 强制路径的覆盖与缺口见
+  [标准符合性基线](STANDARD-CONFORMANCE.md)；
 - 高风险变更必须停下来找人；
 - `sdd verify` 只有在能执行目标仓库测试时才有意义；
 - 远端 MCP 不能直接修改开发者本地 clone；
