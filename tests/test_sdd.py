@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timedelta
 from pathlib import Path
 from unittest import mock
 
@@ -1550,6 +1551,179 @@ class GateClassificationTests(SddFlowBase):
         self.assertIn("| G4-02 |", report)
         self.assertIn("| BLOCK |", report)
         self.assertIn("| WARN |", report)
+
+
+class GateWaiverTests(SddFlowBase):
+    def future_expiry(self):
+        return (datetime.now().astimezone() + timedelta(days=2)).isoformat()
+
+    def waive(
+        self,
+        check="G4-02",
+        *,
+        expect=0,
+        human=True,
+        evidence="补偿控制已记录",
+        expires=None,
+        approver="Reviewer <reviewer@example.com>",
+    ):
+        args = [
+            "waive",
+            "--spec",
+            SPEC_ID,
+            "--check",
+            check,
+            "--scope",
+            "仅当前 Spec 的受控例外",
+            "--reason",
+            "历史证据缺口已有补偿控制",
+            "--expires",
+            expires or self.future_expiry(),
+            "--evidence",
+            evidence,
+            "--approver",
+            approver,
+            "--json",
+        ]
+        if human:
+            args.append("--human")
+        return self.run_sdd(*args, expect=expect)
+
+    def save_state(self, state):
+        path = self.root / "docs" / "specs" / SPEC_ID / "state.json"
+        path.write_text(
+            json.dumps(state, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+    def g4_rows(self):
+        config = engine.load_config(self.root)
+        directory = self.root / "docs" / "specs" / SPEC_ID
+        ctx = engine.gate_context(
+            self.root, config, directory, self.state()
+        )
+
+        def passed(_ctx):
+            return [], "ok"
+
+        with mock.patch.dict(
+            engine.GATE_CHECK_FUNCS,
+            {"G4-01": passed, "G4-03": passed},
+        ):
+            return engine.run_gate_checks("G4", ctx)
+
+    def test_waive_records_scope_and_approver(self):
+        # [AC-003-1]
+        self.new_spec()
+        result = self.waive()
+        payload = json.loads(result.stdout)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["kind"], "waiver")
+        self.assertEqual(payload["check"], "G4-02")
+        self.assertEqual(payload["gate"], "G4")
+
+        state = self.state()
+        waiver = state["waivers"][-1]
+        self.assertEqual(waiver["spec"], SPEC_ID)
+        self.assertEqual(waiver["check_id"], "G4-02")
+        self.assertEqual(waiver["gate"], "G4")
+        self.assertEqual(waiver["scope"], "仅当前 Spec 的受控例外")
+        self.assertEqual(waiver["reason"], "历史证据缺口已有补偿控制")
+        self.assertEqual(waiver["approver"], "Reviewer <reviewer@example.com>")
+        self.assertEqual(waiver["evidence"], "补偿控制已记录")
+        self.assertEqual(waiver["artifacts"][0]["path"],
+                         "docs/specs/SPEC-ORDER-001/tasks.md#plan")
+        self.assertTrue(waiver["artifacts"][0]["sha256"])
+
+        approval = state["approvals"][-1]
+        self.assertEqual(approval["action"], "waiver")
+        self.assertEqual(approval["check_id"], "G4-02")
+        history = [
+            entry
+            for entry in state["history"]
+            if entry.get("action") == "waiver"
+        ][-1]
+        self.assertEqual(history["check_id"], "G4-02")
+        self.assertEqual(history["expires_at"], waiver["expires_at"])
+        event = engine.read_event_log(
+            self.root / "docs" / "specs" / SPEC_ID
+        )[-1]
+        self.assertEqual(event["event"], "waiver")
+        self.assertEqual(event["check_id"], "G4-02")
+
+    def test_active_waiver_downgrades_required_to_warn(self):
+        # [AC-003-2]
+        self.new_spec()
+        self.waive()
+        rows = self.g4_rows()
+        row = next(item for item in rows if item["id"] == "G4-02")
+        self.assertEqual(row["result"], "warn")
+        self.assertIn("waived by", row["waiver"])
+        self.assertEqual(engine.gate_rows_errors(rows), [])
+        self.assertIn(
+            "以下 Task 没有验证证据：T-001",
+            engine.gate_rows_warnings(rows),
+        )
+
+    def test_expired_or_changed_artifact_revalidates(self):
+        # [AC-003-3]
+        self.new_spec()
+        self.waive()
+        state = self.state()
+        state["waivers"][-1]["expires_at"] = (
+            datetime.now().astimezone() - timedelta(minutes=1)
+        ).isoformat()
+        self.save_state(state)
+        expired = next(
+            item for item in self.g4_rows() if item["id"] == "G4-02"
+        )
+        self.assertEqual(expired["result"], "block")
+        self.assertEqual(expired["waiver"], "")
+
+        state = self.state()
+        state["waivers"][-1]["expires_at"] = self.future_expiry()
+        self.save_state(state)
+        tasks_path = self.root / "docs" / "specs" / SPEC_ID / "tasks.md"
+        tasks_path.write_text(
+            tasks_path.read_text(encoding="utf-8").replace(
+                "| T-001 | 待填写 |",
+                "| T-001 | 计划已变更 |",
+            ),
+            encoding="utf-8",
+        )
+        changed = next(
+            item for item in self.g4_rows() if item["id"] == "G4-02"
+        )
+        self.assertEqual(changed["result"], "block")
+        self.assertEqual(len(self.state()["waivers"]), 1)
+
+    def test_waive_rejects_invalid_check_or_human(self):
+        # [AC-003-4]
+        self.new_spec()
+        no_human = self.waive(expect=2, human=False)
+        self.assertIn("--human", no_human.stderr)
+        unknown = self.waive(check="G9-99", expect=2)
+        self.assertIn("未知检查 ID", unknown.stderr)
+        not_waivable = self.waive(check="G4-01", expect=2)
+        self.assertIn("不允许豁免", not_waivable.stderr)
+        redline = self.waive(check="G5-01", expect=2)
+        self.assertIn("红线", redline.stderr)
+        expired = self.waive(
+            expires=(
+                datetime.now().astimezone() - timedelta(days=1)
+            ).isoformat(),
+            expect=2,
+        )
+        self.assertIn("未来时间", expired.stderr)
+        no_evidence = self.waive(evidence="", expect=2)
+        self.assertIn("--evidence", no_evidence.stderr)
+        self.assertEqual(self.state().get("waivers", []), [])
+        self.assertFalse(
+            any(
+                item.get("action") == "waiver"
+                for item in self.state().get("approvals", [])
+            )
+        )
 
 
 class GateRegistryTests(SddFlowBase):

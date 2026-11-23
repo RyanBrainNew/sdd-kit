@@ -113,6 +113,13 @@ def _print_human(payload: dict[str, Any]) -> None:
         if payload.get("reopened_tasks"):
             print(f"[sdd] reopened={','.join(payload['reopened_tasks'])}")
         return
+    if payload.get("kind") == "waiver":
+        print(
+            f"[sdd] {payload.get('spec')} waiver "
+            f"{payload.get('check')} on {payload.get('gate')} "
+            f"until {payload.get('expires_at')}"
+        )
+        return
     if payload.get("kind") == "manifest":
         print(
             f"[sdd] wrote sdd/manifest.json "
@@ -439,6 +446,31 @@ def build_parser() -> argparse.ArgumentParser:
         func=lambda a, w: (
             _require_human(a),
             w.unblock(a.spec, a.evidence, a.approver),
+        )[1]
+    )
+
+    p = sub.add_parser("waive", help="human-only scoped waiver for a gate check")
+    p.add_argument("--spec")
+    p.add_argument("--check", required=True)
+    p.add_argument("--scope", required=True)
+    p.add_argument("--reason", required=True)
+    p.add_argument("--expires", required=True)
+    p.add_argument("--evidence", required=True)
+    p.add_argument("--approver", help="approver identity, default: git config user")
+    p.add_argument("--human", action="store_true")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(
+        func=lambda a, w: (
+            _require_human(a),
+            w.waive(
+                a.spec,
+                a.check,
+                a.scope,
+                a.reason,
+                a.expires,
+                a.evidence,
+                a.approver,
+            ),
         )[1]
     )
 

@@ -219,7 +219,7 @@ CHECK_REGISTRY = (
         "name": "历史 Spec 兼容标注",
         "level": "advisory",
         "trigger": "doc_pr",
-        "waivable": True,
+        "waivable": False,
         "redline": False,
         "evidence": "MERGED 历史 Spec 使用 legacy 校验并在报告标注",
         "owner": "planner",
@@ -1452,6 +1452,8 @@ def _event_from_history(
         "commit",
         "pr_url",
         "gate",
+        "check_id",
+        "expires_at",
         "reason",
         "actor",
         "source",
@@ -2934,6 +2936,10 @@ def validate_check_registry(
             errors.append(
                 f"{check_id or '(unknown)'} 不能同时 waivable=true 和 redline=true"
             )
+        if item.get("waivable") is True and level != "required":
+            errors.append(
+                f"{check_id or '(unknown)'} 只有 required 检查可以 waivable=true"
+            )
         for field in ("name", "evidence", "owner"):
             if not isinstance(item.get(field), str) or not item.get(field, "").strip():
                 errors.append(
@@ -3174,6 +3180,62 @@ def classify_check_result(
     return "block"
 
 
+def artifact_scope_signature(
+    entries: list[dict[str, Any]],
+) -> list[tuple[str, str]]:
+    return sorted(
+        (
+            str(entry.get("path") or ""),
+            str(entry.get("sha256") or ""),
+        )
+        for entry in entries
+        if isinstance(entry, dict)
+    )
+
+
+def active_waiver_for_check(
+    ctx: dict[str, Any],
+    gate: str,
+    check_id: str,
+) -> Optional[dict[str, Any]]:
+    state = ctx.get("state")
+    if not isinstance(state, dict):
+        return None
+    current_scope = artifact_scope_signature(
+        gate_artifact_entries(
+            ctx["root"],
+            ctx["directory"],
+            gate,
+        )
+    )
+    current_at = datetime.now().astimezone()
+    spec_id = str(state.get("spec_id") or "")
+    for waiver in reversed(state.get("waivers", []) or []):
+        if not isinstance(waiver, dict):
+            continue
+        if str(waiver.get("check_id") or "") != check_id:
+            continue
+        if str(waiver.get("gate") or "") != gate:
+            continue
+        if spec_id and str(waiver.get("spec") or "") != spec_id:
+            continue
+        expires = parse_timestamp(waiver.get("expires_at"))
+        if expires is None or expires <= current_at:
+            continue
+        saved_scope = artifact_scope_signature(waiver.get("artifacts", []))
+        if saved_scope != current_scope:
+            continue
+        return waiver
+    return None
+
+
+def waiver_label(waiver: dict[str, Any]) -> str:
+    return (
+        f"waived by {waiver.get('approver') or 'unknown'} "
+        f"until {waiver.get('expires_at') or 'unknown'}"
+    )
+
+
 def run_gate_checks(
     gate: str,
     ctx: dict[str, Any],
@@ -3209,7 +3271,14 @@ def run_gate_checks(
             item_errors = list(item_errors) + [
                 f"{item['id']} 是安全/证据链红线，不能豁免或降级"
             ]
-        result = classify_check_result(item, item_errors)
+        waiver = (
+            active_waiver_for_check(ctx, gate, str(item["id"]))
+            if item_errors
+            and item.get("waivable")
+            and not item.get("redline")
+            else None
+        )
+        result = classify_check_result(item, item_errors, waiver)
         rows.append(
             {
                 "id": item["id"],
@@ -3222,6 +3291,7 @@ def run_gate_checks(
                 "result": result,
                 "detail": detail,
                 "errors": item_errors,
+                "waiver": waiver_label(waiver) if waiver else "",
             }
         )
     return rows
@@ -5994,6 +6064,100 @@ def command_unblock(
     return 0
 
 
+def command_waive(
+    args: argparse.Namespace, root: Path, config: dict[str, Any]
+) -> int:
+    spec_id, directory, state = resolve_spec(root, config, args.spec)
+    if state.get("state") == "MERGED":
+        raise SddError("已合并的 Spec 不能新增豁免")
+    if not args.human:
+        raise SddError("waive 需要 --human；agent 不允许代替人类批准豁免")
+    approver = resolve_approver(root, getattr(args, "approver", None))
+    if config.get("require_approver") and approver == "unknown":
+        raise SddError(
+            "require_approver=true；请用 --approver 提供审批人"
+        )
+    check_id = str(args.check or "").strip()
+    item = CHECK_REGISTRY_BY_ID.get(check_id)
+    if item is None:
+        raise SddError(f"未知检查 ID：{check_id}")
+    gate = str(item["gate"])
+    if item.get("redline"):
+        raise SddError(f"{check_id} 是安全/证据链红线，不能豁免")
+    if not item.get("waivable"):
+        raise SddError(f"{check_id} 不允许豁免")
+    scope = str(args.scope or "").strip()
+    reason = str(args.reason or "").strip()
+    evidence = str(args.evidence or "").strip()
+    if not scope:
+        raise SddError("waive 需要 --scope，说明豁免适用范围")
+    if not reason:
+        raise SddError("waive 需要 --reason，说明豁免原因")
+    if not evidence:
+        raise SddError("waive 需要 --evidence，记录补偿措施或证据")
+    expires = parse_timestamp(args.expires)
+    if expires is None:
+        raise SddError(
+            "--expires 需要 ISO 日期或日期时间，例如 2026-12-31"
+        )
+    if expires <= datetime.now().astimezone():
+        raise SddError("--expires 必须是未来时间")
+    artifacts = gate_artifact_entries(root, directory, gate)
+    if not artifacts:
+        raise SddError(
+            f"{gate} 当前没有可绑定的产物；先生成产物再申请豁免"
+        )
+    record = {
+        "spec": spec_id,
+        "check_id": check_id,
+        "gate": gate,
+        "scope": scope,
+        "artifacts": artifacts,
+        "reason": reason,
+        "approver": approver,
+        "at": now(),
+        "expires_at": expires.isoformat(),
+        "evidence": evidence,
+    }
+    state.setdefault("waivers", []).append(record)
+    state.setdefault("approvals", []).append(
+        {
+            "action": "waiver",
+            **record,
+        }
+    )
+    state["last_approver"] = approver
+    add_history(
+        state,
+        str(state.get("state")),
+        f"waiver {check_id} until {record['expires_at']}",
+        action="waiver",
+        check_id=check_id,
+        gate=gate,
+        expires_at=record["expires_at"],
+        role="approver",
+        actor="human",
+        approver=approver,
+    )
+    save_state(directory, state)
+    payload = {
+        "ok": True,
+        "kind": "waiver",
+        "spec": spec_id,
+        "check": check_id,
+        "gate": gate,
+        "expires_at": record["expires_at"],
+        "waiver": record,
+    }
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        print(
+            f"[sdd] {spec_id} waiver {check_id} until {record['expires_at']}"
+        )
+    return 0
+
+
 def dirty_spec_paths(root: Path, directory: Path) -> list[str]:
     if not (root / ".git").exists():
         return []
@@ -6667,6 +6831,22 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--approver", help="approver identity, default: git config user")
     p.add_argument("--human", action="store_true")
     p.set_defaults(func=command_unblock)
+
+    p = sub.add_parser("waive", help="human-only scoped waiver for a gate check")
+    add_spec_option(p)
+    p.add_argument("--check", required=True, help="stable check ID, e.g. G4-02")
+    p.add_argument("--scope", default="", help="waiver scope description")
+    p.add_argument("--reason", default="", help="why the waiver is needed")
+    p.add_argument(
+        "--expires",
+        default="",
+        help="future ISO date or datetime, e.g. 2026-12-31",
+    )
+    p.add_argument("--evidence", default="", help="compensating evidence")
+    p.add_argument("--approver", help="approver identity, default: git config user")
+    p.add_argument("--human", action="store_true")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=command_waive)
 
     p = sub.add_parser("rewind", help="human rewind to an earlier SDD stage")
     add_spec_option(p)

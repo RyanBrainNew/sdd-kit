@@ -53,7 +53,13 @@ class Workspace:
         "start_new_with": "sdd start-work",
         "submit_stage_with": "sdd submit",
         "submit_task_with": "sdd submit-task",
-        "human_only": ["approve_spec", "confirm_merge", "unblock", "rewind"],
+        "human_only": [
+            "approve_spec",
+            "confirm_merge",
+            "unblock",
+            "rewind",
+            "waive",
+        ],
         "rule": (
             "Do not ask the developer which SDD stage the work is in. "
             "Read next.action, execute it, and submit with next.submit_with. "
@@ -992,6 +998,46 @@ class Workspace:
             "session": self.session_info(),
         }
 
+    def waive(
+        self,
+        spec: str | None,
+        check: str,
+        scope: str,
+        reason: str,
+        expires: str,
+        evidence: str,
+        approver: str | None = None,
+    ) -> dict[str, Any]:
+        args = ["waive"]
+        if spec:
+            args.extend(["--spec", spec])
+        args.extend(
+            [
+                "--check",
+                check,
+                "--scope",
+                scope,
+                "--reason",
+                reason,
+                "--expires",
+                expires,
+                "--evidence",
+                evidence,
+                "--human",
+                "--json",
+            ]
+        )
+        if approver:
+            args.extend(["--approver", approver])
+        result = self._run(args)
+        payload = self._json(result)
+        resolved = spec or str(payload.get("spec") or "")
+        if resolved:
+            self.bind_session(resolved)
+        payload["project"] = self.project_id
+        payload["session"] = self.session_info()
+        return payload
+
     def rewind(
         self,
         spec: str,
@@ -1183,7 +1229,8 @@ class Workspace:
             "producing the requested artifact. Do not ask the developer what "
             "stage the work is in. The CLI re-validates and returns the next "
             "action. A task must be submitted with `sdd submit-task`. Never edit "
-            "state.json. approve, merge, unblock and rewind are human-only."
+            "state.json. approve, merge, unblock, rewind and waive are "
+            "human-only."
         )
 
     def _run(
