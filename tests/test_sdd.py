@@ -418,7 +418,8 @@ VERIFY_STRICT_SUFFIX = """
 | Reviewer | 独立评审员 |
 | Session | reviewer-session-1 |
 | Model | review-model |
-| Findings | 未发现阻断问题。 |
+| Scope | tests/test_status.py；AC-001-1 |
+| Findings | 未发现可执行问题。 |
 | Blocking issues | none |
 """
 
@@ -906,6 +907,10 @@ class StatusTest(unittest.TestCase):
 """,
         )
         self.run_sdd("start", "--spec", SPEC_ID, "--task", "T-001")
+        self.write(
+            "docs/specs/SPEC-ORDER-001/verification.md",
+            VERIFY_TEXT + VERIFY_STRICT_SUFFIX,
+        )
         self.run_sdd(
             "complete",
             "--spec",
@@ -956,6 +961,16 @@ class StatusTest(unittest.TestCase):
             "docs/specs/SPEC-ORDER-001/verification.md",
             VERIFY_TEXT + VERIFY_STRICT_SUFFIX,
         )
+        config_path = self.root / "sdd" / "config.json"
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        config["test_commands"] = [
+            "python -m unittest discover -s tests -p test_status.py"
+        ]
+        config_path.write_text(
+            json.dumps(config, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        self.run_sdd("verify", "--spec", SPEC_ID)
         self.run_sdd("check", "--spec", SPEC_ID, "--stage", "verify")
         self.run_sdd(
             "complete",
@@ -975,7 +990,55 @@ class StatusTest(unittest.TestCase):
         )
         self.assertEqual(self.state()["state"], "PR_READY")
 
+    def test_manual_g4_blocks_without_review(self):
+        self.new_spec(workflow="l2-strict")
+        self.approve_valid_spec()
+        self.write("docs/specs/SPEC-ORDER-001/design.md", DESIGN_TEXT)
+        self.run_sdd(
+            "complete",
+            "--spec",
+            SPEC_ID,
+            "--human",
+            "--evidence",
+            "设计评审通过",
+        )
+        self.write("docs/specs/SPEC-ORDER-001/tasks.md", TASKS_TEXT)
+        self.run_sdd(
+            "complete",
+            "--spec",
+            SPEC_ID,
+            "--human",
+            "--evidence",
+            "任务拆解评审通过",
+        )
+        self.run_sdd("complete", "--spec", SPEC_ID, "--evidence", "开始实现")
+        self.write(
+            "tests/test_status.py",
+            """import unittest
+
+
+class StatusTest(unittest.TestCase):
+    def test_cancel_pending_order(self):
+        # [AC-001-1]
+        self.assertTrue(True)
+""",
+        )
+        self.run_sdd("start", "--spec", SPEC_ID, "--task", "T-001")
+        blocked = self.run_sdd(
+            "complete",
+            "--spec",
+            SPEC_ID,
+            "--task",
+            "T-001",
+            "--evidence",
+            "实现完成",
+            expect=2,
+        )
+        self.assertIn("独立审查", blocked.stderr)
+        self.assertEqual(self.state()["state"], "IMPLEMENTING")
+
     def test_clarification_marker_blocks_approve(self):
+        """[AC-002-5] 澄清标记非零时阻断并报告定位。"""
         self.new_spec()
         self.write(
             "docs/specs/SPEC-ORDER-001/spec.md",
@@ -1497,12 +1560,20 @@ class GateClassificationTests(SddFlowBase):
         self.new_spec()
         config = engine.load_config(self.root)
         directory = self.root / "docs/specs/SPEC-ORDER-001"
-        ctx = engine.gate_context(self.root, config, directory, self.state())
-        rows = engine.run_gate_checks("G5", ctx)
+        workflow = engine.resolve_workflow(
+            self.root, directory, self.state()
+        )
+        rows = engine.gate_check_results(
+            "G5",
+            ["verification.md 缺少章节：命令"],
+            workflow,
+            self.state(),
+            SPEC_ID,
+            engine.waiver_contexts(directory, "verify"),
+        )
         row = next(item for item in rows if item["id"] == "G5-01")
         self.assertEqual(row["result"], "block")
         self.assertTrue(row["redline"])
-        self.assertIn("红线", "\n".join(row["errors"]))
         self.assertEqual(
             engine.classify_check_result(
                 {"level": "required", "redline": True},
@@ -1574,7 +1645,7 @@ class GateWaiverTests(SddFlowBase):
             "--check",
             check,
             "--scope",
-            "仅当前 Spec 的受控例外",
+            "tasks",
             "--reason",
             "历史证据缺口已有补偿控制",
             "--expires",
@@ -1599,18 +1670,18 @@ class GateWaiverTests(SddFlowBase):
     def g4_rows(self):
         config = engine.load_config(self.root)
         directory = self.root / "docs" / "specs" / SPEC_ID
-        ctx = engine.gate_context(
-            self.root, config, directory, self.state()
+        state = self.state()
+        workflow = engine.resolve_workflow(
+            self.root, directory, state
         )
-
-        def passed(_ctx):
-            return [], "ok"
-
-        with mock.patch.dict(
-            engine.GATE_CHECK_FUNCS,
-            {"G4-01": passed, "G4-03": passed},
-        ):
-            return engine.run_gate_checks("G4", ctx)
+        return engine.gate_check_results(
+            "G4",
+            ["以下 Task 没有验证证据：T-001"],
+            workflow,
+            state,
+            SPEC_ID,
+            engine.waiver_contexts(directory, "tasks"),
+        )
 
     def test_waive_records_scope_and_approver(self):
         # [AC-003-1]
@@ -1627,7 +1698,7 @@ class GateWaiverTests(SddFlowBase):
         self.assertEqual(waiver["spec"], SPEC_ID)
         self.assertEqual(waiver["check_id"], "G4-02")
         self.assertEqual(waiver["gate"], "G4")
-        self.assertEqual(waiver["scope"], "仅当前 Spec 的受控例外")
+        self.assertEqual(waiver["scope"], "tasks")
         self.assertEqual(waiver["reason"], "历史证据缺口已有补偿控制")
         self.assertEqual(waiver["approver"], "Reviewer <reviewer@example.com>")
         self.assertEqual(waiver["evidence"], "补偿控制已记录")
@@ -1645,11 +1716,15 @@ class GateWaiverTests(SddFlowBase):
         ][-1]
         self.assertEqual(history["check_id"], "G4-02")
         self.assertEqual(history["expires_at"], waiver["expires_at"])
-        event = engine.read_event_log(
-            self.root / "docs" / "specs" / SPEC_ID
-        )[-1]
-        self.assertEqual(event["event"], "waiver")
-        self.assertEqual(event["check_id"], "G4-02")
+        event = next(
+            item
+            for item in engine.read_event_log(
+                self.root / "docs" / "specs" / SPEC_ID
+            )
+            if item.get("event") == "waiver_created"
+        )
+        self.assertEqual(event["event"], "waiver_created")
+        self.assertEqual(event["waiver"]["check_id"], "G4-02")
 
     def test_active_waiver_downgrades_required_to_warn(self):
         # [AC-003-2]
@@ -1657,13 +1732,9 @@ class GateWaiverTests(SddFlowBase):
         self.waive()
         rows = self.g4_rows()
         row = next(item for item in rows if item["id"] == "G4-02")
-        self.assertEqual(row["result"], "warn")
-        self.assertIn("waived by", row["waiver"])
+        self.assertEqual(row["result"], "waived")
+        self.assertTrue(row["waiver_id"])
         self.assertEqual(engine.gate_rows_errors(rows), [])
-        self.assertIn(
-            "以下 Task 没有验证证据：T-001",
-            engine.gate_rows_warnings(rows),
-        )
 
     def test_expired_or_changed_artifact_revalidates(self):
         # [AC-003-3]
@@ -1678,7 +1749,7 @@ class GateWaiverTests(SddFlowBase):
             item for item in self.g4_rows() if item["id"] == "G4-02"
         )
         self.assertEqual(expired["result"], "block")
-        self.assertEqual(expired["waiver"], "")
+        self.assertNotIn("waiver_id", expired)
 
         state = self.state()
         state["waivers"][-1]["expires_at"] = self.future_expiry()
@@ -2015,13 +2086,13 @@ class GateRegistryTests(SddFlowBase):
     def test_registry_covers_all_gates(self):
         # [AC-001-1]
         self.assertEqual(engine.validate_check_registry(), [])
-        ids = [str(item["id"]) for item in engine.CHECK_REGISTRY]
+        ids = [str(item["id"]) for item in engine.CHECK_REGISTRY_ALL]
         self.assertEqual(len(ids), len(set(ids)))
         self.assertEqual(
-            {str(item["gate"]) for item in engine.CHECK_REGISTRY},
+            {str(item["gate"]) for item in engine.CHECK_REGISTRY_ALL},
             set(engine.GATE_STAGES),
         )
-        for item in engine.CHECK_REGISTRY:
+        for item in engine.CHECK_REGISTRY_ALL:
             self.assertIn(item["level"], engine.CHECK_LEVELS)
             self.assertIn(item["trigger"], engine.CHECK_TRIGGERS)
             self.assertIsInstance(item["waivable"], bool)
@@ -2029,7 +2100,7 @@ class GateRegistryTests(SddFlowBase):
 
     def test_invalid_registry_metadata_rejected(self):
         # [AC-001-2]
-        items = [dict(item) for item in engine.CHECK_REGISTRY]
+        items = [dict(item) for item in engine.CHECK_REGISTRY_ALL]
         items[0]["trigger"] = "approve"
         items[1]["redline"] = "no"
         items[2]["level"] = "optional"
@@ -2476,15 +2547,26 @@ class ContextBundleTests(SddFlowBase):
         self.assertEqual(
             set(bundle),
             {
+                "schema",
+                "spec",
                 "task",
                 "frs",
                 "acs",
+                "requirements",
                 "design_sections",
                 "contracts",
+                "contract_details",
                 "project_constraints",
+                "constraints",
+                "review_overlays",
                 "fix_patterns",
+                "knowledge",
                 "allowed_paths",
                 "exclude",
+                "scope_policy",
+                "blocked",
+                "empty",
+                "notes",
             },
         )
         self.assertEqual(
@@ -2512,15 +2594,13 @@ class ContextBundleTests(SddFlowBase):
         )
         self.assertEqual(bundle["fix_patterns"], [])
         self.assertIn("tests/test_status.py", bundle["allowed_paths"])
-        self.assertEqual(
-            bundle["exclude"],
-            [
-                "docs/prd.md",
-                "docs/specs/*（其他 Spec）",
-                ".sdd/runtime/**",
-                "历史聊天",
-            ],
-        )
+        for expected in (
+            "docs/prd.md",
+            "docs/specs/*（其他 Spec）",
+            ".sdd/runtime/**",
+            "历史聊天",
+        ):
+            self.assertIn(expected, bundle["exclude"])
         self.assertEqual(action["action"], "implement_task")
         self.assertEqual(action["task"], "T-001")
         self.assertEqual(

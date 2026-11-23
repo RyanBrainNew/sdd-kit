@@ -57,6 +57,17 @@ SDD Kit 把公司 SDD-L2 的流程做成**仓库自带的默认开发路径**，
 | 证据散落在对话里 | Spec、Design、Tasks、Gate 报告、测试命令都随 Git 提交 |
 | 人工确认太多 | 只保留 Spec 确认与交付确认两个检查点 |
 
+### 三项核心优势
+
+| 优势 | 具体表现 | 可复核基线 |
+|---|---|---|
+| 轻量、使用简单 | 核心只用 Python 标准库；无服务端、无数据库；bootstrap 一次 | 核心第三方依赖 0；开发者必记命令 2 个 |
+| 可轻松自定义 | 工作流是声明式 JSON；新增变体不改状态机 | 4 个预设；`workflow validate` 校验未知字段 |
+| 合规可溯源 | P0–P5 / G0–G5 映射；稳定检查 ID；事件哈希链 | 12/12 映射；Gate 结果 100% 结构化 |
+
+完整对照、状态口径和剩余缺口见
+[标准符合性文档](docs/STANDARD-CONFORMANCE.md)。
+
 ## 它怎么工作
 
 ```mermaid
@@ -82,7 +93,7 @@ Agent 每次会话先运行 `python -m sdd resume --json`，读取 `next.action`
 | `l2-standard` | 默认 L2 需求 | G0 人工；G2 仅高风险人工；其余自动 |
 | `l2-hotfix` | 紧急修复，低/中风险 | 轻量设计模板；G2 自动；高风险与 `risk_stop` 标签直接拒绝 |
 | `l2-strict` | 安全、迁移、破坏性变更 | G0–G5 全部人工；验证需要独立审查人 |
-| `l2-refactor` | 行为保持型改造 | schema 2；裁剪 advisory 检查；上下文纳入 `docs/knowledge/**` |
+| `l2-refactor` | 行为保持型存量改造 | schema 2；强调改动边界、回归证据和可回滚；上下文纳入 `docs/knowledge/**` |
 
 Spec 创建时会把预设快照写入 `docs/specs/<Spec>/workflow.json`；之后仓库预设升级不会改变旧 Spec。
 新增或修改 `sdd/workflows/*.json` 后先用
@@ -141,6 +152,10 @@ LF 规范化，历史 CRLF 哈希仍可验证，Windows 与 Linux 工作区不�
 | `python -m sdd workflow validate --file <profile>` | 人 / Agent | 校验工作流 profile 并返回 digest |
 | `python -m sdd submit --artifact <name> --file <path> --json` | Agent | 提交阶段工件并接受校验 |
 | `python -m sdd submit-task --task T-xxx --evidence "..." --json` | Agent | 完成一个任务并记录测试证据 |
+| `python -m sdd metrics --json` | Agent / 质量人员 | 查看检查统计、豁免率、逃逸缺陷、重开率和 Gate 一次通过率 |
+| `python -m sdd events --spec <id> --json` | Agent / 审计人员 | 查看带哈希链和下一步的审计事件 |
+| `python -m sdd waive --spec <id> --check G5-09 ... --human` | 人 | 创建限范围、可到期的人工豁免 |
+| `python -m sdd workflow validate --file sdd/workflows/<name>.json --json` | 工作流设计者 | 校验声明式 Profile |
 | `python -m sdd report` | Agent | 生成 PR 正文与 Gate 摘要 |
 | `python -m sdd board` / `inbox` / `metrics` / `events` | 人 / Agent | 查看看板、待办、指标和审计事件 |
 | `python -m sdd approve --spec <id> --human --evidence "..."` | 人 | 确认 Spec |
@@ -265,6 +280,7 @@ $env:PYTHONIOENCODING='utf-8'
 python -m unittest discover -s tests -v
 python -m sdd verify-core
 python -m sdd verify-agent
+python -m sdd check --all --stage ci --check-git
 ```
 
 修改受保护文件后，必须更新版本并重新生成 manifest：

@@ -7,8 +7,7 @@
 ```text
 开发者给一个工作项
   -> Agent 用 python -m sdd 自动循环
-  -> 人只在 Spec 确认和交付确认时介入
-  -> 交付确认后 Agent 才创建 PR
+  -> 人只在 Spec 确认和 PR 合并时介入
   -> CI 做最终硬校验
 ```
 
@@ -18,7 +17,7 @@
 |---|---|---|
 | 仓库接入（平台团队，一次） | 执行 bootstrap、补项目事实、配 CODEOWNERS | `python bootstrap.py ...` |
 | 每个需求 | 审 `spec.md` 并确认 | `python -m sdd approve --spec <spec> --human --evidence "需求已确认"` |
-| 每个需求 | 确认交付（之后 Agent 才创建 PR） | `python -m sdd merge --spec <spec> --human --evidence "交付已确认"` |
+| 每个需求 | 审 PR、合并并登记 | `python -m sdd merge --spec <spec> --human --evidence "PR merged"` |
 
 `approve`、`merge`、`unblock` 都强制 `--human`；Agent 不得代替。
 
@@ -50,10 +49,9 @@ Agent 不需要知道 `DRAFT`、`SPEC_READY` 等状态名，只读 `next.action`
 ## 3. 自动循环
 
 1. 读取 `next.action`、`next.step_id`、`next.kind`、`next.prompt_file`、
-   `next.artifact`、`next.done_when`；`decision_required=true` 时停止并把
-   `question` / `options` 交给人类；
-2. 读取 `next.context_bundle`：Task、FR/AC、Design 章节、契约、约束、
-   `allowed_paths` 和 `exclude`；只在这个范围内调研，不扩大到其他 Spec；
+   `next.artifact`、`next.done_when` 和 `next.context_bundle`；
+   `decision_required=true` 时停止并把 `question` / `options` 交给人类；
+2. 调研代码、测试、契约、ADR 和 `sdd/context/`；
 3. 把事实写进当前 Spec 的 `context.md`，未决问题写进 `unknowns.md`；
 4. 生成 `next.artifact`；
 5. 用 `next.submit_with` 提交：
@@ -74,8 +72,7 @@ DRAFT
   -> IMPLEMENTING    自动开始
   -> VERIFYING       所有 Task 完成
   -> PR_READY        submit verification.md
-  -> MERGED          人 merge --human（确认交付）
-  -> 创建 PR         Agent 提交确认状态、开 PR、记录 URL
+  -> MERGED          人 merge --human
 
 任意状态 -> BLOCKED -> 人 unblock --human -> 原状态
 ```
@@ -88,12 +85,9 @@ DRAFT
 | `TASKS_READY` | 无需操作 | 上一次 submit 自动进入 `IMPLEMENTING` |
 | `IMPLEMENTING` | 一次做一个 Task | `submit-task --task T-xxx` |
 | `VERIFYING` | 写 `verification.md` | `submit --artifact verification.md` |
-| `PR_READY` | 生成 PR 正文，等待人工确认 | `report`，然后停 |
-| `MERGED` | 提交确认状态、创建并登记 PR | commit + push，`pr --url ...` |
+| `PR_READY` | 生成并开 PR | `report`，然后 `pr --url ...` |
+| `MERGED` | 结束 | 无 |
 | `BLOCKED` | 等人回答 | 人 `unblock --human` |
-
-`MERGED` 表示人工已确认交付；PR 在确认后创建。旧的 `MERGED` Spec 没有
-`delivery_confirmed_at`，仍按 legacy 规则校验。
 
 ## 5. 常用命令
 
@@ -102,16 +96,18 @@ DRAFT
 python -m sdd resume --json
 python -m sdd start-work --work-item srdcloud-553377 --title "订单取消" --domain ORDER --json
 python -m sdd start-work --work-item srdcloud-553377 --title "紧急修复" --workflow l2-hotfix --risk medium --json
+python -m sdd start-work --work-item srdcloud-553377 --title "存量重构" --workflow l2-refactor --risk medium --json
 
 # 查看
 python -m sdd board
 python -m sdd inbox --stale-days 7
 python -m sdd metrics --json
-python -m sdd events --spec SPEC-ORDER-001
+python -m sdd events --spec SPEC-ORDER-001 --json
 python -m sdd current --json
 python -m sdd status --json
 python -m sdd next --json
 python -m sdd check --spec SPEC-ORDER-001 --stage spec --json
+python -m sdd workflow validate --file sdd/workflows/l2-refactor.json --json
 
 # 提交阶段产物
 python -m sdd submit --spec SPEC-ORDER-001 --artifact spec.md --file docs/specs/SPEC-ORDER-001/spec.md --json
@@ -121,10 +117,10 @@ python -m sdd submit-task --spec SPEC-ORDER-001 --task T-001 --commit abc1234 --
 
 # 人类动作
 python -m sdd approve --spec SPEC-ORDER-001 --human --evidence "需求已确认"
-python -m sdd merge --spec SPEC-ORDER-001 --human --evidence "交付已确认"
+python -m sdd merge --spec SPEC-ORDER-001 --human --evidence "PR merged"
 python -m sdd unblock --spec SPEC-ORDER-001 --human --evidence "产品已确认"
 python -m sdd rewind --spec SPEC-ORDER-001 --to SPEC_READY --reason "设计遗漏" --human
-python -m sdd waive --spec SPEC-ORDER-001 --check G4-02 --scope "仅本 Spec" --reason "补偿控制已上线" --expires 2026-12-31 --evidence "监控已启用" --human
+python -m sdd waive --spec SPEC-ORDER-001 --check G5-09 --scope verification --reason "纯文档变更" --expires-at 2026-12-31 --evidence "docs-only" --human
 
 # 报告与 PR
 python -m sdd report --spec SPEC-ORDER-001 --json
@@ -141,10 +137,11 @@ python -m sdd check --all --stage ci --check-git
 的历史 Spec 以 `state.json` 审计记录为准，不受 20 个提交窗口限制。
 
 工作流预设包括 `l2-standard`、`l2-hotfix`、`l2-strict` 三个 schema 1 预设，
-以及 schema 2 的 `l2-refactor`。Spec 创建时会把 `sdd/workflows/<name>.json`
-快照到 `docs/specs/<Spec>/workflow.json`；之后仓库预设升级不会改变旧 Spec。
-`l2-strict` 的 G0–G5 全部需要人工，且验证报告必须有独立审查；`l2-hotfix`
-使用轻量设计并拒绝高风险；`l2-refactor` 裁剪 advisory 检查并纳入知识目录上下文。
+以及 schema 2 的 `l2-refactor`。Spec 创建时会把
+`sdd/workflows/<name>.json` 快照到 `docs/specs/<Spec>/workflow.json`；之后仓库
+预设升级不会改变旧 Spec。`l2-strict` 的 G0–G5 全部需要人工，且验证报告必须有
+独立审查；`l2-hotfix` 使用轻量设计并拒绝高风险；`l2-refactor` 只通过声明式
+JSON 增加行为保持、回归证据和回滚要求，不复制状态机规则。
 
 schema 2 profile 仍由 `sdd/scripts/sdd.py` 解释，只声明数据，不支持任意 DAG 或
 脚本。新增或修改后先校验：
@@ -152,6 +149,15 @@ schema 2 profile 仍由 `sdd/scripts/sdd.py` 解释，只声明数据，不支�
 ```powershell
 python -m sdd workflow validate --file sdd/workflows/l2-refactor.json
 ```
+
+`context_bundle` 只读，包含当前 Task、关联 FR/AC、设计章节、契约、项目约束、
+Review overlay、Fix Pattern、允许路径和排除项。Agent 不得静默扩大范围。
+
+`metrics --json` 提供按检查 ID 的通过/告警/阻断/豁免统计，以及质量回流指标。
+`events --json` 的 `audit` 字段会验证事件哈希链；不要手工编辑 `events.jsonl`。
+人工豁免只允许用于非安全红线，必须带范围、原因、审批人、到期时间和证据。
+`--scope` 是精确上下文匹配：`spec`、`design`、`tasks`、`verification`、`ci`
+或 `task:T-001`；`spec` 不再代表整个 Spec。需要跨阶段时必须显式写明多个范围。
 
 ## 6. MCP（可选）
 
@@ -190,11 +196,14 @@ Spec 确认时看：
 - 每条 AC 是否可测试；
 - 是否有未解决的 `[NEEDS CLARIFICATION]`。
 
-交付确认时看（PR 正文与本地 diff）：
+PR 审核时看：
 
 - `PR_BODY.md` 四要素是否齐全；
 - 每条 AC 是否有测试或证据；
-- `verification.md` 是否有 `Exit: 0` 的结构化命令证据；
+- `verification-evidence.jsonl` 的命令、退出码和输出哈希是否真实；
+- 中高风险变更是否有独立 Review，阻断 finding 是否已关闭；
+- `events.jsonl` 的审计链是否有效；
+- 人工豁免是否限范围、有到期时间且不属于安全红线；
 - 是否有未解释的 diff；
 - CI 的 `verify-core` / `verify-agent` / `check` 是否通过；
 - 高风险变更是否有对应 Gate 记录。
@@ -221,8 +230,6 @@ Agent 在写 Spec/Design 前先读：
 | 有 `[NEEDS CLARIFICATION]` | 停下问一个具体问题 |
 | Hook 不生效 | `git config core.hooksPath .githooks` |
 | 测试命令为空 | 配置 `sdd/config.json` 的 `test_commands` |
-| G5 提示 `manual/unverified` | 配置 `test_commands` 并运行 `sdd verify`；手写 PASS 不能放行 |
-| 测试名无法定位 / AC 未覆盖 | Task 表写真实测试类/方法；AC 标签放在 `def test_*` 函数体内 |
 | Agent 想改 `state.json` | 拒绝；改用 `submit` / `submit-task` / `block` |
 | Agent 想 approve/merge | 拒绝；这是人类动作 |
 | `verify-core` 失败 | 恢复平台发布版本，或由平台团队重新生成 manifest |

@@ -28,17 +28,21 @@ python -m sdd resume --json
 
 1. 读取 `next.action`、`next.step_id`、`next.kind`、`next.prompt_file`、
    `next.artifact`、`next.done_when` 和 `next.context_bundle`。
-   `decision_required=true` 时必须停止，
-   把 `question` / `options` 交给人类。
-2. 按 `context_bundle` 的 FR/AC、Design 章节、契约、约束、`allowed_paths`
-   和 `exclude` 调研，写入 `context.md` 和 `unknowns.md`；范围为空时不要自行扩大。
-3. 生成 `next.artifact` 要求的内容。
+   `decision_required=true` 时必须停止，把 `question` / `options` 交给人类。
+2. 调研代码、测试、接口契约、ADR 和服务卡，写入 `context.md` 和 `unknowns.md`。
+3. 生成 `next.artifact` 要求的内容；只读取 `context_bundle` 允许的路径，
+   越界时停止并请求扩大范围。
 4. 调用 `next.submit_with`：
    - 阶段产物：`python -m sdd submit --artifact <name> --file <path> --json`
    - 实现任务：`python -m sdd submit-task --task T-001 --evidence "..." --json`
 5. 如果返回 `ok=false`，按 `errors` 修复并重新提交。
 6. 如果返回 `awaiting_human_approval=true` 或 `human_checkpoint.required=true`，停止自动循环。
 7. 人处理完后，下一次会话从 `resume` 继续，不要重新创建 Spec。
+
+正常 `l2-standard` 循环中，每个阶段只暴露一个动作和一个提交命令：
+`create_spec`、`write_spec`、`write_design`、`write_tasks`、
+`implement_task`、`verify`、`human_merge`。新增治理能力不能把这个契约改成
+“多动作批处理”。
 
 ## 3. 人类检查点
 
@@ -47,10 +51,7 @@ python -m sdd resume --json
 | 检查点 | 谁做 | 命令 |
 |---|---|---|
 | Spec 确认 | 人 | `python -m sdd approve --spec <spec> --human --evidence "需求已确认"` |
-| 交付确认（确认后才创建 PR） | 人 | `python -m sdd merge --spec <spec> --human --evidence "交付已确认"` |
-
-人类确认交付后，Agent 才用 `PR_BODY.md` 创建 PR；PR 的审核合并由管理员在
-GitHub 完成，不产生额外的 SDD 状态 PR。
+| PR 合并 | 人 | `python -m sdd merge --spec <spec> --human --evidence "PR merged"` |
 
 `l2-hotfix` 仍是两个停止点，但 G2 自动通过，设计使用轻量模板；高风险或命中
 `risk_stop` 的需求不允许使用该预设。`l2-strict` 的 G0–G5 全部需要人工确认，
@@ -74,11 +75,15 @@ Agent 不传 `--approver`，也不得代替人执行这些命令。
 Gate 报告会绑定当前产物的 SHA-256。批准后修改 `spec.md`、`design.md`、
 `tasks.md` 的任务计划或 `verification.md`，CI 会失败并要求重新过 Gate 或回退。
 任务执行导致的 `status`、`commit`、`done` 变化不在 `tasks.md` 哈希范围内。
-文本工件按 LF 规范化后计算哈希，并兼容历史 CRLF 哈希；只有行尾变化不视为修改，
-正文变化仍必须阻断。
 
 Spec 创建时会把工作流预设快照到 `docs/specs/<Spec>/workflow.json`；后续修改
 `sdd/workflows/` 不会影响旧 Spec。Agent 不得手工编辑该快照或 `state.json.workflow`。
+
+`verification-evidence.jsonl` 记录真实执行命令、目录、时间、退出码、耗时、
+输出摘要与哈希、产物哈希。只在 Markdown 写“已通过”不算测试证据。
+
+`events.jsonl` 使用事件哈希链；`events --json` 的 `audit.valid=false` 时，
+G5/CI 必须失败。Agent 不得通过重写事件文件“修复”审计失败。
 
 schema 2 profile 只声明阶段、产物、Gate、检查项、人工检查点、风险标签和上下文
 规则，仍由 `sdd/scripts/sdd.py` 解释。Agent 不得把状态机规则复制到 profile，
@@ -91,15 +96,19 @@ schema 2 profile 只声明阶段、产物、Gate、检查项、人工检查点�
 - 不手工编辑 `events.jsonl`；它是由 `sdd` 自动追加的审计流。
 - 不跳过 `sdd submit` 的校验。
 - 不伪造测试结果。
-- 不手写 `PASS` 绕过 G5；必须由 `sdd verify` 写入 Command/CWD/Exit/Head/Plan-Hash/At。
-- AC 标签必须位于 `def test_*` 函数体内；任务表测试名必须能在测试文件中定位。
+- 不把人工豁免当作 Agent 可用开关；`waive` 不暴露给 MCP，且安全红线不可豁免。
 - 一次只做一个实现任务。
 - 每个代码 Commit 只关联一个 Task，并带 `Spec-Id` / `Task-Id` trailer。
 - CI 必须通过 `python -m sdd check --all --stage ci --check-git`。
-- `--check-git` 的最近提交 trailer 要求只约束未合并 Spec；已 `MERGED` 的历史
-  Spec 以 `state.json` 审计记录为准。
 - 核心和模板由平台团队维护；业务仓库不要修改 `sdd/core.py`、`sdd/templates/`、`sdd/prompts/`。
 - `sdd/manifest.json` 与 `sdd/VERSION` 必须提交；CI 用 manifest 校验核心没有被误改。
+
+## 4.1 核心优势的工程约束
+
+- 轻量：核心运行时只用 Python 标准库；不得把 MCP 依赖带入核心。
+- 可自定义：流程变体只写 `sdd/workflows/*.json`，不得在其他模块复制阶段规则。
+- 可溯源：每个 Gate 必须有稳定检查 ID、结构化结果、产物哈希和审计事件；
+  `metrics --json` 必须能按检查 ID 聚合。
 
 ## 5. 仓库自带与零配置
 

@@ -9,7 +9,7 @@
 | 作者 | {{AUTHOR}} |
 | 创建日期 | {{DATE}} |
 | 验证时间 | {{DATE}} |
-| 工作流 | l2-strict |
+| 工作流 | {{WORKFLOW}} |
 
 ## 2. 命令
 
@@ -48,5 +48,6 @@ None。
 | Reviewer | 待填写 |
 | Session | 待填写 |
 | Model | 待填写 |
+| Scope | 待填写（本次审查覆盖的文件、模块和 AC） |
 | Findings | 待填写 |
 | Blocking issues | none |

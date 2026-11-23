@@ -108,15 +108,15 @@ python -m sdd start-work --work-item <work-item> --issue-url "<url>" --json
 python -m sdd resume --spec <spec> --json
 ```
 
-需要紧急修复或严格流程时，由创建需求的人加 `--workflow l2-hotfix` 或
-`--workflow l2-strict`；Agent 不要自行选择或修改工作流。
+需要紧急修复、严格流程或存量重构时，由创建需求的人加 `--workflow l2-hotfix`、
+`--workflow l2-strict` 或 `--workflow l2-refactor`；Agent 不要自行选择或修改工作流。
 
 ## 2. 自动循环
 
 1. 读取 `next.action`、`next.step_id`、`next.kind`、`next.prompt_file`、
    `next.artifact`、`next.done_when`、`next.submit_with` 和 `next.context_bundle`。
-2. 按 `context_bundle` 的 FR/AC、Design 章节、契约、约束、`allowed_paths` 和
-   `exclude` 调研代码与测试；把事实写进 `context.md`，把未决问题写进 `unknowns.md`。
+2. 只按 `context_bundle` 的范围调研代码、测试、契约、ADR、知识索引和
+   `sdd/context/`；把事实写进 `context.md`，把未决问题写进 `unknowns.md`。
 3. 产出 `next.artifact` 要求的内容。
 4. 调用 `next.submit_with` 提交：
    - 阶段产物：`python -m sdd submit --artifact <name> --file <path> --json`
@@ -127,8 +127,7 @@ python -m sdd resume --spec <spec> --json
 7. `human_checkpoint.required=true`：停止，并告诉人类执行 `human_checkpoint.command`。
 8. 否则继续读取新的 `next.action`，直到 `done` 或人工检查点。
 
-G5 只接受 `sdd verify` 写入的结构化命令证据；手写 `PASS`、空 `test_commands`、
-非 0 退出码、无法定位的测试名或函数体外的 AC 标签都不能放行。
+每个阶段只执行一个动作、用一个提交命令；不要绕过 CLI 批量推进。
 
 ## 3. 人类检查点与例外动作
 
@@ -136,9 +135,8 @@ G5 只接受 `sdd verify` 写入的结构化命令证据；手写 `PASS`、空 `
 
 1. Spec 确认：人执行
    `python -m sdd approve --spec <spec> --human --evidence "需求已确认"`。
-2. 交付确认：人执行
-   `python -m sdd merge --spec <spec> --human --evidence "交付已确认"`。
-   确认前 Agent 不得创建 PR；确认后状态为 `MERGED`，Agent 再创建 PR。
+2. PR 合并：人执行
+   `python -m sdd merge --spec <spec> --human --evidence "PR merged"`。
 
 例外动作：
 
@@ -150,7 +148,9 @@ G5 只接受 `sdd verify` 写入的结构化命令证据；手写 `PASS`、空 `
    `python -m sdd waive --spec <spec> --check <id> --scope "..." --reason "..." --expires <iso> --evidence "..." --human`。
    豁免只对可豁免的非红线 required 检查有效，并绑定 Gate 产物哈希。
 
-人可以用 `python -m sdd inbox --json` 查看所有等待处理的事项；Agent 不消费该命令。
+人可以用 `python -m sdd inbox --json` 查看所有等待处理的事项；
+用 `python -m sdd events --spec <spec> --json` 和 `python -m sdd metrics --json`
+查看审计链与质量指标。Agent 不代替人创建豁免。
 
 ## 4. 优先级
 
@@ -160,4 +160,7 @@ G5 只接受 `sdd verify` 写入的结构化命令证据；手写 `PASS`、空 `
 
 CI 会执行 `python -m sdd verify-core`、`python -m sdd verify-agent` 和
 `python -m sdd check --all --stage ci --check-git`。不要试图绕过。
+
+`verification-evidence.jsonl` 是真实测试证据；`events.jsonl` 是带哈希链的审计流。
+只在 Markdown 写 PASS、伪造退出码或手工重写事件都会失败。
 <!-- SDD:MANAGED:END -->

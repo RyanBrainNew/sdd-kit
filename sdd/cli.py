@@ -100,6 +100,14 @@ def _print_human(payload: dict[str, Any]) -> None:
             f"median_lead_time={aggregate.get('median_lead_time_hours')}h  "
             f"median_reworks={aggregate.get('median_reworks', 0)}"
         )
+        quality = payload.get("quality", {})
+        print(
+            f"[sdd] waiver_rate={quality.get('waiver_rate', 0)}  "
+            f"gate_first_pass_rate={quality.get('gate_first_pass_rate')}  "
+            f"escaped_defects={quality.get('escaped_defects', 0)}  "
+            f"reopen_rate={quality.get('reopen_rate', 0)}  "
+            f"audit_valid={payload.get('audit', {}).get('valid')}"
+        )
         return
     if payload.get("kind") == "rewind":
         print(
@@ -153,6 +161,24 @@ def _print_human(payload: dict[str, Any]) -> None:
         else:
             for error in payload.get("errors", []):
                 print(f"[sdd] {error}", file=sys.stderr)
+        return
+    if payload.get("kind") == "workflow_validate":
+        if payload.get("ok"):
+            print(
+                f"[sdd] workflow {payload.get('name')}@"
+                f"{payload.get('version')} is valid"
+            )
+        else:
+            for error in payload.get("errors", []):
+                print(f"[sdd] {error}", file=sys.stderr)
+        return
+    if payload.get("kind") == "waiver":
+        waiver = payload.get("waiver", {})
+        print(
+            f"[sdd] {payload.get('spec')} waiver {waiver.get('id')} "
+            f"created for {waiver.get('check_id')} until "
+            f"{waiver.get('expires_at')}"
+        )
         return
     spec = payload.get("spec") or payload.get("spec_id") or "-"
     state = payload.get("state") or payload.get("next", {}).get("state") or "-"
@@ -407,6 +433,18 @@ def build_parser() -> argparse.ArgumentParser:
         func=lambda a, w: w.index(a.spec or w._resolve_current_spec())
     )
 
+    p = sub.add_parser("verify", help="run test commands and record evidence")
+    p.add_argument("--spec")
+    p.add_argument("--command", action="append", default=[])
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(
+        func=lambda a, w: _verify_payload(
+            w,
+            a.spec or w._resolve_current_spec(),
+            a.command or [],
+        )
+    )
+
     p = sub.add_parser("approve", help="human approval: DRAFT -> SPEC_READY")
     p.add_argument("--spec")
     p.add_argument("--evidence", required=True)
@@ -420,10 +458,30 @@ def build_parser() -> argparse.ArgumentParser:
         )[1]
     )
 
-    p = sub.add_parser(
-        "merge",
-        help="human delivery confirmation: PR_READY -> MERGED (before PR creation)",
+    p = sub.add_parser("waive", help="human-only Gate check waiver")
+    p.add_argument("--spec")
+    p.add_argument("--check", required=True)
+    p.add_argument("--scope", required=True)
+    p.add_argument("--reason", required=True)
+    p.add_argument("--expires-at", "--expires", dest="expires_at", required=True)
+    p.add_argument("--evidence", required=True)
+    p.add_argument("--approver")
+    p.add_argument("--human", action="store_true")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(
+        func=lambda a, w: w.waive(
+            a.spec or w._resolve_current_spec(),
+            a.check,
+            a.scope,
+            a.reason,
+            a.expires_at,
+            a.evidence,
+            approver=a.approver,
+            human=a.human,
+        )
     )
+
+    p = sub.add_parser("merge", help="human merge: PR_READY -> MERGED")
     p.add_argument("--spec")
     p.add_argument("--evidence", required=True)
     p.add_argument("--approver", help="approver identity, default: git config user")
@@ -446,31 +504,6 @@ def build_parser() -> argparse.ArgumentParser:
         func=lambda a, w: (
             _require_human(a),
             w.unblock(a.spec, a.evidence, a.approver),
-        )[1]
-    )
-
-    p = sub.add_parser("waive", help="human-only scoped waiver for a gate check")
-    p.add_argument("--spec")
-    p.add_argument("--check", required=True)
-    p.add_argument("--scope", required=True)
-    p.add_argument("--reason", required=True)
-    p.add_argument("--expires", required=True)
-    p.add_argument("--evidence", required=True)
-    p.add_argument("--approver", help="approver identity, default: git config user")
-    p.add_argument("--human", action="store_true")
-    p.add_argument("--json", action="store_true")
-    p.set_defaults(
-        func=lambda a, w: (
-            _require_human(a),
-            w.waive(
-                a.spec,
-                a.check,
-                a.scope,
-                a.reason,
-                a.expires,
-                a.evidence,
-                a.approver,
-            ),
         )[1]
     )
 
@@ -523,31 +556,6 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=lambda a, w: w.report(a.spec or w._resolve_current_spec()))
 
-    p = sub.add_parser("verify", help="run test commands and record evidence")
-    p.add_argument("--spec")
-    p.add_argument("--command", action="append", help="override test_commands; repeatable")
-    p.add_argument("--json", action="store_true")
-    p.set_defaults(
-        func=lambda a, w: _verify_payload(
-            w,
-            a.spec or w._resolve_current_spec(),
-            a.command or [],
-        )
-    )
-
-    p = sub.add_parser(
-        "workflow", help="validate declarative workflow profiles"
-    )
-    workflow_sub = p.add_subparsers(
-        dest="workflow_command", required=True
-    )
-    wv = workflow_sub.add_parser(
-        "validate", help="validate one workflow profile JSON file"
-    )
-    wv.add_argument("--file", required=True)
-    wv.add_argument("--json", action="store_true")
-    wv.set_defaults(func=lambda a, w: _workflow_validate(a.file))
-
     p = sub.add_parser("pr", help="record a PR URL")
     p.add_argument("--spec")
     p.add_argument("--url")
@@ -584,6 +592,15 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("verify-core", help="verify protected core hashes")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=lambda a, w: _verify_core_payload(w.root))
+
+    p = sub.add_parser("workflow", help="validate declarative workflow profiles")
+    workflow_sub = p.add_subparsers(dest="workflow_command", required=True)
+    w = workflow_sub.add_parser("validate", help="validate a profile file")
+    w.add_argument("--file", required=True)
+    w.add_argument("--json", action="store_true")
+    w.set_defaults(
+        func=lambda a, w: w.validate_workflow(a.file)
+    )
 
     return parser
 

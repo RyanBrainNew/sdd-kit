@@ -998,46 +998,6 @@ class Workspace:
             "session": self.session_info(),
         }
 
-    def waive(
-        self,
-        spec: str | None,
-        check: str,
-        scope: str,
-        reason: str,
-        expires: str,
-        evidence: str,
-        approver: str | None = None,
-    ) -> dict[str, Any]:
-        args = ["waive"]
-        if spec:
-            args.extend(["--spec", spec])
-        args.extend(
-            [
-                "--check",
-                check,
-                "--scope",
-                scope,
-                "--reason",
-                reason,
-                "--expires",
-                expires,
-                "--evidence",
-                evidence,
-                "--human",
-                "--json",
-            ]
-        )
-        if approver:
-            args.extend(["--approver", approver])
-        result = self._run(args)
-        payload = self._json(result)
-        resolved = spec or str(payload.get("spec") or "")
-        if resolved:
-            self.bind_session(resolved)
-        payload["project"] = self.project_id
-        payload["session"] = self.session_info()
-        return payload
-
     def rewind(
         self,
         spec: str,
@@ -1232,6 +1192,56 @@ class Workspace:
             "state.json. approve, merge, unblock, rewind and waive are "
             "human-only."
         )
+
+    def validate_workflow(self, file: str | Path) -> dict[str, Any]:
+        raw = Path(file)
+        path = raw if raw.is_absolute() else self.root / raw
+        result = self._run(
+            [
+                "workflow",
+                "validate",
+                "--file",
+                str(path),
+                "--json",
+            ],
+            accept_exit=(0, 1),
+        )
+        return self._json(result)
+
+    def waive(
+        self,
+        spec: str,
+        check_id: str,
+        scope: str,
+        reason: str,
+        expires_at: str,
+        evidence: str,
+        approver: str | None = None,
+        human: bool = False,
+    ) -> dict[str, Any]:
+        if not human:
+            raise ValueError("Gate 豁免是人工动作；必须显式传入 --human")
+        args = [
+            "waive",
+            "--spec",
+            spec,
+            "--check",
+            check_id,
+            "--scope",
+            scope,
+            "--reason",
+            reason,
+            "--expires-at",
+            expires_at,
+            "--evidence",
+            evidence,
+            "--human",
+            "--json",
+        ]
+        if approver:
+            args.extend(["--approver", approver])
+        result = self._run(args, accept_exit=(0,))
+        return self._json(result)
 
     def _run(
         self,

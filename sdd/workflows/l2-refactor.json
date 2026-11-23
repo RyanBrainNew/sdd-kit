@@ -2,7 +2,7 @@
   "schema": 2,
   "name": "l2-refactor",
   "version": 1,
-  "description": "行为保持型改造：保留全部阶段与人工检查点，裁剪 advisory 检查并纳入知识目录上下文。",
+  "description": "行为保持型存量改造：保留全部阶段与 L2 人工检查点，纳入知识目录上下文，强调改动边界、回归证据和可回滚。",
   "stages": [
     "DRAFT",
     "SPEC_READY",
@@ -42,19 +42,30 @@
   },
   "gate_checks": {
     "G0": ["G0-01", "G0-02", "G0-03", "G0-04", "G0-05", "G0-06"],
-    "G1": ["G1-01", "G1-02", "G1-03", "G1-04"]
+    "G1": [
+      "G1-01",
+      "G1-02",
+      "G1-03",
+      "G1-04",
+      "G1-05",
+      "G1-06",
+      "G1-07"
+    ],
+    "G5": [
+      "G5-01",
+      "G5-02",
+      "G5-03",
+      "G5-04",
+      "G5-05",
+      "G5-06",
+      "G5-07",
+      "G5-08"
+    ]
   },
   "human_checkpoints": [
-    { "type": "approve_spec" },
-    { "type": "confirm_delivery" }
+    {"type": "approve_spec"},
+    {"type": "confirm_delivery"}
   ],
-  "design_mode": "full",
-  "review_required": false,
-  "risk_stop": ["data-loss", "breaking-change"],
-  "context_rules": {
-    "include": ["docs/knowledge/**"],
-    "exclude": ["docs/prd.md"]
-  },
   "allow_rewind_to": [
     "DRAFT",
     "SPEC_READY",
@@ -62,5 +73,19 @@
     "TASKS_READY",
     "IMPLEMENTING",
     "VERIFYING"
-  ]
+  ],
+  "design_mode": "full",
+  "review_required": false,
+  "risk_stop": [
+    "security",
+    "data_migration",
+    "destructive_change",
+    "public_api_break",
+    "data-loss",
+    "breaking-change"
+  ],
+  "context_rules": {
+    "include": ["docs/knowledge/**"],
+    "exclude": ["docs/prd.md"]
+  }
 }
