@@ -1161,6 +1161,56 @@ class Workspace:
             "state.json. approve, merge, unblock and rewind are human-only."
         )
 
+    def validate_workflow(self, file: str | Path) -> dict[str, Any]:
+        raw = Path(file)
+        path = raw if raw.is_absolute() else self.root / raw
+        result = self._run(
+            [
+                "workflow",
+                "validate",
+                "--file",
+                str(path),
+                "--json",
+            ],
+            accept_exit=(0, 1),
+        )
+        return self._json(result)
+
+    def waive(
+        self,
+        spec: str,
+        check_id: str,
+        scope: str,
+        reason: str,
+        expires_at: str,
+        evidence: str,
+        approver: str | None = None,
+        human: bool = False,
+    ) -> dict[str, Any]:
+        if not human:
+            raise ValueError("Gate 豁免是人工动作；必须显式传入 --human")
+        args = [
+            "waive",
+            "--spec",
+            spec,
+            "--check",
+            check_id,
+            "--scope",
+            scope,
+            "--reason",
+            reason,
+            "--expires-at",
+            expires_at,
+            "--evidence",
+            evidence,
+            "--human",
+            "--json",
+        ]
+        if approver:
+            args.extend(["--approver", approver])
+        result = self._run(args, accept_exit=(0,))
+        return self._json(result)
+
     def _run(
         self,
         args: list[str],

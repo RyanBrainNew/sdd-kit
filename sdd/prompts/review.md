@@ -1,9 +1,11 @@
 # PR 前审查
 
-在 `PR_READY` 前至少做一次独立审查：
+通用输出契约和 finding 九字段以
+`sdd/prompts/review/contract.md` 为准。技术栈规则按改动路径加载：
 
-1. **正确性**：逻辑错误、边界条件、未处理异常、AC 覆盖缺口。
-2. **安全**：注入、越权、密钥泄漏、危险默认值、不可信输入。
-3. **惯例**：项目结构、命名、格式、兼容性、测试风格。
+- Python：`sdd/prompts/review/python.md`
+- Java/Spring：`sdd/prompts/review/java-spring.md`
+- 前端：`sdd/prompts/review/frontend.md`
 
-阻塞问题先修；非阻塞问题写进 `decisions.md` 或 PR 的“风险与未决”。审查报告可以放在 `verification.md` 的“结果”里，不要另造一套流程。
+审查结论写入 `verification.md` 的“独立审查”章节；发现问题时同时写
+`review-findings.json`。未关闭的阻断 finding 会阻止 G4/G5。

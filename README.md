@@ -7,7 +7,7 @@
 **开发者只说一次需求，Agent 按仓库里的 `next.action` 自动推进。你只在两个地方出现：确认 Spec，合并 PR。**
 
 [![tests](https://github.com/RyanBrainNew/sdd-kit/actions/workflows/tests.yml/badge.svg)](https://github.com/RyanBrainNew/sdd-kit/actions/workflows/tests.yml)
-![version](https://img.shields.io/badge/version-0.8.0-5ee7a8)
+![version](https://img.shields.io/badge/version-0.9.0-5ee7a8)
 ![python](https://img.shields.io/badge/python-3.11%2B-3776AB)
 ![license](https://img.shields.io/badge/license-Apache--2.0-5ee7a8)
 [![site](https://img.shields.io/badge/site-GitHub%20Pages-5ee7a8)](https://ryanbrainnew.github.io/sdd-kit/)
@@ -21,7 +21,7 @@
 SDD Kit 把公司 SDD-L2 的流程做成**仓库自带的默认开发路径**，而不是另一份需要人工执行的规范文档。
 
 - **一个状态机**：阶段、工件校验、Gate 和审计事件只在 `sdd/scripts/sdd.py` 里定义。
-- **三套命名工作流**：`l2-standard`、`l2-hotfix`、`l2-strict`，Spec 创建时固定版本。
+- **四套命名工作流**：`l2-standard`、`l2-hotfix`、`l2-strict`、`l2-refactor`，Spec 创建时固定版本。
 - **任何 Agent 都能接入**：Claude Code、Cursor、Kiro 或自研 Agent，只要能执行 shell，就调用同一个 CLI。
 - **零初始化**：平台团队 bootstrap 一次，开发者 `git clone` 后直接开始。
 - **流程能被强制**：Git Hook 与 CI 校验工件，`approve`、`merge`、`unblock` 强制由人执行。
@@ -38,6 +38,17 @@ SDD Kit 把公司 SDD-L2 的流程做成**仓库自带的默认开发路径**，
 | 每个 IDE 一套规则 | `AGENTS.md` 托管块 + `python -m sdd`，规则与工具解耦 |
 | 证据散落在对话里 | Spec、Design、Tasks、Gate 报告、测试命令都随 Git 提交 |
 | 人工确认太多 | 只保留 Spec 确认与 PR 合并两个检查点 |
+
+### 三项核心优势
+
+| 优势 | 具体表现 | 可复核基线 |
+|---|---|---|
+| 轻量、使用简单 | 核心只用 Python 标准库；无服务端、无数据库；bootstrap 一次 | 核心第三方依赖 0；开发者必记命令 2 个 |
+| 可轻松自定义 | 工作流是声明式 JSON；新增变体不改状态机 | 4 个预设；`workflow validate` 校验未知字段 |
+| 合规可溯源 | P0–P5 / G0–G5 映射；稳定检查 ID；事件哈希链 | 12/12 映射；Gate 结果 100% 结构化 |
+
+完整对照、状态口径和剩余缺口见
+[标准符合性文档](docs/STANDARD-CONFORMANCE.md)。
 
 ## 它怎么工作
 
@@ -75,6 +86,7 @@ Agent 每次会话先运行 `python -m sdd resume --json`，读取：
 | `l2-standard` | 默认 L2 需求 | G0 人工；G2 仅高风险人工；其余自动 |
 | `l2-hotfix` | 紧急修复，低/中风险 | 轻量设计模板；G2 自动；高风险与 `risk_stop` 标签直接拒绝 |
 | `l2-strict` | 安全、迁移、破坏性变更 | G0–G5 全部人工；验证需要独立审查人 |
+| `l2-refactor` | 行为保持型存量改造 | 强调改动边界、回归证据和可回滚；检查点沿用 L2 |
 
 ## 快速开始
 
@@ -117,6 +129,10 @@ CI 执行同样的命令。核心被改、托管块漂移或工件缺失都会�
 | `python -m sdd start-work ... --workflow l2-hotfix` | 人 | 为紧急修复指定命名工作流 |
 | `python -m sdd submit --artifact <name> --file <path> --json` | Agent | 提交阶段工件并接受校验 |
 | `python -m sdd submit-task --task T-xxx --evidence "..." --json` | Agent | 完成一个任务并记录测试证据 |
+| `python -m sdd metrics --json` | Agent / 质量人员 | 查看检查统计、豁免率、逃逸缺陷、重开率和 Gate 一次通过率 |
+| `python -m sdd events --spec <id> --json` | Agent / 审计人员 | 查看带哈希链和下一步的审计事件 |
+| `python -m sdd waive --spec <id> --check G5-09 ... --human` | 人 | 创建限范围、可到期的人工豁免 |
+| `python -m sdd workflow validate --file sdd/workflows/<name>.json --json` | 工作流设计者 | 校验声明式 Profile |
 | `python -m sdd report` | Agent | 生成 PR 正文与 Gate 摘要 |
 | `python -m sdd approve --spec <id> --human --evidence "..."` | 人 | 确认 Spec |
 | `python -m sdd merge --spec <id> --human --evidence "..."` | 人 | 确认合并 |
@@ -151,6 +167,7 @@ dsh/                   dsh / harness 薄适配约定
 | [官网](https://ryanbrainnew.github.io/sdd-kit/) | 一页看懂定位、链路与命令 |
 | [完整指南](docs/GUIDE.md) | 接入、架构、MCP、FAQ 与全部命令细节 |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | 设计取舍、模块边界与分阶段落地 |
+| [标准符合性基线](docs/STANDARD-CONFORMANCE.md) | P0–P5 / G0–G5 映射、核心优势指标与已知缺口 |
 | [DESIGN-NEXT.md](DESIGN-NEXT.md) | 下一阶段设计与待落地能力 |
 | [ADOPTION.md](ADOPTION.md) | 从单仓库试点到多仓库推广 |
 | [sdd/agent-contract.md](sdd/agent-contract.md) | Agent 自动循环与人类检查点契约 |
@@ -184,6 +201,7 @@ $env:PYTHONIOENCODING='utf-8'
 python -m unittest discover -s tests -v
 python -m sdd verify-core
 python -m sdd verify-agent
+python -m sdd check --all --stage ci --check-git
 ```
 
 修改受保护文件后，必须更新版本并重新生成 manifest：
@@ -213,6 +231,6 @@ Copyright 2026 RyanBrainNew
 
 <div align="center">
 
-**SDD Kit 0.8.0** · 把 SDD 装进仓库
+**SDD Kit 0.9.0** · 把 SDD 装进仓库
 
 </div>

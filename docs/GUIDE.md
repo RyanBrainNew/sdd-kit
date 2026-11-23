@@ -2,7 +2,7 @@
 
 > 本文是仓库 README 的完整内容归档，保留全部章节、命令与问答。
 > 项目首页见 [README](../README.md)，架构取舍见 [ARCHITECTURE.md](../ARCHITECTURE.md)。
-> 文中文件路径默认相对仓库根目录。当前版本 0.8.0。
+> 文中文件路径默认相对仓库根目录。当前版本 0.9.0。
 
 ---
 
@@ -12,10 +12,11 @@
 - 任何能读仓库文件、能执行 shell 的 Agent 都能接入，不绑定 Kiro、Cursor 或某个 IDE；
 - 开发者只说一次工作项，Agent 按 `next.action` 自动调研、写工件、推进阶段；
 - 正常流程只有两个人类检查点：**Spec 确认**和 **PR 合并**；
-- 可选命名工作流预设：`l2-standard`、`l2-hotfix`、`l2-strict`，Spec 创建时固定版本；
+- 可选命名工作流预设：`l2-standard`、`l2-hotfix`、`l2-strict`、`l2-refactor`，Spec 创建时固定版本；
 - MCP 是可选适配器；没有 MCP，`AGENTS.md + CLI + Git Hook + CI` 也能跑完整流程。
 
-当前版本：`0.8.0`。
+当前版本：`0.9.0`。官方 P0–P5 / G0–G5 映射见
+[标准符合性基线](STANDARD-CONFORMANCE.md)。
 
 ---
 
@@ -408,14 +409,15 @@ python -m sdd check --all --stage ci --check-git
 | `require_approver` | CI 要求 `state.json` 中至少有一条带有效审批人的记录；人工命令可加 `--approver` |
 | `require_artifact_hash` | Gate 报告必须包含产物哈希；旧报告在升级期只告警 |
 
-0.8.0 新增 `workflow` 配置和三个命名预设；`bootstrap.py` 对新仓库写入
+0.8.0 起支持 `workflow` 配置和命名预设；0.9.0 增加 Profile v2 与
+`l2-refactor`。`bootstrap.py` 对新仓库写入
 `l2-standard`。需要项目级覆盖单个 Gate 时使用 `gate_overrides`，不要改预设文件。
 
 不要编造项目事实。Agent 无法从仓库确认时，应先检查代码和配置；仍无法确认，再问一个具体问题。
 
 ### 5.4 工作流预设
 
-0.8.0 只支持仓库内固定的命名预设，不允许用户画任意 DAG。每个 Spec 在创建时
+0.9.0 支持仓库内有限的声明式 Profile，不允许用户画任意 DAG。每个 Spec 在创建时
 把预设快照写入 `docs/specs/<Spec>/workflow.json`，之后修改 `sdd/workflows/`
 不会改变旧 Spec。
 
@@ -424,6 +426,7 @@ python -m sdd check --all --stage ci --check-git
 | `l2-standard` | 默认 L2 需求 | G0 人工；G2 高风险时人工；其余自动 |
 | `l2-hotfix` | 紧急修复，低/中风险 | 仍写 `design.md`，但使用轻量设计模板；G2 自动；高风险和 `risk_stop` 标签直接拒绝 |
 | `l2-strict` | 安全、数据迁移、破坏性变更 | G0–G5 全部人工；`verification.md` 必须有独立审查，且 reviewer session 不能等于实现 session |
+| `l2-refactor` | 行为保持型存量改造 | 沿用 L2 检查点，强调改动边界、回归证据和可回滚；仅 JSON 声明 |
 
 ```powershell
 # 默认使用 config.json 的 workflow，当前是 l2-standard
@@ -437,12 +440,19 @@ python -m sdd start-work --work-item srdcloud-553377 --title "订单取消" `
 python -m sdd new SPEC-PAY-002 --title "支付数据迁移" `
   --work-item srdcloud-600001 --workflow l2-strict --risk high `
   --risk-label data_migration
+
+# 存量重构
+python -m sdd start-work --work-item srdcloud-553377 --title "订单模块重构" `
+  --workflow l2-refactor --risk medium
+
+# 校验声明式 Profile
+python -m sdd workflow validate --file sdd/workflows/l2-refactor.json --json
 ```
 
 优先级是：`sdd/config.json.gate_overrides` > 旧版 `config.json.gates`（仅当整份
 `gates` 已偏离标准默认）> 预设 `gates` > 代码默认值。旧 Spec 没有 `workflow`
 字段时按 `l2-standard@1` 处理。
-0.8.0 暂未提供 `upgrade-workflow` 命令；需要换预设时重新建 Spec 或等后续版本。
+0.9.0 暂未提供 `upgrade-workflow` 命令；需要换预设时重新建 Spec 或等后续版本。
 
 ---
 
@@ -583,7 +593,10 @@ python -m sdd merge --spec SPEC-ORDER-001 --human --evidence "PR #1 已合并"
 
 `events.jsonl` 从 0.7.0 起写入 `schema: 2`，新增 `role`、`session`、
 `session_source`、`artifacts`、`approver` 等字段，并记录 `check_failed`
-事件。旧事件保持原样，不回写。
+事件。0.9.0 起新事件带 `prev_sha256` / `event_sha256`，Gate 结果以
+`gate_result` 事件记录结构化检查、状态、产物和下一步。旧事件保持原样，
+读取时标记为 legacy；手工篡改会使 `events --json` 的 `audit.valid` 变为 false，
+并使 G5/CI 失败。
 
 ### 6.10 待办、回退与指标
 
@@ -596,9 +609,14 @@ python -m sdd inbox --stale-days 7
 python -m sdd rewind --spec SPEC-ORDER-001 --to SPEC_READY `
   --reason "验证发现设计遗漏" --human --approver "张三 <zhang@example.com>"
 
-# 只读指标：lead time、阶段耗时、返工、人工介入、Gate 失败、AC 覆盖
+# 只读指标：lead time、阶段耗时、返工、人工介入、Gate 失败、AC 覆盖、
+# 按检查 ID 的通过/告警/阻断/豁免统计、豁免率、逃逸缺陷、重开率、
+# Gate 一次通过率
 python -m sdd metrics --json
 python -m sdd metrics --since 2026-11-01 --json
+
+# 审计回放：每个迁移的事件哈希、actor、前后状态、证据、产物和下一步
+python -m sdd events --spec SPEC-ORDER-001 --json
 ```
 
 `rewind` 的规则：
@@ -610,7 +628,7 @@ python -m sdd metrics --since 2026-11-01 --json
 - `--to DESIGN_READY` 保留已批准的 `design.md`，只作废 G3–G5；要重写设计，用 `--to SPEC_READY`。
 
 `sdd board` 目前仍是文本/JSON 看板，没有 HTML 面板。单文件 HTML 运行视图
-（`sdd view --html`）在 `DESIGN-NEXT.md` 中列为 0.9.0 能力，尚未实现。
+仍属于后续候选能力，尚未实现。
 
 ---
 
@@ -999,6 +1017,9 @@ Windows 下 Hook 由 Git Bash 执行。不要用 `--no-verify` 绕过。
 ```powershell
 $env:PYTHONIOENCODING='utf-8'
 python -m unittest discover -s tests -v
+python -m sdd verify-core
+python -m sdd verify-agent
+python -m sdd check --all --stage ci --check-git
 ```
 
 只跑 CLI 和 AGENTS 相关：
@@ -1022,7 +1043,8 @@ python sdd/mcp/smoke_client.py http://127.0.0.1:8765/mcp
 - 不自动合并 PR；
 - 不替人确认需求；
 - 不伪造测试结果；
-- 不保证 L2 全量认证；未覆盖项见 `ADOPTION.md` / `sdd/README.md`；
+- 不保证官方认证；L2 强制路径的覆盖与缺口见
+  [标准符合性基线](STANDARD-CONFORMANCE.md)；
 - 高风险变更必须停下来找人；
 - `sdd verify` 只有在能执行目标仓库测试时才有意义；
 - 远端 MCP 不能直接修改开发者本地 clone；
