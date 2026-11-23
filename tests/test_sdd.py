@@ -416,7 +416,8 @@ VERIFY_STRICT_SUFFIX = """
 | Reviewer | 独立评审员 |
 | Session | reviewer-session-1 |
 | Model | review-model |
-| Findings | 未发现阻断问题。 |
+| Scope | tests/test_status.py；AC-001-1 |
+| Findings | 未发现可执行问题。 |
 | Blocking issues | none |
 """
 
@@ -904,6 +905,10 @@ class StatusTest(unittest.TestCase):
 """,
         )
         self.run_sdd("start", "--spec", SPEC_ID, "--task", "T-001")
+        self.write(
+            "docs/specs/SPEC-ORDER-001/verification.md",
+            VERIFY_TEXT + VERIFY_STRICT_SUFFIX,
+        )
         self.run_sdd(
             "complete",
             "--spec",
@@ -954,6 +959,16 @@ class StatusTest(unittest.TestCase):
             "docs/specs/SPEC-ORDER-001/verification.md",
             VERIFY_TEXT + VERIFY_STRICT_SUFFIX,
         )
+        config_path = self.root / "sdd" / "config.json"
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        config["test_commands"] = [
+            "python -m unittest discover -s tests -p test_status.py"
+        ]
+        config_path.write_text(
+            json.dumps(config, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        self.run_sdd("verify", "--spec", SPEC_ID)
         self.run_sdd("check", "--spec", SPEC_ID, "--stage", "verify")
         self.run_sdd(
             "complete",
@@ -973,7 +988,55 @@ class StatusTest(unittest.TestCase):
         )
         self.assertEqual(self.state()["state"], "PR_READY")
 
+    def test_manual_g4_blocks_without_review(self):
+        self.new_spec(workflow="l2-strict")
+        self.approve_valid_spec()
+        self.write("docs/specs/SPEC-ORDER-001/design.md", DESIGN_TEXT)
+        self.run_sdd(
+            "complete",
+            "--spec",
+            SPEC_ID,
+            "--human",
+            "--evidence",
+            "设计评审通过",
+        )
+        self.write("docs/specs/SPEC-ORDER-001/tasks.md", TASKS_TEXT)
+        self.run_sdd(
+            "complete",
+            "--spec",
+            SPEC_ID,
+            "--human",
+            "--evidence",
+            "任务拆解评审通过",
+        )
+        self.run_sdd("complete", "--spec", SPEC_ID, "--evidence", "开始实现")
+        self.write(
+            "tests/test_status.py",
+            """import unittest
+
+
+class StatusTest(unittest.TestCase):
+    def test_cancel_pending_order(self):
+        # [AC-001-1]
+        self.assertTrue(True)
+""",
+        )
+        self.run_sdd("start", "--spec", SPEC_ID, "--task", "T-001")
+        blocked = self.run_sdd(
+            "complete",
+            "--spec",
+            SPEC_ID,
+            "--task",
+            "T-001",
+            "--evidence",
+            "实现完成",
+            expect=2,
+        )
+        self.assertIn("独立审查", blocked.stderr)
+        self.assertEqual(self.state()["state"], "IMPLEMENTING")
+
     def test_clarification_marker_blocks_approve(self):
+        """[AC-002-5] 澄清标记非零时阻断并报告定位。"""
         self.new_spec()
         self.write(
             "docs/specs/SPEC-ORDER-001/spec.md",
@@ -1829,15 +1892,26 @@ class ContextBundleTests(SddFlowBase):
         self.assertEqual(
             set(bundle),
             {
+                "schema",
+                "spec",
                 "task",
                 "frs",
                 "acs",
+                "requirements",
                 "design_sections",
                 "contracts",
+                "contract_details",
                 "project_constraints",
+                "constraints",
+                "review_overlays",
                 "fix_patterns",
+                "knowledge",
                 "allowed_paths",
                 "exclude",
+                "scope_policy",
+                "blocked",
+                "empty",
+                "notes",
             },
         )
         self.assertEqual(
@@ -1865,15 +1939,13 @@ class ContextBundleTests(SddFlowBase):
         )
         self.assertEqual(bundle["fix_patterns"], [])
         self.assertIn("tests/test_status.py", bundle["allowed_paths"])
-        self.assertEqual(
-            bundle["exclude"],
-            [
-                "docs/prd.md",
-                "docs/specs/*（其他 Spec）",
-                ".sdd/runtime/**",
-                "历史聊天",
-            ],
-        )
+        for expected in (
+            "docs/prd.md",
+            "docs/specs/*（其他 Spec）",
+            ".sdd/runtime/**",
+            "历史聊天",
+        ):
+            self.assertIn(expected, bundle["exclude"])
         self.assertEqual(action["action"], "implement_task")
         self.assertEqual(action["task"], "T-001")
         self.assertEqual(

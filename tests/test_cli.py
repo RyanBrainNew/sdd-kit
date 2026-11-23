@@ -251,6 +251,22 @@ class CliTest(unittest.TestCase):
             "abc1234",
         )
         self.assertEqual(task["next"]["action"], "run_verification")
+        verified = self.run_cli(
+            "verify",
+            "--spec",
+            spec,
+            "--command",
+            "python -m unittest tests.test_status -v",
+        )
+        self.assertIn("verify passed", verified["stdout"])
+        evidence = (
+            self.root
+            / "docs"
+            / "specs"
+            / spec
+            / "verification-evidence.jsonl"
+        )
+        self.assertTrue(evidence.is_file())
 
     def test_events_are_append_only_and_board_marks_current_session(self):
         started = self.start("srdcloud-553377", "订单取消")

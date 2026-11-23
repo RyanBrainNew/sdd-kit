@@ -18,12 +18,55 @@ import shutil
 import statistics
 import subprocess
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
+try:
+    from sdd_ext import (
+        CHECK_REGISTRY as EXT_CHECK_REGISTRY,
+        SECURITY_CHECK_IDS,
+        blocking_errors,
+        build_check_results,
+        check_id_for_error,
+        check_ids_for_gate,
+        declared_code_paths,
+        extract_backtick_paths,
+        fix_pattern_errors,
+        knowledge_record_errors,
+        next_feat_number,
+        parse_front_matter,
+        pattern_applies,
+        review_required_for,
+        scan_test_definitions,
+        test_reference_errors,
+        traceability_errors,
+        validate_review_findings,
+    )
+except ImportError:  # pragma: no cover - package import fallback
+    from .sdd_ext import (
+        CHECK_REGISTRY as EXT_CHECK_REGISTRY,
+        SECURITY_CHECK_IDS,
+        blocking_errors,
+        build_check_results,
+        check_id_for_error,
+        check_ids_for_gate,
+        declared_code_paths,
+        extract_backtick_paths,
+        fix_pattern_errors,
+        knowledge_record_errors,
+        next_feat_number,
+        parse_front_matter,
+        pattern_applies,
+        review_required_for,
+        scan_test_definitions,
+        test_reference_errors,
+        traceability_errors,
+        validate_review_findings,
+    )
 
-VERSION = "0.9.1"
+VERSION = "0.9.4"
 EVENT_SCHEMA = 2
 
 SPEC_SECTIONS = (
@@ -254,7 +297,10 @@ CHECK_REGISTRY = (
     },
 )
 
-CHECK_REGISTRY_BY_ID = {str(item["id"]): item for item in CHECK_REGISTRY}
+CHECK_REGISTRY_BY_ID = dict(EXT_CHECK_REGISTRY)
+CHECK_REGISTRY_BY_ID.update(
+    {str(item["id"]): item for item in CHECK_REGISTRY}
+)
 
 STAGE_ORDER = (
     "DRAFT",
@@ -266,11 +312,51 @@ STAGE_ORDER = (
     "PR_READY",
     "MERGED",
 )
+NEXT_ACTION_BY_STATE = {
+    "DRAFT": "write_spec",
+    "SPEC_READY": "write_design",
+    "DESIGN_READY": "write_tasks",
+    "TASKS_READY": "start_implementation",
+    "IMPLEMENTING": "complete_task",
+    "VERIFYING": "verify",
+    "PR_READY": "human_merge",
+    "MERGED": "done",
+}
 
 WORKFLOW_SCHEMA = 1
+WORKFLOW_SCHEMAS = {1, 2}
 DEFAULT_WORKFLOW = "l2-standard"
 WORKFLOW_POLICIES = {"human", "auto", "auto_if_no_risk"}
 WORKFLOW_DESIGN_MODES = {"full", "lite"}
+HUMAN_CHECKPOINTS = {
+    "spec",
+    "design",
+    "tasks",
+    "implement",
+    "implementation",
+    "verify",
+    "merge",
+    *GATE_STAGES,
+}
+WORKFLOW_V2_FIELDS = {
+    "schema",
+    "name",
+    "version",
+    "description",
+    "stages",
+    "artifacts",
+    "gates",
+    "required_gates",
+    "gate_checks",
+    "human_checkpoints",
+    "allow_rewind_to",
+    "design_mode",
+    "review_required",
+    "review_policy",
+    "risk_policy",
+    "risk_stop",
+    "context_rules",
+}
 RISK_RANK = {"low": 0, "medium": 1, "high": 2}
 LEGACY_STANDARD_GATES = {
     "G0": "human",
@@ -362,6 +448,10 @@ def write_json(path: Path, data: dict[str, Any]) -> None:
 
 def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def sha256_file(path: Path) -> str:
+    return sha256_bytes(path.read_bytes())
 
 
 def canonical_text_bytes(data: bytes) -> Optional[bytes]:
@@ -504,6 +594,9 @@ def append_audit_event(directory: Path, event: dict[str, Any]) -> None:
         "history_index": None,
     }
     payload.update(event)
+    previous_hash = last_event_hash(existing)
+    payload["prev_sha256"] = previous_hash
+    payload["event_sha256"] = event_hash(payload)
     path = directory / "events.jsonl"
     with path.open("a", encoding="utf-8", newline="\n") as handle:
         handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
@@ -523,6 +616,12 @@ def record_check_failure(
     }
     if gate:
         event["gate"] = gate
+        event["check_ids"] = sorted(
+            {
+                check_id_for_error(gate, error)
+                for error in errors
+            }
+        )
     event.update(history_meta())
     append_audit_event(directory, event)
 
@@ -590,91 +689,217 @@ def validate_workflow_preset(
     errors: list[str] = []
     if not isinstance(preset, dict):
         return [f"{source} 必须是 JSON 对象"]
-    if preset.get("schema") != WORKFLOW_SCHEMA:
+    schema = preset.get("schema")
+    if not isinstance(schema, int) or schema not in WORKFLOW_SCHEMAS:
         errors.append(
-            f"{source} 的 schema 必须是 {WORKFLOW_SCHEMA}"
+            f"{source}.schema 必须是 "
+            + " 或 ".join(str(item) for item in sorted(WORKFLOW_SCHEMAS))
         )
+    if schema == 2:
+        for key in sorted(set(preset) - WORKFLOW_V2_FIELDS):
+            errors.append(f"{source}.{key} 是未知字段")
+        for key in ("stages", "artifacts", "gates", "required_gates"):
+            if key not in preset:
+                errors.append(f"{source}.{key} 是必填字段")
     name = str(preset.get("name") or "")
     if not re.fullmatch(r"[a-z][a-z0-9-]*", name):
-        errors.append(f"{source} 的 name 必须是小写字母、数字和短横线")
+        errors.append(f"{source}.name 必须是小写字母、数字和短横线")
     version = preset.get("version")
     if not isinstance(version, int) or version < 1:
-        errors.append(f"{source} 的 version 必须是正整数")
+        errors.append(f"{source}.version 必须是正整数")
     stages = preset.get("stages")
     if stages != list(STAGE_ORDER):
         errors.append(
             f"{source} 在当前版本只支持完整阶段序列："
             + " -> ".join(STAGE_ORDER)
+            + f"（当前 {stages}）"
         )
     gates = preset.get("gates")
     if not isinstance(gates, dict):
-        errors.append(f"{source} 缺少 gates 对象")
+        errors.append(f"{source}.gates 必须是对象")
     else:
         missing = [gate for gate in GATE_STAGES if gate not in gates]
         if missing:
-            errors.append(f"{source} 缺少 Gate 策略：" + ", ".join(missing))
+            errors.append(f"{source}.gates 缺少：" + ", ".join(missing))
         for gate, policy in gates.items():
             if gate not in GATE_STAGES:
-                errors.append(f"{source} 包含未知 Gate：{gate}")
+                errors.append(f"{source}.gates.{gate} 是未知 Gate")
             elif str(policy) not in WORKFLOW_POLICIES:
                 errors.append(
-                    f"{source} 的 {gate} 策略必须是 "
+                    f"{source}.gates.{gate} 必须是 "
                     + ", ".join(sorted(WORKFLOW_POLICIES))
                 )
     required = preset.get("required_gates")
     if not isinstance(required, dict):
-        errors.append(f"{source} 缺少 required_gates 对象")
+        errors.append(f"{source}.required_gates 必须是对象")
     else:
         expected = workflow_defaults()
         for stage in STAGE_ORDER:
             actual = required.get(stage)
-            if actual != expected[stage]:
+            if not isinstance(actual, list):
                 errors.append(
-                    f"{source} 的 required_gates.{stage} 必须是 "
+                    f"{source}.required_gates.{stage} 必须是数组"
+                )
+                continue
+            unknown = [gate for gate in actual if gate not in GATE_STAGES]
+            if unknown:
+                errors.append(
+                    f"{source}.required_gates.{stage} 包含未知 Gate："
+                    + ", ".join(str(gate) for gate in unknown)
+                )
+            if schema == 1 and actual != expected[stage]:
+                errors.append(
+                    f"{source}.required_gates.{stage} 必须是 "
                     f"{expected[stage]}"
                 )
+            elif schema == 2:
+                missing = [
+                    gate for gate in expected[stage] if gate not in actual
+                ]
+                if missing:
+                    errors.append(
+                        f"{source}.required_gates.{stage} 不得移除必需 Gate："
+                        + ", ".join(missing)
+                    )
     allow_rewind = preset.get("allow_rewind_to")
     if not isinstance(allow_rewind, list):
-        errors.append(f"{source} 缺少 allow_rewind_to 列表")
+        errors.append(f"{source}.allow_rewind_to 必须是数组")
     else:
         for stage in allow_rewind:
             if stage not in REWIND_PLANS:
                 errors.append(
-                    f"{source} 的 allow_rewind_to 包含不支持的目标：{stage}"
+                    f"{source}.allow_rewind_to 包含不支持的目标：{stage}"
                 )
     artifacts = preset.get("artifacts")
     if not isinstance(artifacts, dict):
-        errors.append(f"{source} 缺少 artifacts 对象")
+        errors.append(f"{source}.artifacts 必须是对象")
     else:
         for stage, artifact in artifacts.items():
             if stage not in STAGE_ORDER:
-                errors.append(f"{source} 的 artifacts 包含未知阶段：{stage}")
+                errors.append(f"{source}.artifacts.{stage} 是未知阶段")
             if not isinstance(artifact, str) or not artifact.strip():
-                errors.append(f"{source} 的 artifacts.{stage} 必须是非空文件名")
+                errors.append(f"{source}.artifacts.{stage} 必须是非空文件名")
     design_mode = str(preset.get("design_mode") or "full")
     if design_mode not in WORKFLOW_DESIGN_MODES:
         errors.append(
-            f"{source} 的 design_mode 必须是 full 或 lite"
+            f"{source}.design_mode 必须是 full 或 lite"
         )
     review_required = preset.get("review_required", False)
     if not isinstance(review_required, bool):
-        errors.append(f"{source} 的 review_required 必须是布尔值")
+        errors.append(f"{source}.review_required 必须是布尔值")
+    review_policy = preset.get("review_policy")
+    if review_policy is not None:
+        if not isinstance(review_policy, dict):
+            errors.append(f"{source}.review_policy 必须是对象")
+        else:
+            for key in sorted(set(review_policy) - {"required_for_risk"}):
+                errors.append(
+                    f"{source}.review_policy.{key} 是未知字段"
+                )
+            required_for_risk = review_policy.get("required_for_risk", [])
+            if not isinstance(required_for_risk, list):
+                errors.append(
+                    f"{source}.review_policy.required_for_risk 必须是数组"
+                )
+            else:
+                for value in required_for_risk:
+                    if value not in RISK_RANK:
+                        errors.append(
+                            f"{source}.review_policy.required_for_risk "
+                            f"包含未知风险等级：{value}"
+                        )
     risk_policy = preset.get("risk_policy")
     if risk_policy is not None:
         if not isinstance(risk_policy, dict):
-            errors.append(f"{source} 的 risk_policy 必须是对象")
+            errors.append(f"{source}.risk_policy 必须是对象")
         else:
             max_risk = risk_policy.get("max_risk")
             if max_risk is not None and max_risk not in RISK_RANK:
                 errors.append(
-                    f"{source} 的 risk_policy.max_risk 必须是 low/medium/high"
+                    f"{source}.risk_policy.max_risk 必须是 low/medium/high"
                 )
             if "deny_risk_stop" in risk_policy and not isinstance(
                 risk_policy["deny_risk_stop"], bool
             ):
                 errors.append(
-                    f"{source} 的 risk_policy.deny_risk_stop 必须是布尔值"
+                    f"{source}.risk_policy.deny_risk_stop 必须是布尔值"
                 )
+    if schema == 2:
+        gate_checks = preset.get("gate_checks", {})
+        if not isinstance(gate_checks, dict):
+            errors.append(f"{source}.gate_checks 必须是对象")
+        else:
+            for gate, selected in gate_checks.items():
+                if gate not in GATE_STAGES:
+                    errors.append(
+                        f"{source}.gate_checks.{gate} 是未知 Gate"
+                    )
+                    continue
+                if not isinstance(selected, list):
+                    errors.append(
+                        f"{source}.gate_checks.{gate} 必须是检查 ID 数组"
+                    )
+                    continue
+                if not selected:
+                    errors.append(
+                        f"{source}.gate_checks.{gate} 不得为空检查集；"
+                        "省略该 Gate 才表示使用完整检查集"
+                    )
+                known = set(check_ids_for_gate(gate))
+                for check_id in selected:
+                    if check_id not in EXT_CHECK_REGISTRY:
+                        errors.append(
+                            f"{source}.gate_checks.{gate} 包含未知检查 ID："
+                            f"{check_id}"
+                        )
+                    elif check_id not in known:
+                        errors.append(
+                            f"{source}.gate_checks.{gate} 的检查 {check_id} "
+                            f"不属于 {gate}"
+                        )
+                missing_security = sorted(
+                    check_id
+                    for check_id in SECURITY_CHECK_IDS
+                    if check_id in known and check_id not in selected
+                )
+                if missing_security:
+                    errors.append(
+                        f"{source}.gate_checks.{gate} 不得移除安全必需检查："
+                        + ", ".join(missing_security)
+                    )
+        checkpoints = preset.get("human_checkpoints", [])
+        if not isinstance(checkpoints, list):
+            errors.append(f"{source}.human_checkpoints 必须是数组")
+        else:
+            for value in checkpoints:
+                if str(value) not in HUMAN_CHECKPOINTS:
+                    errors.append(
+                        f"{source}.human_checkpoints 包含不支持的人工检查点："
+                        f"{value}"
+                    )
+        risk_stop = preset.get("risk_stop", [])
+        if not isinstance(risk_stop, list):
+            errors.append(f"{source}.risk_stop 必须是字符串数组")
+        else:
+            for value in risk_stop:
+                if not isinstance(value, str) or not value.strip():
+                    errors.append(
+                        f"{source}.risk_stop 必须是非空字符串数组"
+                    )
+                    break
+        context_rules = preset.get("context_rules", {})
+        if not isinstance(context_rules, dict):
+            errors.append(f"{source}.context_rules 必须是对象")
+        else:
+            for key in sorted(set(context_rules) - {"allowed_paths", "exclude"}):
+                errors.append(f"{source}.context_rules.{key} 是未知字段")
+            for key in ("allowed_paths", "exclude"):
+                if key in context_rules and not isinstance(
+                    context_rules[key], list
+                ):
+                    errors.append(
+                        f"{source}.context_rules.{key} 必须是字符串数组"
+                    )
     return errors
 
 
@@ -781,16 +1006,25 @@ def workflow_risk_error(
 ) -> Optional[str]:
     policy = preset.get("risk_policy")
     if not isinstance(policy, dict):
-        return None
+        policy = {}
+    profile_stops = preset.get("risk_stop")
+    if not isinstance(profile_stops, list):
+        profile_stops = []
     max_risk = str(policy.get("max_risk") or "high")
     if RISK_RANK.get(risk, 0) > RISK_RANK.get(max_risk, 2):
         return (
             f"工作流 {preset['name']} 只允许 risk<={max_risk}，"
             f"当前是 {risk}"
         )
-    if policy.get("deny_risk_stop"):
+    if policy.get("deny_risk_stop") or profile_stops:
         labels = {str(item) for item in risk_labels}
-        stopped = labels & {str(item) for item in config.get("risk_stop", [])}
+        stopped = labels & {
+            str(item)
+            for item in [
+                *config.get("risk_stop", []),
+                *profile_stops,
+            ]
+        }
         if stopped:
             return (
                 f"工作流 {preset['name']} 不允许命中风险标签："
@@ -802,6 +1036,22 @@ def workflow_risk_error(
 def workflow_gate_policy(
     config: dict[str, Any], preset: dict[str, Any], gate: str
 ) -> str:
+    checkpoints = preset.get("human_checkpoints")
+    if isinstance(checkpoints, list):
+        mapped = {
+            "spec": "G0",
+            "design": "G2",
+            "tasks": "G3",
+            "implement": "G4",
+            "implementation": "G4",
+            "verify": "G5",
+        }
+        human_gates = {
+            mapped.get(str(item), str(item))
+            for item in checkpoints
+        }
+        if gate in human_gates:
+            return "human"
     overrides = config.get("gate_overrides")
     if isinstance(overrides, dict) and gate in overrides:
         policy = str(overrides[gate])
@@ -902,6 +1152,10 @@ def _event_from_history(
         "from_state": from_state,
         "to_state": entry.get("state"),
         "evidence": evidence,
+        "next": entry.get("next") or NEXT_ACTION_BY_STATE.get(
+            str(entry.get("state") or ""),
+            "",
+        ),
     }
     if history_index is not None:
         event["history_index"] = history_index
@@ -946,6 +1200,74 @@ def read_event_log(directory: Path) -> list[dict[str, Any]]:
     return events
 
 
+def event_hash(event: dict[str, Any]) -> str:
+    payload = {
+        key: value
+        for key, value in event.items()
+        if key != "event_sha256"
+    }
+    canonical = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def last_event_hash(events: list[dict[str, Any]]) -> str:
+    for event in reversed(events):
+        digest = str(event.get("event_sha256") or "")
+        if digest:
+            return digest
+    return ""
+
+
+def verify_event_chain(events: list[dict[str, Any]]) -> dict[str, Any]:
+    previous = ""
+    hashed_events = 0
+    legacy_events = 0
+    errors: list[str] = []
+    chain_started = False
+    for event in events:
+        digest = str(event.get("event_sha256") or "")
+        if not digest:
+            if chain_started:
+                errors.append(
+                    f"事件 seq={event.get('seq')} 缺少 event_sha256"
+                )
+            else:
+                legacy_events += 1
+            continue
+        chain_started = True
+        hashed_events += 1
+        if str(event.get("prev_sha256") or "") != previous:
+            errors.append(
+                f"事件 seq={event.get('seq')} 的 prev_sha256 不连续"
+            )
+        if event_hash(event) != digest:
+            errors.append(
+                f"事件 seq={event.get('seq')} 的内容与 event_sha256 不一致"
+            )
+        previous = digest
+    return {
+        "valid": not errors,
+        "events": len(events),
+        "hashed_events": hashed_events,
+        "legacy_events": legacy_events,
+        "errors": errors,
+    }
+
+
+def check_event_chain(directory: Path) -> list[str]:
+    result = verify_event_chain(read_event_log(directory))
+    if result["valid"]:
+        return []
+    return [
+        "审计事件链无效：" + " / ".join(result["errors"])
+    ]
+
+
 def derive_events(state: dict[str, Any]) -> list[dict[str, Any]]:
     events: list[dict[str, Any]] = []
     previous_state: Optional[str] = None
@@ -972,28 +1294,36 @@ def append_event_log(directory: Path, state: dict[str, Any]) -> None:
         start = 0
     else:
         emitted = set()
+        audit_only = {
+            "gate_result",
+            "check_failed",
+            "waiver_created",
+            "waiver_rejected",
+        }
         start = len(
-            [event for event in existing if event.get("event") != "check_failed"]
+            [
+                event
+                for event in existing
+                if event.get("event") not in audit_only
+            ]
         )
     if start >= len(history) and emitted >= set(range(len(history))):
         return
-    previous_state = next(
-        (
-            event.get("to_state")
-            for event in reversed(existing)
-            if event.get("to_state") is not None
-        ),
-        None,
-    )
     next_seq = max((int(event.get("seq", 0)) for event in existing), default=0) + 1
+    previous_hash = last_event_hash(existing)
     path = directory / "events.jsonl"
     with path.open("a", encoding="utf-8", newline="\n") as handle:
         for index, entry in enumerate(history):
             if index < start or index in emitted:
                 continue
-            event = _event_from_history(next_seq, entry, previous_state, index)
+            from_state = (
+                history[index - 1].get("state") if index > 0 else None
+            )
+            event = _event_from_history(next_seq, entry, from_state, index)
+            event["prev_sha256"] = previous_hash
+            event["event_sha256"] = event_hash(event)
             handle.write(json.dumps(event, ensure_ascii=False) + "\n")
-            previous_state = entry.get("state")
+            previous_hash = str(event["event_sha256"])
             next_seq += 1
 
 
@@ -1351,7 +1681,11 @@ def task_table_error(tasks: list[dict[str, Any]], spec_acs: list[str], config: d
     return errors
 
 
-def spec_metadata_errors(text: str, spec_id: Optional[str] = None) -> list[str]:
+def spec_metadata_errors(
+    text: str,
+    spec_id: Optional[str] = None,
+    require_feat: bool = False,
+) -> list[str]:
     errors: list[str] = []
     if spec_id:
         declared = metadata_value(text, "Spec ID", "SpecID")
@@ -1364,8 +1698,16 @@ def spec_metadata_errors(text: str, spec_id: Optional[str] = None) -> list[str]:
         errors.append("spec.md 缺少有效的工作项 ID")
     elif work_item.startswith("%"):
         errors.append("spec.md 的工作项 ID 不能带前导 %")
+    feat = metadata_value(
+        text,
+        "FEAT ID",
+        "FEAT",
+        "Feature ID",
+        "FeatureID",
+    )
+    if require_feat and not FEAT_RE.fullmatch(feat):
+        errors.append(f"G0-04 spec.md 缺少有效 FEAT ID（当前 {feat or '空'}）")
     return errors
-
 
 def spec_scope_errors(text: str) -> list[str]:
     errors: list[str] = []
@@ -1399,6 +1741,10 @@ def spec_fr_ac_errors(text: str) -> list[str]:
         suffix = fr[3:]
         if not any(ac.startswith(f"AC-{suffix}-") for ac in acs):
             errors.append(f"{fr} 没有对应 AC")
+    for ac in acs:
+        suffix = ac[3:].split("-", 1)[0]
+        if f"FR-{suffix}" not in frs:
+            errors.append(f"{ac} 没有对应的 FR-{suffix}")
     fr_defs = re.findall(r"(?m)^#{1,6}\s+(FR-\d{3})\b", text)
     ac_defs = re.findall(
         r"(?m)^\s*[-*]?\s*(AC-\d{3}-[1-9]\d*)\s*[:：]", text
@@ -1425,11 +1771,15 @@ def spec_ac_testability_errors(text: str) -> list[str]:
     return errors
 
 
-def check_spec(text: str, spec_id: Optional[str] = None) -> tuple[list[str], list[str]]:
+def check_spec(
+    text: str,
+    spec_id: Optional[str] = None,
+    require_feat: bool = False,
+) -> tuple[list[str], list[str]]:
     errors: list[str] = []
     errors.extend(spec_section_errors(text))
     errors.extend(placeholder_errors("spec.md", text))
-    errors.extend(spec_metadata_errors(text, spec_id))
+    errors.extend(spec_metadata_errors(text, spec_id, require_feat))
     errors.extend(spec_scope_errors(text))
     errors.extend(spec_fr_ac_errors(text))
     errors.extend(spec_ac_testability_errors(text))
@@ -1456,6 +1806,11 @@ def check_design(
         errors.append("design.md 的“方案概述”没有实际内容")
     if not section_has_content(text, ("依赖与风险", "风险", "Risks")):
         errors.append("design.md 的“依赖与风险”没有实际内容")
+    risk_body = section_body(text, ("依赖与风险", "风险", "Risks"))
+    if "负责人" not in risk_body or "缓解" not in risk_body:
+        errors.append(
+            "G2-04 design.md 的风险表缺少负责人或缓解措施"
+        )
     if not section_has_content(text, ("回滚方案", "Rollback")):
         errors.append("design.md 的“回滚方案”没有实际内容")
     return errors
@@ -1509,7 +1864,20 @@ def check_tasks(
         return errors
     errors.extend(task_table_error(tasks, spec_acs, config or {}))
     if root is not None:
-        errors.extend(task_test_name_errors(root, config or {}, tasks))
+        test_files = collect_test_files(root, config or {})
+        definitions = scan_test_definitions(
+            [
+                (path.relative_to(root).as_posix(), read_text(path))
+                for path in test_files
+            ]
+        )
+        errors.extend(
+            test_reference_errors(
+                text,
+                definitions,
+                test_files_present=bool(test_files),
+            )
+        )
 
     mapping = section_body(
         text, ("AC—Task—单元测试映射", "AC-Task-单元测试映射", "AC Coverage")
@@ -1572,6 +1940,7 @@ def verification_evidence_errors(
     text: str,
     config: dict[str, Any],
     state: dict[str, Any],
+    directory: Optional[Path] = None,
 ) -> list[str]:
     if is_legacy_merged(state):
         return []
@@ -1594,6 +1963,13 @@ def verification_evidence_errors(
         )
         return errors
     success = False
+    structured_evidence = False
+    if directory is not None:
+        records, _ = load_verification_evidence(directory)
+        structured_evidence = any(
+            record.get("exit_code") == 0 and not record.get("timed_out")
+            for record in records
+        )
     for block in blocks:
         command = str(block.get("command") or "")
         exit_value = str(block.get("exit") or "").strip()
@@ -1602,7 +1978,11 @@ def verification_evidence_errors(
             continue
         missing = [
             field
-            for field in ("cwd", "head", "plan-hash", "at")
+            for field in (
+                ("cwd",)
+                if structured_evidence
+                else ("cwd", "head", "plan-hash", "at")
+            )
             if not str(block.get(field) or "").strip()
         ]
         if missing:
@@ -1649,6 +2029,7 @@ def check_verification(
     workflow: Optional[dict[str, Any]] = None,
     state: Optional[dict[str, Any]] = None,
     config: Optional[dict[str, Any]] = None,
+    directory: Optional[Path] = None,
 ) -> list[str]:
     errors: list[str] = []
     for aliases in VERIFY_SECTIONS:
@@ -1665,9 +2046,16 @@ def check_verification(
     gate5 = section_body(text, ("Gate 5 结论", "Gate 5 Result"))
     if not re.search(r"(?i)\b(PASS|通过)\b", gate5):
         errors.append("verification.md 的 Gate 5 结论必须是 PASS/通过")
-    errors.extend(verification_evidence_errors(text, config or {}, state or {}))
-    legacy = is_legacy_merged(state or {})
-    if not legacy and requires_independent_review(config or {}, state or {}, workflow):
+    errors.extend(
+        verification_evidence_errors(
+            text,
+            config or {},
+            state or {},
+            directory,
+        )
+    )
+    merged = str((state or {}).get("state") or "") == "MERGED"
+    if not merged and requires_independent_review(config or {}, state or {}, workflow):
         errors.extend(check_independent_review(text, state or {}))
     return errors
 
@@ -1709,6 +2097,7 @@ def check_independent_review(
         "reviewer": ("Reviewer", "审查人"),
         "session": ("Session", "会话"),
         "model": ("Model", "模型"),
+        "scope": ("Scope", "检查范围", "审查范围"),
         "findings": ("Findings", "审查发现", "问题"),
         "blocking issues": ("Blocking issues", "Blocking Issues", "阻断问题"),
     }
@@ -1752,6 +2141,69 @@ def check_independent_review(
             "要求独立 reviewer"
         )
     return errors
+
+
+def review_reports_no_findings(value: str) -> bool:
+    return bool(
+        re.search(
+            r"(?i)未发现可执行问题|no\s+actionable\s+(?:issues|findings)",
+            value,
+        )
+    )
+
+
+def check_review_evidence(
+    directory: Path,
+    state: dict[str, Any],
+    workflow: dict[str, Any],
+) -> list[str]:
+    if str(state.get("state") or "") == "MERGED":
+        return []
+    if not review_required_for(workflow, state):
+        return []
+    text = read_text(directory / "verification.md")
+    errors = check_independent_review(text, state)
+    fields = review_fields(text)
+    findings_text = next(
+        (
+            fields.get(normalize_heading(alias), "")
+            for alias in ("Findings", "审查发现", "问题")
+            if fields.get(normalize_heading(alias))
+        ),
+        "",
+    )
+    no_findings = review_reports_no_findings(findings_text)
+    path = directory / "review-findings.json"
+    if not no_findings and not path.is_file():
+        errors.append(
+            "Review 发现问题时必须提供 review-findings.json，"
+            "并为每个 finding 写齐九个字段"
+        )
+    if not path.is_file():
+        return errors
+    try:
+        payload = load_json(path)
+    except SddError as exc:
+        errors.append(f"Review findings JSON 无效：{exc}")
+        return errors
+    schema_errors, unresolved = validate_review_findings(payload)
+    errors.extend(schema_errors)
+    if unresolved:
+        errors.append(
+            "Review 仍有未关闭阻断 finding："
+            + ", ".join(unresolved)
+            + "；关闭并复核后才能通过 G4/G5"
+        )
+    if no_findings and isinstance(payload, list) and payload:
+        errors.append(
+            "独立审查结论称“未发现可执行问题”，"
+            "但 review-findings.json 仍包含 finding"
+        )
+    if not no_findings and isinstance(payload, list) and not payload:
+        errors.append(
+            "Review 结论记录了问题，但 review-findings.json 为空数组"
+        )
+    return list(dict.fromkeys(errors))
 
 
 def collect_test_files(root: Path, config: dict[str, Any]) -> list[Path]:
@@ -1887,7 +2339,7 @@ def fallback_test_function_acs(text: str) -> dict[str, set[str]]:
     body: list[str] = []
     for line in text.splitlines():
         match = re.match(
-            r"^(?P<indent>[ \t]*)(?:async\s+)?def\s+(?P<name>test_\w+)\s*\(",
+            r"^(?P<indent>[ \t]*)(?:async\s+)?def\s+(?P<name>test\w*)\s*\(",
             line,
         )
         if match:
@@ -1921,7 +2373,20 @@ def test_function_acs(text: str) -> dict[str, set[str]]:
     for node in ast.walk(tree):
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
-        if not node.name.startswith("test_"):
+        if not node.name.startswith("test"):
+            continue
+        meaningful = [
+            statement
+            for statement in node.body
+            if not (
+                isinstance(statement, ast.Expr)
+                and isinstance(statement.value, ast.Constant)
+                and isinstance(statement.value.value, str)
+            )
+            and not isinstance(statement, ast.Pass)
+        ]
+        if not meaningful:
+            results[node.name] = set()
             continue
         segment = ast.get_source_segment(text, node) or ""
         results[node.name] = set(extract_acs(segment))
@@ -1942,6 +2407,319 @@ def check_test_coverage(root: Path, config: dict[str, Any], spec_acs: list[str])
             "测试函数的函数体内没有关联以下 AC：" + ", ".join(missing)
         ]
     return []
+
+
+EVIDENCE_SCHEMA = 1
+EVIDENCE_REQUIRED_FIELDS = (
+    "schema",
+    "spec",
+    "command",
+    "cwd",
+    "started_at",
+    "finished_at",
+    "exit_code",
+    "duration_ms",
+    "output_sha256",
+    "output_excerpt",
+    "artifact_hashes",
+)
+
+
+def evidence_path(directory: Path) -> Path:
+    return directory / "verification-evidence.jsonl"
+
+
+def load_verification_evidence(directory: Path) -> tuple[list[dict[str, Any]], list[str]]:
+    path = evidence_path(directory)
+    if not path.is_file():
+        return [], []
+    records: list[dict[str, Any]] = []
+    errors: list[str] = []
+    for number, line in enumerate(read_text(path).splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError as exc:
+            errors.append(f"G5-03 证据文件第 {number} 行不是有效 JSON：{exc}")
+            continue
+        if not isinstance(value, dict):
+            errors.append(f"G5-03 证据文件第 {number} 行不是对象")
+            continue
+        records.append(value)
+    return records, errors
+
+
+def latest_evidence_run(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not records:
+        return []
+    run_id = records[-1].get("run_id")
+    if run_id:
+        return [record for record in records if record.get("run_id") == run_id]
+    return [records[-1]]
+
+
+def check_verification_evidence(
+    root: Path,
+    directory: Path,
+    config: dict[str, Any],
+    spec_id: str,
+    spec_text: str,
+    design_text: str,
+    tasks_text: str,
+    state: Optional[dict[str, Any]] = None,
+) -> list[str]:
+    if (
+        state is not None
+        and str(state.get("state") or "") == "MERGED"
+        and not evidence_path(directory).is_file()
+    ):
+        return []
+    code_paths = list(
+        dict.fromkeys(
+            [
+                *declared_code_paths(tasks_text),
+                *declared_code_paths(design_text),
+                *declared_code_paths(spec_text),
+            ]
+        )
+    )
+    records, errors = load_verification_evidence(directory)
+    path = evidence_path(directory).relative_to(root).as_posix()
+    check_id = "G5-03" if code_paths else "G5-09"
+    if not records and not errors:
+        if code_paths:
+            errors.append(
+                "G5-03 代码变更缺少可复验的测试命令证据："
+                f"{path} 不存在或没有记录"
+            )
+        else:
+            errors.append(
+                "G5-09 纯文档/配置变更未执行测试命令；"
+                "请运行 sdd verify 或由人创建带范围的显式豁免"
+            )
+    run = latest_evidence_run(records)
+    if records and not run:
+        errors.append(f"{check_id} 没有可复验的验证运行记录")
+    if run:
+        for record in run:
+            missing = [
+                field
+                for field in EVIDENCE_REQUIRED_FIELDS
+                if field not in record or record.get(field) in (None, "")
+            ]
+            if missing:
+                errors.append(
+                    f"{check_id} 证据记录字段不完整："
+                    + ", ".join(missing)
+                )
+            if str(record.get("spec") or "") != spec_id:
+                errors.append(
+                    f"{check_id} 证据绑定的 Spec 不是 {spec_id}"
+                )
+        successes = [
+            record
+            for record in run
+            if record.get("exit_code") == 0 and not record.get("timed_out")
+        ]
+        if not successes:
+            errors.append(
+                f"{check_id} 最近一次验证没有成功执行的测试命令；"
+                "非零退出码、超时或未执行都不能作为 PASS 证据"
+            )
+        elif len(successes) != len(run):
+            errors.append(
+                f"{check_id} 最近一次验证存在失败或超时的命令，不能判定为 PASS"
+            )
+    return list(dict.fromkeys(errors))
+
+
+WAIVER_REQUIRED_FIELDS = (
+    "id",
+    "check_id",
+    "spec",
+    "scope",
+    "reason",
+    "approver",
+    "created_at",
+    "expires_at",
+    "evidence",
+)
+
+
+def waiver_is_expired(waiver: dict[str, Any], at: Optional[datetime] = None) -> bool:
+    expires = parse_timestamp(waiver.get("expires_at"))
+    if expires is None:
+        return True
+    return (at or datetime.now().astimezone()) > expires
+
+
+def waiver_applies(
+    waiver: dict[str, Any],
+    check_id: str,
+    spec_id: str,
+    contexts: Iterable[str],
+) -> bool:
+    if str(waiver.get("check_id") or "") != check_id:
+        return False
+    if str(waiver.get("spec") or "") not in {"", "*", spec_id}:
+        return False
+    scopes = {
+        item.strip()
+        for item in re.split(r"[,;，；]", str(waiver.get("scope") or ""))
+        if item.strip()
+    }
+    if not scopes:
+        return False
+    contexts = {str(item) for item in contexts}
+    return bool(scopes & {"*", spec_id}) or bool(scopes & contexts)
+
+
+def find_waiver(
+    state: dict[str, Any],
+    check_id: str,
+    spec_id: str,
+    contexts: Iterable[str],
+) -> tuple[Optional[dict[str, Any]], bool]:
+    waivers = state.get("waivers")
+    if not isinstance(waivers, list):
+        return None, False
+    expired: Optional[dict[str, Any]] = None
+    for waiver in reversed(waivers):
+        if not isinstance(waiver, dict):
+            continue
+        if not waiver_applies(waiver, check_id, spec_id, contexts):
+            continue
+        if waiver_is_expired(waiver):
+            expired = waiver
+            continue
+        return waiver, False
+    return None, expired is not None
+
+
+def waiver_contexts(
+    directory: Path,
+    stage: str,
+) -> list[str]:
+    base = {
+        "spec": ["spec"],
+        "design": ["design"],
+        "tasks": ["tasks"],
+        "verify": ["verification", "ci"],
+        "ci": ["ci", "verification"],
+    }.get(stage, ["spec", "design", "tasks", "verification", "ci"])
+    tasks = parse_tasks(read_text(directory / "tasks.md"))
+    return [
+        *base,
+        *[f"task:{task['id']}" for task in tasks],
+    ]
+
+
+def apply_check_waivers(
+    checks: list[dict[str, Any]],
+    state: dict[str, Any],
+    spec_id: str,
+    contexts: Iterable[str],
+) -> list[dict[str, Any]]:
+    for item in checks:
+        if item.get("result") != "block":
+            continue
+        waiver, expired = find_waiver(
+            state,
+            str(item.get("id")),
+            spec_id,
+            contexts,
+        )
+        if waiver:
+            item["result"] = "waived"
+            item["waiver_id"] = waiver.get("id")
+            item["detail"] = (
+                str(item.get("detail") or "")
+                + "；已由人工豁免 "
+                + str(waiver.get("id") or "")
+            )
+        elif expired:
+            item["detail"] = str(item.get("detail") or "") + "；豁免已过期"
+    return checks
+
+
+def partition_waived_errors(
+    errors: Iterable[str],
+    gate: str,
+    state: dict[str, Any],
+    spec_id: str,
+    contexts: Iterable[str],
+) -> tuple[list[str], list[dict[str, Any]]]:
+    blocking: list[str] = []
+    waived: list[dict[str, Any]] = []
+    for error in errors:
+        check_id = check_id_for_error(gate, str(error))
+        definition = EXT_CHECK_REGISTRY.get(check_id, {})
+        if definition.get("level") == "advisory":
+            continue
+        waiver, expired = find_waiver(
+            state,
+            check_id,
+            spec_id,
+            contexts,
+        )
+        if waiver and definition.get("waivable"):
+            waived.append(
+                {
+                    "check_id": check_id,
+                    "waiver_id": waiver.get("id"),
+                    "error": str(error),
+                }
+            )
+            continue
+        suffix = "（豁免已过期）" if expired else ""
+        blocking.append(str(error) + suffix)
+    return blocking, waived
+
+
+def partition_stage_errors(
+    errors: Iterable[str],
+    stage: str,
+    state: dict[str, Any],
+    spec_id: str,
+    directory: Path,
+) -> tuple[list[str], list[dict[str, Any]]]:
+    gates = {
+        "spec": ["G0", "G1"],
+        "design": ["G2"],
+        "tasks": ["G3"],
+        "verify": ["G5"],
+        "ci": ["G0", "G1", "G2", "G3", "G4", "G5"],
+    }.get(stage, ["G0", "G1", "G2", "G3", "G4", "G5"])
+    contexts = waiver_contexts(directory, stage)
+    blocking: list[str] = []
+    waived: list[dict[str, Any]] = []
+    for error in errors:
+        gate = gates[0]
+        matched_gate: Optional[str] = None
+        for candidate in GATE_STAGES:
+            check_id = check_id_for_error(candidate, str(error))
+            if not check_id.endswith("-99"):
+                gate = candidate
+                matched_gate = candidate
+                break
+        if matched_gate:
+            definition = EXT_CHECK_REGISTRY.get(
+                check_id_for_error(matched_gate, str(error)),
+                {},
+            )
+            if definition.get("level") == "advisory":
+                continue
+        item_blocking, item_waived = partition_waived_errors(
+            [error],
+            gate,
+            state,
+            spec_id,
+            contexts,
+        )
+        blocking.extend(item_blocking)
+        waived.extend(item_waived)
+    return blocking, waived
 
 
 def check_pr_body(text: str, spec_id: str) -> list[str]:
@@ -2042,6 +2820,7 @@ def ensure_prd_index(
     title: str,
     issue: Optional[str],
     feat: Optional[str] = None,
+    feat_id: Optional[str] = None,
 ) -> Path:
     path = prd_index_path(root, config)
     text = read_text(path)
@@ -2056,7 +2835,7 @@ def ensure_prd_index(
             "| --- | --- | --- | --- | --- | --- | --- |\n"
         )
     if spec_id not in text:
-        feat = feat or allocate_feat(root, config)
+        feat = feat or feat_id or allocate_feat_id(root, config)
         safe_title = " ".join(title.split()).replace("|", "\\|")
         link = (issue or "N/A").replace("|", "\\|")
         text += (
@@ -2065,6 +2844,11 @@ def ensure_prd_index(
         )
         write_text(path, text)
     return path
+
+
+def allocate_feat_id(root: Path, config: dict[str, Any]) -> str:
+    text = read_text(prd_index_path(root, config))
+    return f"FEAT-{next_feat_number(text):03d}"
 
 
 def prd_index_structure_errors(
@@ -2110,6 +2894,17 @@ def prd_index_clarify_errors(
     text = read_text(prd_index_path(root, config))
     if CLARIFY_RE.search(text):
         return ["docs/prd-index.md 还有 [NEEDS CLARIFICATION] 标记"]
+    spec_id = str(state.get("spec_id", ""))
+    for row in prd_index_rows(text):
+        if row.get("specid") != spec_id:
+            continue
+        raw = str(row.get("澄清标记", "0")).strip()
+        try:
+            count = int(raw or "0")
+        except ValueError:
+            count = 1
+        if count:
+            return [f"docs/prd-index.md 的澄清标记为 {count}，必须清零"]
     return []
 
 
@@ -2143,11 +2938,14 @@ def check_prd_index(
     config: dict[str, Any],
     state: dict[str, Any],
     spec_text: str,
+    require_feat: bool = False,
 ) -> list[str]:
     errors: list[str] = []
     errors.extend(prd_index_structure_errors(root, config, state, spec_text))
     errors.extend(prd_index_clarify_errors(root, config, state, spec_text))
     errors.extend(prd_index_registration_errors(root, config, state, spec_text))
+    if require_feat:
+        errors.extend(feat_identity_errors(root, config, state, spec_text))
     return errors
 
 
@@ -2183,6 +2981,23 @@ def feat_identity_errors(
         for row in spec_rows
         if re.fullmatch(r"FEAT-\d{3}", row.get("feat", "") or "")
     }
+    if len(spec_rows) > 1:
+        errors.append(
+            f"docs/prd-index.md 重复登记 Spec {spec_id}，共 {len(spec_rows)} 行"
+        )
+    row_counts: dict[tuple[str, str], int] = {}
+    for row in spec_rows:
+        row_feat = row.get("feat", "")
+        row_work = row.get("工作项id", "") or row.get("workitemid", "")
+        if re.fullmatch(r"FEAT-\d{3}", row_feat or ""):
+            key = (row_work, row_feat)
+            row_counts[key] = row_counts.get(key, 0) + 1
+    for (row_work, row_feat), count in sorted(row_counts.items()):
+        if count > 1:
+            errors.append(
+                f"FEAT {row_feat} 重复登记：工作项 {row_work or '(空)'} "
+                f"在 {spec_id} 下出现 {count} 行"
+            )
     if declared and row_feats and declared not in row_feats:
         errors.append(
             f"spec.md FEAT ID={declared} 与 docs/prd-index.md 的 "
@@ -2847,12 +3662,130 @@ def write_gate_report(
         ]
     )
     if errors:
-        lines.extend(f"- BLOCK：{error}" for error in errors)
+        lines.extend(["| 级别 | 问题 |", "| --- | --- |"])
+        lines.extend(f"| BLOCK | {error} |" for error in errors)
     else:
-        lines.append("- 无阻断问题。")
+        lines.extend(
+            [
+                "| 级别 | 问题 |",
+                "| --- | --- |",
+                "| PASS | 无阻断问题。 |",
+            ]
+        )
     lines.append("")
     write_text(report_path, "\n".join(lines))
     return report_path
+
+
+def selected_checks(
+    workflow: Optional[dict[str, Any]],
+    gate: str,
+) -> list[str]:
+    mapping = (workflow or {}).get("gate_checks")
+    if isinstance(mapping, dict):
+        selected = mapping.get(gate)
+        if isinstance(selected, list):
+            known = set(check_ids_for_gate(gate))
+            values = [str(item) for item in selected if str(item) in known]
+            if values:
+                return list(dict.fromkeys(values))
+    return check_ids_for_gate(gate)
+
+
+def gate_check_results(
+    gate: str,
+    errors: list[str],
+    workflow: Optional[dict[str, Any]] = None,
+    state: Optional[dict[str, Any]] = None,
+    spec_id: Optional[str] = None,
+    contexts: Optional[Iterable[str]] = None,
+) -> list[dict[str, Any]]:
+    results = build_check_results(
+        gate,
+        errors,
+        selected_checks(workflow, gate),
+    )
+    if state is not None:
+        results = apply_check_waivers(
+            results,
+            state,
+            spec_id or str(state.get("spec_id") or ""),
+            contexts or [],
+        )
+    return results
+
+
+def gate_check_rows(
+    gate: str,
+    errors: list[str],
+    workflow: Optional[dict[str, Any]] = None,
+    state: Optional[dict[str, Any]] = None,
+    spec_id: Optional[str] = None,
+    contexts: Optional[Iterable[str]] = None,
+) -> list[tuple[str, str, str]]:
+    results = gate_check_results(
+        gate,
+        errors,
+        workflow,
+        state,
+        spec_id,
+        contexts,
+    )
+    return [
+        (
+            f"{item['id']} {item['title']}",
+            str(item["result"]).upper(),
+            str(item["detail"]),
+        )
+        for item in results
+    ]
+
+
+def stage_check_results(
+    stage: str,
+    errors: list[str],
+    workflow: Optional[dict[str, Any]] = None,
+) -> list[dict[str, Any]]:
+    gate_map = {
+        "spec": ("G0", "G1"),
+        "design": ("G2",),
+        "tasks": ("G3",),
+        "verify": ("G5",),
+        "ci": ("G0", "G1", "G2", "G3", "G4", "G5"),
+    }
+    base_gates = list(gate_map.get(stage, ()))
+    explicit: dict[str, list[str]] = {}
+    for error in errors:
+        match = re.match(r"^\s*(G\d-\d{2})\b", str(error))
+        if not match:
+            continue
+        check_id = match.group(1)
+        definition = EXT_CHECK_REGISTRY.get(check_id)
+        if definition is None:
+            continue
+        gate = str(definition["gate"])
+        explicit.setdefault(gate, [])
+        if check_id not in explicit[gate]:
+            explicit[gate].append(check_id)
+
+    results: list[dict[str, Any]] = []
+    for gate in base_gates:
+        selected = selected_checks(workflow, gate)
+        for check_id in explicit.get(gate, []):
+            if check_id not in selected:
+                selected.append(check_id)
+        results.extend(
+            build_check_results(
+                gate,
+                errors,
+                selected,
+            )
+        )
+    for gate, check_ids in explicit.items():
+        if gate in base_gates:
+            continue
+        results.extend(build_check_results(gate, errors, check_ids))
+    return results
 
 
 def record_gate(
@@ -2868,8 +3801,50 @@ def record_gate(
     errors: Optional[list[str]] = None,
     approver: Optional[str] = None,
 ) -> None:
-    status = "FAILED" if errors else "PASS"
+    workflow = resolve_workflow(root, directory, state)
+    spec_id = str(state.get("spec_id") or directory.name)
+    contexts = waiver_contexts(
+        directory,
+        {
+            "G0": "spec",
+            "G1": "spec",
+            "G2": "design",
+            "G3": "tasks",
+            "G4": "tasks",
+            "G5": "verify",
+        }.get(gate, "ci"),
+    )
+    blocking, waived = partition_waived_errors(
+        errors or [],
+        gate,
+        state,
+        spec_id,
+        contexts,
+    )
+    if blocking:
+        status = "FAILED"
+    elif waived:
+        status = "PASS_WITH_WAIVER"
+    else:
+        status = "PASS"
     append_gate(directory, gate, state_name, mode, evidence, status)
+    check_results = gate_check_results(
+        gate,
+        errors or [],
+        workflow,
+        state,
+        spec_id,
+        contexts,
+    )
+    if not checks:
+        checks = [
+            (
+                f"{item['id']} {item['title']}",
+                str(item["result"]).upper(),
+                str(item["detail"]),
+            )
+            for item in check_results
+        ]
     write_gate_report(
         root,
         config,
@@ -2880,7 +3855,7 @@ def record_gate(
         mode,
         evidence,
         checks,
-        errors,
+        blocking,
         approver,
     )
     hashes: dict[str, str] = {}
@@ -2890,6 +3865,24 @@ def record_gate(
             hashes[relative] = digest
     if hashes:
         state.setdefault("artifact_hashes", {})[gate] = hashes
+    append_audit_event(
+        directory,
+        {
+            "event": "gate_result",
+            "gate": gate,
+            "state": state_name,
+            "from_state": state.get("state"),
+            "to_state": state_name,
+            "next": NEXT_ACTION_BY_STATE.get(state_name, ""),
+            "mode": mode,
+            "status": status,
+            "evidence": evidence,
+            "checks": check_results,
+            "artifacts": gate_artifact_entries(root, directory, gate),
+            "actor": "system",
+            "role": "system",
+        },
+    )
 
 
 def gate_artifact_entries(
@@ -3013,8 +4006,21 @@ def run_checks(
     errors: list[str] = []
 
     if stage in {"spec", "design", "tasks", "verify", "ci"}:
-        errors.extend(gate_rows_errors(run_gate_checks("G0", ctx)))
+        g0_rows = run_gate_checks("G0", ctx)
+        if stage == "spec":
+            g0_rows = [row for row in g0_rows if row.get("id") != "G0-05"]
+        errors.extend(gate_rows_errors(g0_rows))
         errors.extend(gate_rows_errors(run_gate_checks("G1", ctx)))
+    if stage in {"spec", "design", "tasks", "verify"}:
+        errors.extend(
+            check_prd_index(
+                root,
+                config,
+                state,
+                spec_text,
+                require_feat=not legacy_merged,
+            )
+        )
     if stage in {"design", "tasks", "verify", "ci"}:
         errors.extend(check_design(design_text, spec_acs, workflow))
     if stage in {"tasks", "verify", "ci"}:
@@ -3023,21 +4029,45 @@ def run_checks(
                 tasks_text,
                 spec_acs,
                 config,
-                (
-                    root
-                    if stage in {"verify", "ci"} and not legacy_merged
-                    else None
-                ),
+                root if not legacy_merged else None,
             )
         )
+        errors.extend(check_knowledge_assets(root))
+        parsed_tasks = parse_tasks(tasks_text)
+        if stage in {"verify", "ci"} or (
+            stage == "tasks"
+            and parsed_tasks
+            and all(task["done"] for task in parsed_tasks)
+        ):
+            errors.extend(
+                check_review_evidence(directory, state, workflow)
+            )
     if stage in {"verify", "ci"}:
         errors.extend(
             check_verification(
-                verification_text, spec_acs, workflow, state, config
+                verification_text,
+                spec_acs,
+                workflow,
+                state,
+                config,
+                directory,
             )
         )
+        errors.extend(check_event_chain(directory))
         if not legacy_merged:
             errors.extend(check_test_coverage(root, config, spec_acs))
+        errors.extend(
+            check_verification_evidence(
+                root,
+                directory,
+                config,
+                spec_id,
+                spec_text,
+                design_text,
+                tasks_text,
+                state=state,
+            )
+        )
     if stage == "ci":
         if state.get("state") not in {"PR_READY", "MERGED"}:
             errors.append("CI 检查要求状态为 PR_READY 或 MERGED")
@@ -3057,13 +4087,507 @@ def run_checks(
                 errors.append(
                     "require_approver=true，但 state.json 没有有效审批人记录"
                 )
+        errors.extend(
+            check_prd_index(
+                root,
+                config,
+                state,
+                spec_text,
+                require_feat=str(state.get("state")) != "MERGED",
+            )
+        )
         errors.extend(check_duplicate_spec_files(root, config))
         if check_git_trailer:
             errors.extend(
                 check_git(root, spec_id, str(state.get("state", "DRAFT")))
             )
 
-    return errors, stage
+    return list(dict.fromkeys(errors)), stage
+
+
+CONTEXT_BUNDLE_SCHEMA = 1
+
+
+def empty_context_bundle(spec_id: str) -> dict[str, Any]:
+    return {
+        "schema": CONTEXT_BUNDLE_SCHEMA,
+        "spec": spec_id,
+        "task": None,
+        "frs": [],
+        "acs": [],
+        "requirements": {"frs": [], "acs": []},
+        "design_sections": [],
+        "contracts": [],
+        "contract_details": [],
+        "project_constraints": [],
+        "constraints": [],
+        "review_overlays": [],
+        "fix_patterns": [],
+        "knowledge": [],
+        "allowed_paths": [],
+        "exclude": [],
+        "scope_policy": "只读取当前 Spec 与当前 Task 所需内容；不得静默扩大改动范围。",
+        "blocked": False,
+        "empty": True,
+        "notes": [],
+    }
+
+
+def _task_requirement_rows(
+    spec_text: str,
+    task: dict[str, Any],
+) -> dict[str, list[dict[str, str]]]:
+    frs: list[dict[str, str]] = []
+    acs: list[dict[str, str]] = []
+    fr_titles = {
+        match.group(1): match.group(2).strip()
+        for match in re.finditer(
+            r"(?m)^#{1,6}\s+(FR-\d{3})\s*(.*)$",
+            spec_text,
+        )
+    }
+    for fr in task.get("frs", []):
+        frs.append({"id": fr, "title": fr_titles.get(fr, "")})
+    for ac in task.get("acs", []):
+        line = next(
+            (
+                raw.strip().lstrip("-* ").strip()
+                for raw in spec_text.splitlines()
+                if ac in raw
+            ),
+            ac,
+        )
+        acs.append({"id": ac, "text": line})
+    return {"frs": frs, "acs": acs}
+
+
+def _design_context_sections(
+    design_text: str,
+    acs: Iterable[str],
+    frs: Iterable[str],
+) -> list[dict[str, Any]]:
+    wanted = [*acs, *frs]
+    sections: list[dict[str, Any]] = []
+    for heading, lines in iter_sections(design_text):
+        body = "\n".join(lines).strip()
+        matched = [item for item in wanted if item and item in body]
+        if not matched:
+            continue
+        if len(body) > 2500 or "覆盖" in heading or "接口" in heading:
+            relevant = [
+                line
+                for line in lines
+                if any(item and item in line for item in matched)
+            ]
+            content = "\n".join(relevant).strip() or body[:2500]
+        else:
+            content = body
+        sections.append(
+            {
+                "heading": heading,
+                "reason": "覆盖 " + ", ".join(dict.fromkeys(matched)),
+                "content": content[:6000],
+                "requirements": list(dict.fromkeys(matched)),
+                "truncated": len(content) > 6000,
+            }
+        )
+    return sections
+
+
+def check_knowledge_assets(root: Path) -> list[str]:
+    errors: list[str] = []
+    index_path = root / "docs" / "knowledge" / "index.md"
+    if index_path.is_file():
+        header: Optional[list[str]] = None
+        ids: set[str] = set()
+        for line in read_text(index_path).splitlines():
+            stripped = line.strip()
+            if not stripped.startswith("|") or not stripped.endswith("|"):
+                continue
+            cells = split_table_row(stripped)
+            if not cells:
+                continue
+            normalized = [normalize_column(cell) for cell in cells]
+            if "id" in normalized and "type" in normalized:
+                header = normalized
+                required_columns = {
+                    "id",
+                    "type",
+                    "statement",
+                    "source",
+                    "version",
+                    "scope",
+                    "owner",
+                    "status",
+                    "links",
+                }
+                missing = sorted(required_columns - set(header))
+                if missing:
+                    errors.append(
+                        "知识索引缺少列：" + ", ".join(missing)
+                    )
+                continue
+            if header is None:
+                continue
+            row = {
+                header[index]: cells[index].strip()
+                for index in range(min(len(header), len(cells)))
+            }
+            record_id = row.get("id", "")
+            if not record_id or set(record_id) <= {"-", ":", " "}:
+                continue
+            if record_id in ids:
+                errors.append(f"知识记录 ID 重复：{record_id}")
+            ids.add(record_id)
+            errors.extend(knowledge_record_errors(row))
+        if header is None:
+            errors.append(
+                "docs/knowledge/index.md 缺少结构化知识表"
+            )
+
+    pattern_root = root / "docs" / "knowledge" / "patterns"
+    if pattern_root.is_dir():
+        for path in sorted(pattern_root.glob("FP-*.md")):
+            data = parse_front_matter(read_text(path))
+            if not data:
+                errors.append(
+                    f"{path.relative_to(root).as_posix()} 缺少 front matter"
+                )
+                continue
+            errors.extend(fix_pattern_errors(data))
+    return list(dict.fromkeys(errors))
+
+
+def _knowledge_context(
+    root: Path,
+    task: dict[str, Any],
+    feat_id: str,
+    allowed_paths: list[str],
+) -> tuple[list[dict[str, Any]], list[str]]:
+    path = root / "docs" / "knowledge" / "index.md"
+    if not path.is_file():
+        return [], []
+    records: list[dict[str, Any]] = []
+    conflicts: list[str] = []
+    header: Optional[list[str]] = None
+    links_wanted = {
+        feat_id,
+        *[str(item) for item in task.get("frs", [])],
+        *[str(item) for item in task.get("acs", [])],
+    }
+    for line in read_text(path).splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("|") or not stripped.endswith("|"):
+            continue
+        cells = split_table_row(stripped)
+        if not cells:
+            continue
+        normalized = [normalize_column(cell) for cell in cells]
+        if "id" in normalized and "type" in normalized:
+            header = normalized
+            continue
+        if header is None:
+            continue
+        row = {
+            header[index]: cells[index].strip()
+            for index in range(min(len(header), len(cells)))
+        }
+        record_id = row.get("id", "")
+        if not record_id or set(record_id) <= {"-", ":", " "}:
+            continue
+        links = row.get("links", "")
+        linked = any(link and link in links for link in links_wanted)
+        scope = row.get("scope", "").replace("\\", "/")
+        path_match = any(
+            allowed and (allowed in scope or scope in allowed)
+            for allowed in allowed_paths
+        )
+        if not linked and not path_match:
+            continue
+        record = {
+            "id": record_id,
+            "type": row.get("type", ""),
+            "statement": row.get("statement", ""),
+            "source": row.get("source", ""),
+            "version": row.get("version", ""),
+            "scope": scope,
+            "owner": row.get("owner", ""),
+            "status": row.get("status", ""),
+            "links": links,
+        }
+        records.append(record)
+        if (
+            record["type"].upper() == "CONFLICT"
+            and record["status"].upper() not in {"RESOLVED", "CLOSED", "CONFIRMED"}
+        ):
+            conflicts.append(record_id)
+    return records, conflicts
+
+
+def _pattern_context(
+    root: Path,
+    allowed_paths: list[str],
+) -> list[dict[str, Any]]:
+    pattern_root = root / "docs" / "knowledge" / "patterns"
+    if not pattern_root.is_dir():
+        return []
+    patterns: list[dict[str, Any]] = []
+    for path in sorted(pattern_root.glob("FP-*.md")):
+        text = read_text(path)
+        data = parse_front_matter(text)
+        if not pattern_applies(data, allowed_paths):
+            continue
+        symptom = ""
+        lines = text.replace("\r\n", "\n").splitlines()
+        for index, line in enumerate(lines):
+            if re.match(r"^#{1,6}\s+症状", line):
+                symptom = next(
+                    (item.strip() for item in lines[index + 1 :] if item.strip()),
+                    "",
+                )
+                break
+        status = str(data.get("status") or "draft").strip().lower()
+        raw_checks = data.get("checks") or data.get("check") or []
+        checks = (
+            raw_checks
+            if isinstance(raw_checks, list)
+            else ([raw_checks] if str(raw_checks).strip() else [])
+        )
+        patterns.append(
+            {
+                "id": str(data.get("id") or path.stem),
+                "path": path.relative_to(root).as_posix(),
+                "status": status,
+                "summary": symptom,
+                "checks": checks,
+                "check_command": data.get("check_command") or "",
+                "reference_only": status not in {"verified", "active", "confirmed"},
+            }
+        )
+    return patterns
+
+
+def _review_overlay_context(
+    root: Path,
+    allowed_paths: list[str],
+    review_required: bool,
+) -> list[dict[str, str]]:
+    if not review_required:
+        return []
+    wanted: list[tuple[str, str]] = []
+    lowered = [path.lower() for path in allowed_paths]
+    if any(path.endswith(".py") for path in lowered):
+        wanted.append(("python", "sdd/prompts/review/python.md"))
+    if any(path.endswith(".java") for path in lowered):
+        wanted.append(("java-spring", "sdd/prompts/review/java-spring.md"))
+    if any(
+        path.endswith((".ts", ".tsx", ".js", ".jsx", ".css", ".html", ".vue"))
+        for path in lowered
+    ):
+        wanted.append(("frontend", "sdd/prompts/review/frontend.md"))
+    overlays: list[dict[str, str]] = []
+    common = root / "sdd" / "prompts" / "review" / "contract.md"
+    if common.is_file():
+        overlays.append(
+            {
+                "id": "common",
+                "path": "sdd/prompts/review/contract.md",
+                "load_when": "当前风险或 Profile 要求独立审查",
+            }
+        )
+    for overlay_id, relative in wanted:
+        path = root / relative
+        if path.is_file():
+            overlays.append(
+                {
+                    "id": overlay_id,
+                    "path": relative,
+                    "load_when": "当前任务允许路径命中该技术栈",
+                }
+            )
+    return overlays
+
+
+def build_context_bundle(
+    root: Path,
+    directory: Path,
+    state: dict[str, Any],
+    action: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    spec_id = str(state.get("spec_id", directory.name))
+    bundle = empty_context_bundle(spec_id)
+    direct_task: Optional[dict[str, Any]] = None
+    task_id = ""
+    if action:
+        raw_task = action.get("task")
+        if isinstance(raw_task, str):
+            task_id = raw_task
+        elif action.get("id"):
+            direct_task = action
+            task_id = str(action.get("id") or "")
+    if not task_id:
+        return bundle
+
+    spec_text = read_text(directory / "spec.md")
+    design_text = read_text(directory / "design.md")
+    tasks_text = read_text(directory / "tasks.md")
+    task = direct_task or next(
+        (item for item in parse_tasks(tasks_text) if item["id"] == task_id),
+        None,
+    )
+    if task is None:
+        bundle["notes"].append(f"当前任务 {task_id} 在 tasks.md 中不存在")
+        return bundle
+
+    feat_id = str(
+        state.get("feat_id")
+        or metadata_value(spec_text, "FEAT ID", "FEAT", "Feature ID")
+    )
+    workflow = resolve_workflow(root, directory, state)
+    context_rules = workflow.get("context_rules")
+    if not isinstance(context_rules, dict):
+        context_rules = {}
+
+    spec_dir = directory.relative_to(root).as_posix()
+    allowed = list(task_scope_paths(task))
+    allowed.extend(design_scope_paths(design_text, spec_dir))
+    allowed.extend(extract_backtick_paths(str(task.get("description") or "")))
+    for raw in context_rules.get("allowed_paths", []) or []:
+        value = str(raw).replace("\\", "/").strip()
+        if value:
+            allowed.append(value)
+    allowed = [
+        value
+        for value in dict.fromkeys(allowed)
+        if value != "docs/prd.md" and not is_other_spec_path(value, spec_dir)
+    ]
+
+    exclude = list(CONTEXT_EXCLUDES)
+    exclude.extend(
+        [
+        ".git",
+        ".sdd",
+        "docs/prd.md",
+        "历史聊天",
+        "其他 Spec 正文",
+        "docs/specs/*",
+        f"docs/specs/{spec_id} 之外的 Spec",
+        ]
+    )
+    for raw in context_rules.get("exclude", []) or []:
+        exclude.append(str(raw))
+    exclude = list(dict.fromkeys(exclude))
+
+    requirements = _task_requirement_rows(spec_text, task)
+    design_sections = _design_context_sections(
+        design_text,
+        task.get("acs", []),
+        task.get("frs", []),
+    )
+    candidate_text = "\n".join(
+        [str(task.get("description") or ""), design_text, spec_text]
+    )
+    contract_paths = list(design_contract_paths(design_text, spec_dir))
+    contract_paths.extend(context_contract_paths(root))
+    for relative in extract_backtick_paths(candidate_text):
+        path = root / relative
+        if not path.is_file():
+            continue
+        if (
+            relative.startswith("sdd/context/contracts/")
+            or "/api/" in f"/{relative}"
+            or relative.endswith((".yaml", ".yml", ".json", ".proto"))
+        ):
+            contract_paths.append(relative)
+    contracts = [
+        {"path": path, "purpose": "任务或设计引用的契约"}
+        for path in dict.fromkeys(contract_paths)
+    ]
+
+    constraints: list[dict[str, str]] = []
+    agents_path = root / "AGENTS.md"
+    if agents_path.is_file():
+        agents_text = read_text(agents_path)
+        constraints.append(
+            {
+                "path": "AGENTS.md",
+                "excerpt": agents_text[:6000],
+                "truncated": str(len(agents_text) > 6000).lower(),
+            }
+        )
+    config_path = root / "sdd" / "config.json"
+    if config_path.is_file():
+        config_data = load_json(config_path)
+        constraints.append(
+            {
+                "path": "sdd/config.json",
+                "excerpt": json.dumps(
+                    {
+                        "sdd_level": config_data.get("sdd_level"),
+                        "prd_mode": config_data.get("prd_mode"),
+                        "workflow": config_data.get("workflow"),
+                        "test_commands": config_data.get("test_commands", []),
+                        "risk_stop": config_data.get("risk_stop", []),
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                "truncated": "false",
+            }
+        )
+
+    knowledge, conflicts = _knowledge_context(
+        root,
+        task,
+        feat_id,
+        allowed,
+    )
+    bundle.update(
+        {
+            "task": {
+                "id": task["id"],
+                "description": task["description"],
+                "status": task["status"],
+            },
+            "frs": [item["id"] for item in requirements["frs"]],
+            "acs": [item["id"] for item in requirements["acs"]],
+            "requirements": requirements,
+            "design_sections": design_sections,
+            "contracts": [item["path"] for item in contracts],
+            "contract_details": contracts,
+            "project_constraints": [
+                {"path": "AGENTS.md", "scope": "."},
+                *[
+                    {"path": item["path"], "scope": "."}
+                    for item in constraints
+                    if item["path"] != "AGENTS.md"
+                ],
+            ],
+            "constraints": constraints,
+            "review_overlays": _review_overlay_context(
+                root,
+                allowed,
+                review_required_for(workflow, state),
+            ),
+            "fix_patterns": _pattern_context(root, allowed),
+            "knowledge": knowledge,
+            "allowed_paths": allowed,
+            "exclude": exclude,
+            "blocked": bool(conflicts),
+            "empty": False,
+        }
+    )
+    if conflicts:
+        bundle["notes"].append(
+            "存在未解决知识冲突：" + ", ".join(conflicts) + "；相关决策必须先裁决。"
+        )
+    if not allowed:
+        bundle["notes"].append(
+            "任务未声明具体改动路径；实施前应先补充允许范围。"
+        )
+    if not design_sections:
+        bundle["notes"].append("未找到与当前 FR/AC 直接关联的设计章节。")
+    return bundle
 
 
 CONTEXT_BUNDLE_FIELDS = (
@@ -3273,60 +4797,6 @@ def task_scope_paths(task: dict[str, Any]) -> list[str]:
     return sorted(paths)
 
 
-def build_context_bundle(
-    root: Path,
-    directory: Path,
-    state: dict[str, Any],
-    task: Optional[dict[str, Any]] = None,
-) -> dict[str, Any]:
-    bundle: dict[str, Any] = {
-        "task": None,
-        "frs": [],
-        "acs": [],
-        "design_sections": [],
-        "contracts": [],
-        "project_constraints": [],
-        "fix_patterns": [],
-        "allowed_paths": [],
-        "exclude": [],
-    }
-    if not task:
-        return bundle
-
-    spec_dir = directory.relative_to(root).as_posix()
-    design_text = read_text(directory / "design.md")
-    frs = sorted(set(task.get("frs") or []))
-    acs = sorted(set(task.get("acs") or []))
-    contracts = set(design_contract_paths(design_text, spec_dir))
-    contracts.update(context_contract_paths(root))
-    allowed = set(design_scope_paths(design_text, spec_dir))
-    allowed.update(task_scope_paths(task))
-    allowed = {
-        value
-        for value in allowed
-        if value != "docs/prd.md" and not is_other_spec_path(value, spec_dir)
-    }
-
-    bundle.update(
-        {
-            "task": {
-                "id": str(task.get("id") or ""),
-                "description": str(task.get("description") or ""),
-                "status": str(task.get("status") or "Todo"),
-            },
-            "frs": frs,
-            "acs": acs,
-            "design_sections": design_section_refs(design_text, frs, acs),
-            "contracts": sorted(contracts),
-            "project_constraints": [{"path": "AGENTS.md", "scope": "."}],
-            "fix_patterns": [],
-            "allowed_paths": sorted(allowed),
-            "exclude": list(CONTEXT_EXCLUDES),
-        }
-    )
-    return bundle
-
-
 def build_next_action(
     root: Path, directory: Path, state: dict[str, Any]
 ) -> dict[str, Any]:
@@ -3501,21 +4971,9 @@ def build_next_action(
         )
     else:
         raise SddError(f"未知状态：{state_name}")
+    base["context_bundle"] = build_context_bundle(root, directory, state, base)
     if base.get("prompt"):
         base["prompt_file"] = base["prompt"]
-    bundle_task: Optional[dict[str, Any]] = None
-    if base.get("kind") == "task" and base.get("task"):
-        bundle_task = next(
-            (
-                task
-                for task in parse_tasks(read_text(directory / "tasks.md"))
-                if task["id"] == base["task"]
-            ),
-            None,
-        )
-    base["context_bundle"] = build_context_bundle(
-        root, directory, state, bundle_task
-    )
     return base
 
 
@@ -3583,6 +5041,7 @@ def command_new(args: argparse.Namespace, root: Path, config: dict[str, Any]) ->
     directory = spec_dir_for(root, config, spec_id)
     if directory.exists():
         raise SddError(f"Spec 已存在：{directory}")
+    feat_id = allocate_feat_id(root, config)
 
     product_type = args.product_type or "传统产品"
     adapt = {
@@ -3602,6 +5061,8 @@ def command_new(args: argparse.Namespace, root: Path, config: dict[str, Any]) ->
         "PRODUCT_TYPE": product_type,
         "TEMPLATE_ADAPT": adapt,
         "AUTHOR": args.author or "SDD Agent",
+        "FEAT_ID": feat_id,
+        "WORKFLOW": str(workflow.get("name") or workflow_name),
     }
     directory.mkdir(parents=True, exist_ok=False)
     design_template = (
@@ -3611,7 +5072,7 @@ def command_new(args: argparse.Namespace, root: Path, config: dict[str, Any]) ->
     )
     verification_template = (
         "verification-strict.md"
-        if workflow.get("review_required")
+        if review_required_for(workflow, {"risk": args.risk})
         else "verification.md"
     )
     for name in ("spec.md", design_template, "tasks.md", verification_template):
@@ -3631,6 +5092,8 @@ def command_new(args: argparse.Namespace, root: Path, config: dict[str, Any]) ->
         "spec_id": spec_id,
         "title": args.title,
         "work_item": work_item,
+        "feat_id": feat_id,
+        "schema": 2,
         "issue": args.issue,
         "product_type": product_type,
         "risk": args.risk,
@@ -3656,7 +5119,13 @@ def command_new(args: argparse.Namespace, root: Path, config: dict[str, Any]) ->
     }
     save_state(directory, state)
     ensure_prd_index(
-        root, config, spec_id, work_item, args.title, args.issue, feat=feat_id
+        root,
+        config,
+        spec_id,
+        work_item,
+        args.title,
+        args.issue,
+        feat_id=feat_id,
     )
     print(f"[sdd] created {directory.relative_to(root)}")
     print(f"[sdd] work item: {work_item}")
@@ -3731,6 +5200,7 @@ def command_events(
         "source": source,
         "count": len(events),
         "events": events,
+        "audit": verify_event_chain(events),
     }
     if args.json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
@@ -3992,6 +5462,89 @@ def build_inbox_item(
     return item
 
 
+def build_inbox_extras(
+    root: Path,
+    config: dict[str, Any],
+    directory: Path,
+    state: dict[str, Any],
+) -> list[dict[str, Any]]:
+    spec_id = str(state.get("spec_id", directory.name))
+    items: list[dict[str, Any]] = []
+    waivers = state.get("waivers")
+    if isinstance(waivers, list):
+        for waiver in waivers:
+            if not isinstance(waiver, dict):
+                continue
+            expired = waiver_is_expired(waiver)
+            items.append(
+                {
+                    "spec": spec_id,
+                    "state": state.get("state"),
+                    "priority": 5 if expired else 55,
+                    "action": "waiver_expired" if expired else "waiver",
+                    "check_id": waiver.get("check_id"),
+                    "waiver_id": waiver.get("id"),
+                    "reason": (
+                        f"{waiver.get('check_id')} 豁免已过期"
+                        if expired
+                        else f"{waiver.get('check_id')} 豁免有效至 "
+                        f"{waiver.get('expires_at')}"
+                    ),
+                    "since": waiver.get("created_at"),
+                    "artifact": None,
+                    "command": (
+                        f"python -m sdd check --spec {spec_id} --stage verify --json"
+                    ),
+                }
+            )
+    stage = {
+        "SPEC_READY": "design",
+        "DESIGN_READY": "tasks",
+        "TASKS_READY": "tasks",
+        "IMPLEMENTING": "tasks",
+        "VERIFYING": "verify",
+        "PR_READY": "ci",
+    }.get(str(state.get("state")), None)
+    if stage:
+        errors, resolved_stage = run_checks(
+            root,
+            config,
+            directory,
+            state,
+            stage,
+        )
+        checks = apply_check_waivers(
+            stage_check_results(
+                resolved_stage,
+                errors,
+                resolve_workflow(root, directory, state),
+            ),
+            state,
+            spec_id,
+            waiver_contexts(directory, resolved_stage),
+        )
+        for check in checks:
+            if check.get("result") != "warn":
+                continue
+            items.append(
+                {
+                    "spec": spec_id,
+                    "state": state.get("state"),
+                    "priority": 60,
+                    "action": "warn",
+                    "check_id": check.get("id"),
+                    "reason": f"{check.get('id')} {check.get('detail')}",
+                    "since": latest_event_at(directory, state),
+                    "artifact": None,
+                    "command": (
+                        f"python -m sdd check --spec {spec_id} "
+                        f"--stage {resolved_stage} --json"
+                    ),
+                }
+            )
+    return items
+
+
 def command_inbox(args: argparse.Namespace, root: Path, config: dict[str, Any]) -> int:
     base = spec_root(root, config)
     directories = (
@@ -4011,6 +5564,7 @@ def command_inbox(args: argparse.Namespace, root: Path, config: dict[str, Any]) 
         )
         if item:
             items.append(item)
+        items.extend(build_inbox_extras(root, config, directory, state))
     items.sort(
         key=lambda item: (
             int(item["priority"]),
@@ -4122,6 +5676,55 @@ def compute_spec_metrics(
             if path and digest:
                 artifacts.setdefault(path, set()).add(digest)
 
+    check_stats: dict[str, dict[str, Any]] = {}
+    gate_first_seen: dict[str, str] = {}
+    for event in events:
+        if event.get("event") != "gate_result":
+            continue
+        gate = str(event.get("gate") or "")
+        status = str(event.get("status") or "").upper()
+        if gate and gate not in gate_first_seen:
+            gate_first_seen[gate] = status
+        for check in event.get("checks", []) or []:
+            if not isinstance(check, dict):
+                continue
+            check_id = str(check.get("id") or "")
+            result = str(check.get("result") or "").lower()
+            if not check_id or result not in {"pass", "warn", "block", "waived"}:
+                continue
+            bucket = check_stats.setdefault(
+                check_id,
+                {
+                    "id": check_id,
+                    "pass": 0,
+                    "warn": 0,
+                    "block": 0,
+                    "waived": 0,
+                    "total": 0,
+                },
+            )
+            bucket[result] += 1
+            bucket["total"] += 1
+    for bucket in check_stats.values():
+        total = int(bucket["total"])
+        bucket["pass_rate"] = (
+            round(bucket["pass"] / total, 4) if total else 0.0
+        )
+        bucket["waiver_rate"] = (
+            round(bucket["waived"] / total, 4) if total else 0.0
+        )
+
+    waiver_count = sum(
+        1 for event in events if event.get("event") == "waiver_created"
+    )
+    checks_total = sum(int(item["total"]) for item in check_stats.values())
+    first_pass_gates = sum(
+        1
+        for status in gate_first_seen.values()
+        if status in {"PASS", "PASS_WITH_WAIVER"}
+    )
+    audit = verify_event_chain(events)
+
     return {
         "spec": spec_id,
         "title": state.get("title", ""),
@@ -4145,7 +5748,42 @@ def compute_spec_metrics(
         "artifact_changes": sum(
             1 for hashes in artifacts.values() if len(hashes) > 1
         ),
+        "waivers": {
+            "count": waiver_count,
+            "rate": (
+                round(waiver_count / checks_total, 4)
+                if checks_total
+                else 0.0
+            ),
+        },
+        "gate_first_pass": {
+            "first_pass": first_pass_gates,
+            "total": len(gate_first_seen),
+            "rate": (
+                round(first_pass_gates / len(gate_first_seen), 4)
+                if gate_first_seen
+                else None
+            ),
+        },
+        "reopened": any(
+            event.get("event") == "rewind" for event in events
+        ),
+        "check_stats": sorted(check_stats.values(), key=lambda item: item["id"]),
+        "audit": audit,
     }
+
+
+def escaped_defect_count(root: Path) -> int:
+    bar_root = root / "docs" / "knowledge" / "bar"
+    if not bar_root.is_dir():
+        return 0
+    count = 0
+    for path in sorted(bar_root.glob("BAR-*.md")):
+        data = parse_front_matter(read_text(path))
+        value = str(data.get("escaped") or data.get("detected_after_merge") or "")
+        if value.strip().lower() == "true":
+            count += 1
+    return count
 
 
 def command_metrics(
@@ -4178,11 +5816,84 @@ def command_metrics(
         if item["lead_time_hours"] is not None
     ]
     reworks = [item["reworks"] for item in specs]
+    check_stats: dict[str, dict[str, Any]] = {}
+    for item in specs:
+        for bucket in item.get("check_stats", []):
+            aggregate = check_stats.setdefault(
+                bucket["id"],
+                {
+                    "id": bucket["id"],
+                    "pass": 0,
+                    "warn": 0,
+                    "block": 0,
+                    "waived": 0,
+                    "total": 0,
+                },
+            )
+            for key in ("pass", "warn", "block", "waived", "total"):
+                aggregate[key] += int(bucket.get(key, 0))
+    for bucket in check_stats.values():
+        total = int(bucket["total"])
+        bucket["pass_rate"] = (
+            round(bucket["pass"] / total, 4) if total else 0.0
+        )
+        bucket["waiver_rate"] = (
+            round(bucket["waived"] / total, 4) if total else 0.0
+        )
+    checks_total = sum(int(item["total"]) for item in check_stats.values())
+    waiver_count = sum(item["waivers"]["count"] for item in specs)
+    first_pass = sum(item["gate_first_pass"]["first_pass"] for item in specs)
+    gate_total = sum(item["gate_first_pass"]["total"] for item in specs)
+    reopened_specs = sum(1 for item in specs if item["reopened"])
+    completed_specs = sum(1 for item in specs if item["state"] == "MERGED")
+    escaped_defects = escaped_defect_count(root)
+    audit_errors = [
+        f"{item['spec']}: {error}"
+        for item in specs
+        for error in item["audit"]["errors"]
+    ]
+    quality = {
+        "waiver_rate": (
+            round(waiver_count / checks_total, 4)
+            if checks_total
+            else 0.0
+        ),
+        "escaped_defects": escaped_defects,
+        "escaped_defect_rate": (
+            round(escaped_defects / len(specs), 4) if specs else 0.0
+        ),
+        "reopened_specs": reopened_specs,
+        "reopen_rate": (
+            round(reopened_specs / completed_specs, 4)
+            if completed_specs
+            else 0.0
+        ),
+        "gate_first_pass_rate": (
+            round(first_pass / gate_total, 4) if gate_total else None
+        ),
+        "definitions": {
+            "waiver_rate": "waiver_created 事件数 / 已记录检查结果总数",
+            "escaped_defects": "BAR front matter 中 escaped=true 的缺陷数",
+            "escaped_defect_rate": "逃逸缺陷数 / 统计范围内 Spec 数",
+            "reopen_rate": "发生 rewind 的 Spec 数 / MERGED Spec 数",
+            "gate_first_pass_rate": "每个 Spec 每个 Gate 首次结果为 PASS 或 PASS_WITH_WAIVER 的比例",
+        },
+        "sources": {
+            "events": "events.jsonl gate_result / waiver_created / rewind",
+            "defects": "docs/knowledge/bar/BAR-*.md front matter",
+        },
+    }
     payload = {
         "ok": True,
         "kind": "metrics",
         "since": args.since,
         "specs": specs,
+        "check_stats": sorted(check_stats.values(), key=lambda item: item["id"]),
+        "quality": quality,
+        "audit": {
+            "valid": not audit_errors,
+            "errors": audit_errors,
+        },
         "aggregate": {
             "specs": len(specs),
             "median_lead_time_hours": (
@@ -4195,6 +5906,7 @@ def command_metrics(
                 item["human_interventions"] for item in specs
             ),
             "gate_failures": sum(item["gate_failures"] for item in specs),
+            "quality": quality,
         },
     }
     if args.json:
@@ -4262,20 +5974,43 @@ def command_check(
                 args.stage,
                 args.check_git,
             )
-            if errors:
-                record_check_failure(directory, resolved_stage, errors)
+            workflow = resolve_workflow(root, directory, state)
+            contexts = waiver_contexts(directory, resolved_stage)
+            checks = apply_check_waivers(
+                stage_check_results(resolved_stage, errors, workflow),
+                state,
+                spec_id,
+                contexts,
+            )
+            blocking, waived = partition_stage_errors(
+                errors,
+                resolved_stage,
+                state,
+                spec_id,
+                directory,
+            )
+            if blocking:
+                record_check_failure(directory, resolved_stage, blocking)
             results.append(
                 {
                     "spec": spec_id,
                     "stage": resolved_stage,
-                    "ok": not errors,
-                    "errors": errors,
+                    "ok": not blocking,
+                    "errors": blocking,
+                    "waived": waived,
+                    "checks": checks,
+                    "summary": {
+                        "pass": sum(item["result"] == "pass" for item in checks),
+                        "warn": sum(item["result"] == "warn" for item in checks),
+                        "block": sum(item["result"] == "block" for item in checks),
+                        "waived": sum(item["result"] == "waived" for item in checks),
+                    },
                 }
             )
             if not args.json:
-                if errors:
+                if blocking:
                     print(f"[sdd] {spec_id} check failed (stage={resolved_stage})")
-                    for error in errors:
+                    for error in blocking:
                         print(f"- {error}")
                 else:
                     print(f"[sdd] {spec_id} check passed (stage={resolved_stage})")
@@ -4299,27 +6034,132 @@ def command_check(
     errors, resolved_stage = run_checks(
         root, config, directory, state, args.stage, args.check_git
     )
-    if errors:
-        record_check_failure(directory, resolved_stage, errors)
+    workflow = resolve_workflow(root, directory, state)
+    spec_id = str(state.get("spec_id", directory.name))
+    contexts = waiver_contexts(directory, resolved_stage)
+    checks = apply_check_waivers(
+        stage_check_results(resolved_stage, errors, workflow),
+        state,
+        spec_id,
+        contexts,
+    )
+    blocking, waived = partition_stage_errors(
+        errors,
+        resolved_stage,
+        state,
+        spec_id,
+        directory,
+    )
+    if blocking:
+        record_check_failure(directory, resolved_stage, blocking)
     if args.json:
         print(
             json.dumps(
                 {
-                    "ok": not errors,
+                    "ok": not blocking,
                     "stage": resolved_stage,
-                    "errors": errors,
+                    "errors": blocking,
+                    "waived": waived,
+                    "checks": checks,
+                    "summary": {
+                        "pass": sum(item["result"] == "pass" for item in checks),
+                        "warn": sum(item["result"] == "warn" for item in checks),
+                        "block": sum(item["result"] == "block" for item in checks),
+                        "waived": sum(item["result"] == "waived" for item in checks),
+                    },
                 },
                 ensure_ascii=False,
                 indent=2,
             )
         )
-    elif errors:
+    elif blocking:
         print(f"[sdd] check failed (stage={resolved_stage})")
-        for error in errors:
+        for error in blocking:
             print(f"- {error}")
     else:
         print(f"[sdd] check passed (stage={resolved_stage})")
-    return 1 if errors else 0
+    return 1 if blocking else 0
+
+
+def command_waive(
+    args: argparse.Namespace, root: Path, config: dict[str, Any]
+) -> int:
+    if not getattr(args, "human", False):
+        raise SddError("Gate 豁免是人工动作；必须显式传入 --human")
+    spec_id, directory, state = resolve_spec(root, config, args.spec)
+    check_id = str(args.check or "").strip()
+    definition = EXT_CHECK_REGISTRY.get(check_id)
+    if definition is None:
+        raise SddError(f"未知检查 ID：{check_id}")
+    if check_id in SECURITY_CHECK_IDS or not definition.get("waivable"):
+        reason = "安全红线" if check_id in SECURITY_CHECK_IDS else "该检查不可豁免"
+        append_audit_event(
+            directory,
+            {
+                "event": "waiver_rejected",
+                "check_id": check_id,
+                "reason": reason,
+                "requested_scope": args.scope,
+                **history_meta(),
+            },
+        )
+        raise SddError(f"{check_id} 属于{reason}，拒绝创建豁免")
+    expires = parse_timestamp(args.expires_at)
+    if expires is None:
+        raise SddError("--expires-at 需要 ISO 日期或日期时间，例如 2026-12-31")
+    approver = resolve_approver(root, args.approver)
+    if config.get("require_approver") and approver == "unknown":
+        raise SddError("require_approver=true；请用 --approver 提供审批人")
+    waivers = state.setdefault("waivers", [])
+    if not isinstance(waivers, list):
+        raise SddError("state.json.waivers 不是数组；请修复状态文件")
+    next_number = max(
+        (
+            int(str(item.get("id", "")).lstrip("W-") or 0)
+            for item in waivers
+            if isinstance(item, dict)
+        ),
+        default=0,
+    ) + 1
+    record = {
+        "id": f"W-{next_number:03d}",
+        "check_id": check_id,
+        "spec": spec_id,
+        "scope": str(args.scope or "spec").strip(),
+        "reason": str(args.reason or "").strip(),
+        "approver": approver,
+        "created_at": now(),
+        "expires_at": str(args.expires_at),
+        "evidence": str(args.evidence or "").strip(),
+    }
+    for field in WAIVER_REQUIRED_FIELDS:
+        if not str(record.get(field) or "").strip():
+            raise SddError(f"豁免字段 {field} 不能为空")
+    waivers.append(record)
+    append_audit_event(
+        directory,
+        {
+            "event": "waiver_created",
+            "waiver": record,
+            "role": "approver",
+            **history_meta(),
+        },
+    )
+    save_state(directory, state)
+    payload = {
+        "ok": True,
+        "kind": "waiver",
+        "spec": spec_id,
+        "waiver": record,
+    }
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        print(
+            f"[sdd] {spec_id} waiver {record['id']} created for "
+            f"{check_id} until {record['expires_at']}"
+        )
+    return 0
 
 
 def command_index(
@@ -4362,12 +6202,22 @@ def command_approve(
     g1_rows = run_gate_checks("G1", ctx)
     g0_errors = gate_rows_errors(g0_rows)
     g1_errors = gate_rows_errors(g1_rows)
+    spec_text = read_text(directory / "spec.md")
+    errors = list(g0_errors) + list(g1_errors)
+    errors.extend(
+        check_prd_index(
+            root,
+            config,
+            state,
+            spec_text,
+            require_feat=True,
+        )
+    )
     try:
         g1_mode = gate_mode(config, "G1", state, False, workflow)
     except SddError:
         g1_mode = "manual"
-    if g0_errors or g1_errors:
-        errors = g0_errors + g1_errors
+    if errors:
         for error in errors:
             eprint(f"- {error}")
         record_check_failure(directory, "spec", errors, gate="G0/G1")
@@ -4380,7 +6230,14 @@ def command_approve(
         "SPEC_READY",
         "manual",
         evidence,
-        g0_rows,
+        [
+            (
+                f"{row['id']} {row['name']}",
+                "PASS" if row["result"] == "pass" else "FAILED",
+                str(row["detail"]),
+            )
+            for row in g0_rows
+        ],
         g0_errors,
         approver,
     )
@@ -4393,7 +6250,14 @@ def command_approve(
         "SPEC_READY",
         g1_mode,
         "spec check passed" if not g1_errors else "spec check failed",
-        g1_rows,
+        [
+            (
+                f"{row['id']} {row['name']}",
+                "PASS" if row["result"] == "pass" else "FAILED",
+                str(row["detail"]),
+            )
+            for row in g1_rows
+        ],
         g1_errors,
         approver if g1_mode == "manual" else None,
     )
@@ -4489,8 +6353,12 @@ def append_to_section(
             text += "\n"
         return text + "\n" + content.strip() + "\n"
     before = lines[:start]
+    section = list(lines[start:end])
+    while section and not section[-1].strip():
+        section.pop()
     after = lines[end:]
-    return "\n".join(before + [""] + content.strip().splitlines() + [""] + after) + "\n"
+    merged = before + section + [""] + content.strip().splitlines() + [""] + after
+    return "\n".join(merged).rstrip() + "\n"
 
 
 def append_verification_evidence(
@@ -4568,23 +6436,15 @@ def command_complete(
         )
         tasks = parse_tasks(updated)
         save_state(directory, state)
-        if (
-            tasks
-            and all(task["done"] for task in tasks)
-            and gate_requires_human(config, "G4", state, workflow)
-            and not args.human
-        ):
-            print(
-                f"[sdd] {spec_id} task {args.task} completed; "
-                f"G4 awaits human approval"
-            )
-            print(
-                f"[sdd] next: python -m sdd complete --spec {spec_id} "
-                '--human --evidence "代码评审通过"'
-            )
-            return 0
         if tasks and all(task["done"] for task in tasks):
-            mode = gate_mode(config, "G4", state, args.human, workflow)
+            human_required = gate_requires_human(
+                config, "G4", state, workflow
+            )
+            mode = (
+                "manual"
+                if human_required and not args.human
+                else gate_mode(config, "G4", state, args.human, workflow)
+            )
             verification_text = read_text(directory / "verification.md")
             missing_evidence = [
                 task["id"] for task in tasks if task["id"] not in verification_text
@@ -4594,11 +6454,22 @@ def command_complete(
                 errors.append(
                     "以下 Task 没有验证证据：" + ", ".join(missing_evidence)
                 )
+            errors.extend(
+                check_review_evidence(directory, state, workflow)
+            )
             errors.extend(task_table_error(tasks, check_spec(
                 read_text(directory / "spec.md"), spec_id
             )[1], config))
-            if errors:
-                record_check_failure(directory, "tasks", errors, gate="G4")
+            contexts = waiver_contexts(directory, "tasks")
+            blocking, waived = partition_waived_errors(
+                errors,
+                "G4",
+                state,
+                spec_id,
+                contexts,
+            )
+            if blocking:
+                record_check_failure(directory, "tasks", blocking, gate="G4")
                 record_gate(
                     root,
                     config,
@@ -4608,14 +6479,24 @@ def command_complete(
                     "VERIFYING",
                     mode,
                     evidence,
-                    [("Task 完成与证据", "FAILED", "见问题清单")],
+                    [],
                     errors,
                     approver,
                 )
-                for error in errors:
+                for error in blocking:
                     eprint(f"- {error}")
                 save_state(directory, state)
                 raise SddError("Gate 4 校验失败")
+            if human_required and not args.human:
+                print(
+                    f"[sdd] {spec_id} task {args.task} completed; "
+                    f"G4 awaits human approval"
+                )
+                print(
+                    f"[sdd] next: python -m sdd complete --spec {spec_id} "
+                    '--human --evidence "代码评审通过"'
+                )
+                return 0
             if mode == "manual" and approver:
                 record_gate_approval(
                     root, directory, state, "G4", approver, evidence
@@ -4629,11 +6510,8 @@ def command_complete(
                 "VERIFYING",
                 mode,
                 "all tasks completed",
-                [
-                    ("Task 全部完成", "PASS", f"{len(tasks)} 个 Task 状态均为 Done"),
-                    ("Task 验证证据", "PASS", "verification.md 已记录每个 Task"),
-                    ("Task 测试映射", "PASS", "每个 Task 有测试类/方法和命令"),
-                ],
+                [],
+                errors,
                 approver=approver if mode == "manual" else None,
             )
             transition(
@@ -4656,17 +6534,19 @@ def command_complete(
             "DRAFT 状态需要人类运行 `python -m sdd approve --human --evidence ...`"
         )
     if current == "SPEC_READY":
-        spec_text = read_text(directory / "spec.md")
-        _, spec_acs = check_spec(spec_text, spec_id)
-        errors = check_design(
-            read_text(directory / "design.md"),
-            spec_acs,
-            workflow,
+        errors, _ = run_checks(root, config, directory, state, "design")
+        contexts = waiver_contexts(directory, "design")
+        blocking, waived = partition_waived_errors(
+            errors,
+            "G2",
+            state,
+            spec_id,
+            contexts,
         )
-        if errors:
-            for error in errors:
+        if blocking:
+            for error in blocking:
                 eprint(f"- {error}")
-            record_check_failure(directory, "design", errors, gate="G2")
+            record_check_failure(directory, "design", blocking, gate="G2")
             record_gate(
                 root,
                 config,
@@ -4698,6 +6578,7 @@ def command_complete(
                 ("AC 设计覆盖", "PASS", "全部 AC 在 design.md 中有落点"),
                 ("方案与回滚", "PASS", "方案、风险、回滚章节已填写"),
             ],
+            errors,
             approver=approver if mode == "manual" else None,
         )
         transition(
@@ -4711,12 +6592,19 @@ def command_complete(
             artifacts=gate_artifact_entries(root, directory, "G2"),
         )
     elif current == "DESIGN_READY":
-        _, spec_acs = check_spec(read_text(directory / "spec.md"), spec_id)
-        errors = check_tasks(read_text(directory / "tasks.md"), spec_acs, config)
-        if errors:
-            for error in errors:
+        errors, _ = run_checks(root, config, directory, state, "tasks")
+        contexts = waiver_contexts(directory, "tasks")
+        blocking, waived = partition_waived_errors(
+            errors,
+            "G3",
+            state,
+            spec_id,
+            contexts,
+        )
+        if blocking:
+            for error in blocking:
                 eprint(f"- {error}")
-            record_check_failure(directory, "tasks", errors, gate="G3")
+            record_check_failure(directory, "tasks", blocking, gate="G3")
             record_gate(
                 root,
                 config,
@@ -4762,12 +6650,19 @@ def command_complete(
             artifacts=gate_artifact_entries(root, directory, "G3"),
         )
     elif current == "TASKS_READY":
-        _, spec_acs = check_spec(read_text(directory / "spec.md"), spec_id)
-        errors = check_tasks(read_text(directory / "tasks.md"), spec_acs, config)
-        if errors:
-            for error in errors:
+        errors, _ = run_checks(root, config, directory, state, "tasks")
+        contexts = waiver_contexts(directory, "tasks")
+        blocking, waived = partition_waived_errors(
+            errors,
+            "G3",
+            state,
+            spec_id,
+            contexts,
+        )
+        if blocking:
+            for error in blocking:
                 eprint(f"- {error}")
-            record_check_failure(directory, "tasks", errors, gate="G3")
+            record_check_failure(directory, "tasks", blocking, gate="G3")
             raise SddError("tasks 校验失败")
         transition(
             state,
@@ -4785,13 +6680,19 @@ def command_complete(
         missing_evidence = [
             task["id"] for task in tasks if task["id"] not in verification_text
         ]
-        _, spec_acs = check_spec(read_text(directory / "spec.md"), spec_id)
-        errors = task_table_error(tasks, spec_acs, config)
-        errors.extend(task_test_name_errors(root, config, tasks))
+        errors, _ = run_checks(root, config, directory, state, "tasks")
         if missing_evidence:
             errors.append("以下 Task 没有验证证据：" + ", ".join(missing_evidence))
-        if errors:
-            record_check_failure(directory, "tasks", errors, gate="G4")
+        contexts = waiver_contexts(directory, "tasks")
+        blocking, waived = partition_waived_errors(
+            errors,
+            "G4",
+            state,
+            spec_id,
+            contexts,
+        )
+        if blocking:
+            record_check_failure(directory, "tasks", blocking, gate="G4")
             record_gate(
                 root,
                 config,
@@ -4801,11 +6702,11 @@ def command_complete(
                 "VERIFYING",
                 mode,
                 evidence,
-                [("Task 完成与证据", "FAILED", "见问题清单")],
+                [],
                 errors,
                 approver,
             )
-            for error in errors:
+            for error in blocking:
                 eprint(f"- {error}")
             raise SddError("Gate 4 校验失败")
         if mode == "manual" and approver:
@@ -4819,11 +6720,8 @@ def command_complete(
             "VERIFYING",
             mode,
             evidence,
-            [
-                ("Task 全部完成", "PASS", f"{len(tasks)} 个 Task 状态均为 Done"),
-                ("Task 验证证据", "PASS", "verification.md 已记录每个 Task"),
-                ("Task 测试映射", "PASS", "每个 Task 有测试类/方法和命令"),
-            ],
+            [],
+            errors,
             approver=approver if mode == "manual" else None,
         )
         transition(
@@ -4837,22 +6735,22 @@ def command_complete(
             artifacts=gate_artifact_entries(root, directory, "G4"),
         )
     elif current == "VERIFYING":
-        _, spec_acs = check_spec(read_text(directory / "spec.md"), spec_id)
-        errors = check_verification(
-            read_text(directory / "verification.md"),
-            spec_acs,
-            workflow,
-            state,
-            config,
-        )
-        errors.extend(check_test_coverage(root, config, spec_acs))
+        errors, _ = run_checks(root, config, directory, state, "verify")
         errors.extend(
             check_gates(root, config, directory, "VERIFYING")
         )
-        if errors:
-            for error in errors:
+        contexts = waiver_contexts(directory, "verify")
+        blocking, waived = partition_waived_errors(
+            errors,
+            "G5",
+            state,
+            spec_id,
+            contexts,
+        )
+        if blocking:
+            for error in blocking:
                 eprint(f"- {error}")
-            record_check_failure(directory, "verify", errors, gate="G5")
+            record_check_failure(directory, "verify", blocking, gate="G5")
             record_gate(
                 root,
                 config,
@@ -4862,7 +6760,7 @@ def command_complete(
                 "PR_READY",
                 "auto",
                 evidence,
-                [("规格验证", "FAILED", "见问题清单")],
+                [],
                 errors,
                 approver,
             )
@@ -4879,12 +6777,8 @@ def command_complete(
             "PR_READY",
             mode,
             evidence,
-            [
-                ("全部 AC 有测试关联", "PASS", "test_globs 命中全部 AC"),
-                ("验证命令与结果", "PASS", "verification.md 已填写"),
-                ("Gate 5 结论", "PASS", "verification.md 明确 PASS"),
-                ("G0–G4 报告", "PASS", "Gate 报告齐备且为 PASS"),
-            ],
+            [],
+            errors,
             approver=approver if mode == "manual" else None,
         )
         write_report(root, directory, state)
@@ -4926,31 +6820,106 @@ def command_verify(
         print("[sdd] config.json 没有 test_commands；请手动跑测试并把结果写进 verification.md")
         return 0
 
+    timeout = args.timeout
+    if timeout is None:
+        timeout = int(config.get("verify_timeout_seconds", 1800) or 1800)
+    run_id = datetime.now().strftime("%Y%m%dT%H%M%S%f") + f"-{os.getpid()}"
+    tasks_text = read_text(directory / "tasks.md")
+    active_task = next(
+        (
+            task["id"]
+            for task in parse_tasks(tasks_text)
+            if "in progress" in str(task.get("status", "")).lower()
+        ),
+        None,
+    )
+    artifact_hashes = {
+        path.relative_to(root).as_posix(): sha256_file(path)
+        for path in (
+            directory / "spec.md",
+            directory / "design.md",
+            directory / "tasks.md",
+            directory / "verification.md",
+        )
+        if path.is_file()
+    }
     failed = False
     for command in commands:
         print(f"[sdd] run: {command}")
-        result = subprocess.run(
-            command,
-            cwd=root,
-            shell=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            capture_output=True,
-        )
-        output = (result.stdout or "") + (result.stderr or "")
+        started_at = datetime.now().astimezone().isoformat(timespec="seconds")
+        started_clock = time.monotonic()
+        timed_out = False
+        try:
+            result = subprocess.run(
+                command,
+                cwd=root,
+                shell=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                capture_output=True,
+                timeout=timeout,
+            )
+            exit_code: Optional[int] = result.returncode
+            output = (result.stdout or "") + (result.stderr or "")
+        except subprocess.TimeoutExpired as exc:
+            timed_out = True
+            exit_code = None
+            stdout = exc.stdout or ""
+            stderr = exc.stderr or ""
+            if isinstance(stdout, bytes):
+                stdout = stdout.decode("utf-8", errors="replace")
+            if isinstance(stderr, bytes):
+                stderr = stderr.decode("utf-8", errors="replace")
+            output = (
+                f"{stdout}{stderr}\n[sdd] command timed out after {timeout}s"
+            )
+        duration_ms = int((time.monotonic() - started_clock) * 1000)
+        finished_at = datetime.now().astimezone().isoformat(timespec="seconds")
         output = output.strip()
         if len(output) > 20000:
             output = output[:20000] + "\n... (truncated)"
+        output_sha256 = hashlib.sha256(output.encode("utf-8")).hexdigest()
+        if len(output) > 4000:
+            excerpt = (
+                output[:1500]
+                + "\n... (truncated) ...\n"
+                + output[-2500:]
+            )
+        else:
+            excerpt = output
+        record = {
+            "schema": EVIDENCE_SCHEMA,
+            "run_id": run_id,
+            "spec": spec_id,
+            "task": active_task,
+            "command": command,
+            "cwd": root.as_posix(),
+            "started_at": started_at,
+            "finished_at": finished_at,
+            "exit_code": exit_code,
+            "timed_out": timed_out,
+            "duration_ms": duration_ms,
+            "output_sha256": output_sha256,
+            "output_excerpt": excerpt,
+            "artifact_hashes": artifact_hashes,
+        }
+        path = evidence_path(directory)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8", newline="\n") as handle:
+            handle.write(
+                json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n"
+            )
         head = git_head_sha(root) or "unknown"
         plan_hash = task_plan_hash(read_text(directory / "tasks.md"))
         body = (
             f"- Command: `{command}`\n"
             f"- CWD: `{root}`\n"
-            f"- Exit: `{result.returncode}`\n\n"
+            f"- Exit: `{exit_code}`\n\n"
             f"- Head: `{head[:12]}`\n"
             f"- Plan-Hash: `sha256:{plan_hash}`\n"
             f"- At: `{now()}`\n\n"
+            f"- Timed out: `{str(timed_out).lower()}`\n\n"
             "```text\n"
             f"{output}\n"
             "```"
@@ -4961,13 +6930,13 @@ def command_verify(
             body,
             section=("命令", "Commands"),
         )
-        if result.returncode != 0:
+        if exit_code != 0:
             failed = True
-            eprint(f"[sdd] command failed ({result.returncode}): {command}")
+            eprint(f"[sdd] command failed ({exit_code}): {command}")
             record_check_failure(
                 directory,
                 "verify",
-                [f"测试命令失败（exit {result.returncode}）：{command}"],
+                [f"测试命令失败（exit {exit_code}）：{command}"],
                 gate="G5",
             )
     print(f"[sdd] {spec_id} verify {'failed' if failed else 'passed'}")
@@ -5715,6 +7684,40 @@ def command_hook(
     raise SddError(f"未知 hook：{args.hook_name}")
 
 
+def command_workflow_validate(
+    args: argparse.Namespace, root: Path, config: dict[str, Any]
+) -> int:
+    raw = Path(args.file)
+    path = raw if raw.is_absolute() else root / raw
+    if not path.is_file():
+        raise SddError(f"找不到工作流文件：{path}")
+    relative = path.relative_to(root).as_posix()
+    preset = load_json(path)
+    errors = validate_workflow_preset(preset, relative)
+    if preset.get("name") and path.stem != preset.get("name"):
+        errors.append(f"{relative}.name 必须与文件名一致")
+    payload = {
+        "ok": not errors,
+        "kind": "workflow_validate",
+        "file": relative,
+        "name": preset.get("name"),
+        "schema": preset.get("schema"),
+        "version": preset.get("version"),
+        "errors": errors,
+    }
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    elif errors:
+        for error in errors:
+            eprint(f"- {error}")
+    else:
+        print(
+            f"[sdd] workflow {payload['name']}@{payload['version']} "
+            f"(schema {payload['schema']}) is valid"
+        )
+    return 0 if not errors else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="sdd",
@@ -5827,6 +7830,18 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--human", action="store_true")
     p.set_defaults(func=command_approve)
 
+    p = sub.add_parser("waive", help="human-only Gate check waiver")
+    add_spec_option(p)
+    p.add_argument("--check", required=True, help="check id, e.g. G5-09")
+    p.add_argument("--scope", required=True, help="e.g. verification or task:T-001")
+    p.add_argument("--reason", required=True)
+    p.add_argument("--expires-at", required=True)
+    p.add_argument("--evidence", required=True)
+    p.add_argument("--approver", help="approver identity, default: git config user")
+    p.add_argument("--human", action="store_true")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=command_waive)
+
     p = sub.add_parser("complete", help="complete current stage or task")
     add_spec_option(p)
     p.add_argument("--task", help="mark T-xxx done")
@@ -5844,6 +7859,12 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("verify", help="run configured test commands and record evidence")
     add_spec_option(p)
     p.add_argument("--command", action="append", help="override test_commands; repeatable")
+    p.add_argument(
+        "--timeout",
+        type=int,
+        default=None,
+        help="per-command timeout in seconds; defaults to verify_timeout_seconds or 1800",
+    )
     p.set_defaults(func=command_verify)
 
     p = sub.add_parser("report", help="write PR_BODY.md")
@@ -5893,6 +7914,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("hook_name", choices=["pre-commit", "commit-msg"])
     p.add_argument("--message-file", default=None)
     p.set_defaults(func=command_hook)
+
+    p = sub.add_parser("workflow", help="validate declarative workflow profiles")
+    workflow_sub = p.add_subparsers(dest="workflow_command", required=True)
+    w = workflow_sub.add_parser("validate", help="validate a profile file")
+    w.add_argument("--file", required=True)
+    w.add_argument("--json", action="store_true")
+    w.set_defaults(func=command_workflow_validate)
     return parser
 
 

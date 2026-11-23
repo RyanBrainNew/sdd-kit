@@ -1,0 +1,101 @@
+[
+  {
+    "id": "REVIEW-001",
+    "location": "sdd/scripts/sdd.py:519, sdd/scripts/sdd.py:2641, sdd/workflows/l2-refactor.json",
+    "evidence": "schema 2 Profile 显式设置 gate_checks.G4=[] 时，旧校验器可通过；运行时 selected_checks 把空数组当作零检查，G4 结构化结果缺失。",
+    "impact": "G4-03、G4-05 等安全必需检查可能不在 Gate 结果中，造成检查追溯断链。",
+    "recommendation": "校验器拒绝空检查集；运行时对空或全未知检查集回退完整 Gate；补充 Profile 回归测试。",
+    "authority": "独立审查代理 /root/review_t010",
+    "severity": "high",
+    "verification": "verified",
+    "blocking": true
+  },
+  {
+    "id": "REVIEW-002",
+    "location": "sdd/scripts/sdd.py:2704, sdd/scripts/sdd_ext.py:475, sdd/scripts/sdd_ext.py:486",
+    "evidence": "tasks.md 引用不存在的测试时，test_reference_errors 产生 G4-03；旧阶段结果只输出 G3 检查，导致 G4-03 不进入结构化 checks。",
+    "impact": "检查级追溯断链，Gate 报告无法直接定位测试定位失败。",
+    "recommendation": "阶段结果归集显式错误所属 Gate；增加 G4-03 回归断言，禁止落入未分类桶。",
+    "authority": "独立审查代理 /root/review_t010",
+    "severity": "high",
+    "verification": "verified",
+    "blocking": true
+  },
+  {
+    "id": "REVIEW-003",
+    "location": "sdd/scripts/sdd.py:420, sdd/scripts/sdd.py:958",
+    "evidence": "状态迁移、检查失败和豁免路径都会落盘 state.json 或 events.jsonl；本次复核确认 check 失败只追加审计事件，不写 state.json，G4-05 使用 artifact_hashes 判断产物。",
+    "impact": "频繁状态写入会增加 state.json 变更噪声，但不改变产物哈希的判定对象；属于可接受的审计设计取舍。",
+    "recommendation": "保留当前实现；若后续审计量增大，再将事件写入与状态写入拆成独立事务。",
+    "authority": "独立审查代理 /root/review_t010",
+    "severity": "medium",
+    "verification": "closed",
+    "blocking": false
+  },
+  {
+    "id": "REVIEW-004",
+    "location": "sdd/scripts/sdd.py:2031",
+    "evidence": "旧 waiver_applies 把 scope=spec 当作整个 Spec 的通配范围，G5-09 豁免可覆盖 verification 和 ci。",
+    "impact": "人工豁免范围意外扩大，削弱 G5 证据约束。",
+    "recommendation": "scope 只匹配 *、Spec ID 或精确上下文；补充 scope=spec 不覆盖 verification 的回归测试。",
+    "authority": "独立审查代理 /root/review_t010",
+    "severity": "medium",
+    "verification": "verified",
+    "blocking": false
+  },
+  {
+    "id": "REVIEW-005",
+    "location": "sdd/scripts/sdd.py:5022",
+    "evidence": "command_complete 多个分支直接调用 check_spec 并忽略错误集，与 run_checks 的孤儿 AC 校验不一致。",
+    "impact": "check 可能阻断而 complete 放行，形成双校验入口漂移。",
+    "recommendation": "complete 复用 run_checks；advisory 错误只进报告，blocking 才阻断。",
+    "authority": "独立审查代理 /root/review_t010",
+    "severity": "medium",
+    "verification": "verified",
+    "blocking": false
+  },
+  {
+    "id": "REVIEW-006",
+    "location": "docs/STANDARD-CONFORMANCE.md:106",
+    "evidence": "事件链只允许 legacy 事件位于哈希链开始之前；旧文件中段出现无哈希事件会判 invalid。",
+    "impact": "读者可能误以为任意旧事件都可被忽略，导致审计误判。",
+    "recommendation": "在标准符合性文档中明确中段 legacy 事件会使整链 invalid。",
+    "authority": "独立审查代理 /root/review_t010",
+    "severity": "medium",
+    "verification": "verified",
+    "blocking": false
+  },
+  {
+    "id": "REVIEW-007",
+    "location": "sdd/scripts/sdd.py:4124",
+    "evidence": "inbox 对每个 Spec 同步运行完整 run_checks，Spec 数量大时会变慢。",
+    "impact": "只影响人类查看 inbox 的响应时间，不影响 Gate 正确性。",
+    "recommendation": "后续按需引入缓存或惰性检查；本版本记录为性能优化项。",
+    "authority": "独立审查代理 /root/review_t010",
+    "severity": "low",
+    "verification": "closed",
+    "blocking": false
+  },
+  {
+    "id": "REVIEW-008",
+    "location": "sdd/scripts/sdd.py:2154",
+    "evidence": "partition_stage_errors 先取 gates[0] 再扫描所有 Gate，依赖 -99 哨兵，可读性较差。",
+    "impact": "维护成本上升，但不产生错误行为。",
+    "recommendation": "后续直接使用 CHECK_REGISTRY 的 gate 字段归属；本版本记录为可读性优化项。",
+    "authority": "独立审查代理 /root/review_t010",
+    "severity": "low",
+    "verification": "closed",
+    "blocking": false
+  },
+  {
+    "id": "REVIEW-009",
+    "location": "docs/STANDARD-CONFORMANCE.md:82",
+    "evidence": "SPEC-DEVTOOLS-002 的 workflow.json 是 l2-standard@1 schema 1 快照，而 l2-refactor 是 schema 2 示例。",
+    "impact": "读者可能误以为所有内置 Profile 都已升级到 v2。",
+    "recommendation": "在标准符合性文档证据索引中说明快照兼容与 schema 2 示例的区别。",
+    "authority": "独立审查代理 /root/review_t010",
+    "severity": "low",
+    "verification": "verified",
+    "blocking": false
+  }
+]
