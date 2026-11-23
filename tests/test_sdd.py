@@ -1975,6 +1975,387 @@ class ContextBundleTests(SddFlowBase):
         self.assertEqual(bundle["fix_patterns"], [])
 
 
+def valid_v2_profile(name="l2-refactor"):
+    return {
+        "schema": 2,
+        "name": name,
+        "version": 1,
+        "description": "行为保持型改造流程",
+        "stages": list(engine.STAGE_ORDER),
+        "artifacts": {
+            "DRAFT": "spec.md",
+            "SPEC_READY": "design.md",
+            "DESIGN_READY": "tasks.md",
+            "TASKS_READY": "tasks.md",
+            "IMPLEMENTING": "tasks.md",
+            "VERIFYING": "verification.md",
+            "PR_READY": "PR_BODY.md",
+        },
+        "gates": {
+            "G0": "human",
+            "G1": "auto",
+            "G2": "auto",
+            "G3": "auto",
+            "G4": "auto",
+            "G5": "auto",
+        },
+        "required_gates": {
+            stage: engine.required_gates(stage) for stage in engine.STAGE_ORDER
+        },
+        "gate_checks": {
+            "G0": ["G0-01", "G0-02", "G0-03", "G0-04", "G0-05", "G0-06"],
+            "G1": ["G1-01", "G1-02", "G1-03", "G1-04"],
+        },
+        "human_checkpoints": [
+            {"type": "approve_spec"},
+            {"type": "confirm_delivery"},
+        ],
+        "design_mode": "full",
+        "review_required": False,
+        "risk_stop": ["data-loss"],
+        "context_rules": {
+            "include": ["docs/knowledge/**"],
+            "exclude": ["docs/prd.md"],
+        },
+        "allow_rewind_to": [
+            "DRAFT",
+            "SPEC_READY",
+            "DESIGN_READY",
+            "TASKS_READY",
+            "IMPLEMENTING",
+            "VERIFYING",
+        ],
+    }
+
+
+class WorkflowProfileTests(SddFlowBase):
+    def test_valid_v2_profile(self):
+        # [AC-001-1]
+        preset = valid_v2_profile()
+        self.assertEqual(
+            engine.validate_workflow_preset(preset, "l2-refactor.json"), []
+        )
+        digest = engine.workflow_digest(preset)
+        self.assertRegex(digest, r"^[0-9a-f]{64}$")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            shutil.copytree(KIT_ROOT / "sdd", root / "sdd")
+            path = root / "sdd" / "workflows" / "l2-refactor.json"
+            path.write_text(
+                json.dumps(preset, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            loaded = engine.load_workflow_preset(root, "l2-refactor")
+            self.assertEqual(loaded["schema"], 2)
+            self.assertEqual(
+                engine.workflow_digest(loaded), engine.workflow_digest(preset)
+            )
+
+    def test_unknown_fields_report_paths(self):
+        # [AC-001-2]
+        preset = valid_v2_profile()
+        preset["unexpected"] = True
+        preset["context_rules"]["bogus"] = []
+        errors = engine.validate_workflow_preset(preset, "profile.json")
+        rendered = "\n".join(errors)
+        self.assertIn("$.unexpected", rendered)
+        self.assertIn("context_rules.bogus", rendered)
+
+    def test_schema1_snapshot_unchanged(self):
+        # [AC-001-3]
+        self.assertEqual(engine.WORKFLOW_SCHEMA, 1)
+        for name in ("l2-standard", "l2-hotfix", "l2-strict"):
+            preset = json.loads(
+                (KIT_ROOT / "sdd" / "workflows" / f"{name}.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(
+                engine.validate_workflow_preset(preset, f"{name}.json"), []
+            )
+        standard = json.loads(
+            (KIT_ROOT / "sdd" / "workflows" / "l2-standard.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(
+            engine.workflow_digest(standard),
+            "ae89c532988018c3f6d3c222c4a66da2a44981f33c8401d62a632bef66a8e910",
+        )
+        standard["legacy_extension"] = True
+        self.assertEqual(
+            engine.validate_workflow_preset(standard, "l2-standard.json"), []
+        )
+
+    def test_l2_refactor_flow(self):
+        # [AC-005-1]
+        self.new_spec(workflow="l2-refactor")
+        state = self.state()
+        self.assertEqual(state["workflow"]["name"], "l2-refactor")
+        snapshot = json.loads(
+            (self.root / "docs/specs/SPEC-ORDER-001/workflow.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(snapshot["schema"], 2)
+        self.assertEqual(
+            state["workflow"]["digest"], engine.workflow_digest(snapshot)
+        )
+
+        self.approve_valid_spec()
+        self.complete_design()
+        self.complete_tasks()
+        self.run_sdd("complete", "--spec", SPEC_ID, "--evidence", "开始实现")
+        self.finish_implementation()
+        self.finish_verification()
+        self.assertEqual(self.state()["state"], "PR_READY")
+
+    def test_old_specs_stay_stable(self):
+        # [AC-005-2]
+        for spec in ("SPEC-DEVTOOLS-002", "SPEC-REQ-001"):
+            directory = KIT_ROOT / "docs" / "specs" / spec
+            state = json.loads(
+                (directory / "state.json").read_text(encoding="utf-8")
+            )
+            snapshot = json.loads(
+                (directory / "workflow.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                engine.validate_workflow_preset(snapshot, "workflow.json"), []
+            )
+            self.assertEqual(
+                state["workflow"]["digest"], engine.workflow_digest(snapshot)
+            )
+
+
+class WorkflowStageTests(SddFlowBase):
+    def write_profile(self, preset):
+        path = self.root / "sdd" / "workflows" / f"{preset['name']}.json"
+        path.write_text(
+            json.dumps(preset, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+    def skip_design_profile(self):
+        preset = valid_v2_profile("l2-skip-design")
+        preset["stages"] = [
+            stage for stage in engine.STAGE_ORDER if stage != "DESIGN_READY"
+        ]
+        preset["artifacts"].pop("DESIGN_READY")
+        preset["required_gates"] = {
+            stage: engine.required_gates(stage) for stage in preset["stages"]
+        }
+        preset["allow_rewind_to"] = [
+            stage
+            for stage in preset["stages"]
+            if stage in engine.REWIND_PLANS
+        ]
+        return preset
+
+    def test_skip_design_stage(self):
+        # [AC-002-1]
+        self.write_profile(self.skip_design_profile())
+        self.new_spec(workflow="l2-skip-design")
+        self.approve_valid_spec()
+        self.assertEqual(self.state()["state"], "SPEC_READY")
+
+        self.write("docs/specs/SPEC-ORDER-001/design.md", DESIGN_TEXT)
+        self.run_sdd("complete", "--spec", SPEC_ID, "--evidence", "design 完成")
+        self.assertEqual(self.state()["state"], "TASKS_READY")
+        states = [entry["state"] for entry in self.state()["history"]]
+        self.assertNotIn("DESIGN_READY", states)
+        self.assertEqual(self.next_action()["action"], "write_tasks")
+
+        self.write("docs/specs/SPEC-ORDER-001/tasks.md", TASKS_TEXT)
+        self.run_sdd("complete", "--spec", SPEC_ID, "--evidence", "tasks 完成")
+        self.assertEqual(self.state()["state"], "IMPLEMENTING")
+        self.assertTrue(
+            (self.root / "sdd/reports/SPEC-ORDER-001/gate3-report.md").is_file()
+        )
+
+    def test_gate_or_checkpoint_conflict_rejected(self):
+        # [AC-002-2]
+        dropped_gate = valid_v2_profile()
+        dropped_gate["required_gates"]["TASKS_READY"] = [
+            gate
+            for gate in dropped_gate["required_gates"]["TASKS_READY"]
+            if gate != "G2"
+        ]
+        rendered = "\n".join(
+            engine.validate_workflow_preset(dropped_gate, "profile.json")
+        )
+        self.assertIn("required_gates.TASKS_READY", rendered)
+
+        dropped_checkpoint = valid_v2_profile()
+        dropped_checkpoint["human_checkpoints"] = [{"type": "approve_spec"}]
+        rendered = "\n".join(
+            engine.validate_workflow_preset(dropped_checkpoint, "profile.json")
+        )
+        self.assertIn("confirm_delivery", rendered)
+
+        skipped_spec = valid_v2_profile()
+        skipped_spec["stages"] = [
+            stage for stage in engine.STAGE_ORDER if stage != "SPEC_READY"
+        ]
+        skipped_spec["artifacts"].pop("SPEC_READY")
+        skipped_spec["required_gates"] = {
+            stage: engine.required_gates(stage)
+            for stage in skipped_spec["stages"]
+        }
+        rendered = "\n".join(
+            engine.validate_workflow_preset(skipped_spec, "profile.json")
+        )
+        self.assertIn("approve_spec", rendered)
+        self.assertIn("SPEC_READY", rendered)
+
+    def test_invalid_stage_order_rejected(self):
+        # [AC-002-3]
+        duplicate = valid_v2_profile()
+        duplicate["stages"] = list(engine.STAGE_ORDER) + ["DESIGN_READY"]
+        rendered = "\n".join(
+            engine.validate_workflow_preset(duplicate, "profile.json")
+        )
+        self.assertIn("stages[8]", rendered)
+        self.assertIn("重复", rendered)
+
+        reversed_stages = valid_v2_profile()
+        reversed_stages["stages"] = [
+            "DRAFT",
+            "DESIGN_READY",
+            "SPEC_READY",
+            "TASKS_READY",
+            "IMPLEMENTING",
+            "VERIFYING",
+            "PR_READY",
+            "MERGED",
+        ]
+        rendered = "\n".join(
+            engine.validate_workflow_preset(reversed_stages, "profile.json")
+        )
+        self.assertIn("stages[2] 必须严格晚于 stages[1]", rendered)
+
+        missing_draft = valid_v2_profile()
+        missing_draft["stages"] = list(engine.STAGE_ORDER[1:])
+        rendered = "\n".join(
+            engine.validate_workflow_preset(missing_draft, "profile.json")
+        )
+        self.assertIn("stages[0] 必须是 DRAFT", rendered)
+
+        missing_merged = valid_v2_profile()
+        missing_merged["stages"] = list(engine.STAGE_ORDER[:-1])
+        rendered = "\n".join(
+            engine.validate_workflow_preset(missing_merged, "profile.json")
+        )
+        self.assertIn("stages[-1] 必须是 MERGED", rendered)
+
+
+class WorkflowRuntimeTests(SddFlowBase):
+    def write_profile(self, preset):
+        path = self.root / "sdd" / "workflows" / f"{preset['name']}.json"
+        path.write_text(
+            json.dumps(preset, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+    def test_gate_checks_filter_advisory(self):
+        # [AC-003-1]
+        self.new_spec()
+        self.write("docs/specs/SPEC-ORDER-001/spec.md", SPEC_TEXT)
+        config = engine.load_config(self.root)
+        directory = self.root / "docs/specs/SPEC-ORDER-001"
+        ctx = engine.gate_context(self.root, config, directory, self.state())
+
+        preset = valid_v2_profile()
+        preset["gate_checks"]["G0"] = [
+            "G0-01",
+            "G0-02",
+            "G0-03",
+            "G0-04",
+            "G0-05",
+            "G0-06",
+        ]
+        ids = [row["id"] for row in engine.run_gate_checks("G0", ctx, preset)]
+        self.assertIn("G0-01", ids)
+        self.assertNotIn("G0-07", ids)
+
+        default_ids = [
+            row["id"] for row in engine.run_gate_checks("G0", ctx)
+        ]
+        self.assertIn("G0-07", default_ids)
+
+        preset["gate_checks"]["G0"].remove("G0-02")
+        rendered = "\n".join(
+            engine.validate_workflow_preset(preset, "profile.json")
+        )
+        self.assertIn("缺少 required 检查", rendered)
+        self.assertIn("G0-02", rendered)
+
+    def test_extra_human_checkpoint(self):
+        # [AC-003-2]
+        preset = valid_v2_profile("l2-human-g3")
+        preset["gates"]["G3"] = "human"
+        preset["human_checkpoints"].append(
+            {"type": "complete_gate", "gate": "G3"}
+        )
+        self.write_profile(preset)
+        self.new_spec(workflow="l2-human-g3")
+        self.approve_valid_spec()
+        self.write("docs/specs/SPEC-ORDER-001/design.md", DESIGN_TEXT)
+        self.run_sdd("complete", "--spec", SPEC_ID, "--evidence", "design 完成")
+        self.assertEqual(self.state()["state"], "DESIGN_READY")
+        self.write("docs/specs/SPEC-ORDER-001/tasks.md", TASKS_TEXT)
+
+        result = self.run_sdd(
+            "complete", "--spec", SPEC_ID, "--evidence", "tasks 完成", expect=2
+        )
+        self.assertIn("G3 需要人工审批", result.stderr)
+        self.assertEqual(self.state()["state"], "DESIGN_READY")
+
+        workspace = Workspace(self.root, session_key="runtime-test")
+        payload = workspace.session(SPEC_ID)
+        checkpoint = payload["human_checkpoint"]
+        self.assertTrue(checkpoint["required"])
+        self.assertEqual(checkpoint["type"], "manual_gate")
+        self.assertEqual(checkpoint["gate"], "G3")
+
+    def test_risk_and_context_rules(self):
+        # [AC-003-3]
+        config = {"risk_stop": ["security"]}
+        preset = valid_v2_profile()
+        self.assertEqual(
+            engine.effective_risk_stop(config, preset),
+            ["data-loss", "security"],
+        )
+        risky = {"risk": "low", "risk_labels": ["data-loss"]}
+        preset["gates"]["G4"] = "auto_if_no_risk"
+        self.assertTrue(engine.gate_requires_human(config, "G4", risky, preset))
+        self.assertTrue(
+            engine.requires_independent_review(config, risky, preset)
+        )
+
+        self.write("docs/knowledge/index.md", "# 知识索引\n")
+        self.write("docs/knowledge/patterns/FP-001.md", "# FP-001\n")
+        self.write("docs/specs/SPEC-ORDER-001/design.md", DESIGN_TEXT)
+        directory = self.root / "docs/specs/SPEC-ORDER-001"
+        self.write("docs/prd.md", "# PRD\n")
+        bundle = engine.build_context_bundle(
+            self.root, directory, {}, None, preset
+        )
+        self.assertIn("docs/knowledge/index.md", bundle["allowed_paths"])
+        self.assertIn(
+            "docs/knowledge/patterns/FP-001.md", bundle["allowed_paths"]
+        )
+        self.assertNotIn("docs/prd.md", bundle["allowed_paths"])
+        self.assertIn("docs/prd.md", bundle["exclude"])
+
+        escaped = valid_v2_profile()
+        escaped["context_rules"]["include"] = ["../outside.md"]
+        rendered = "\n".join(
+            engine.validate_workflow_preset(escaped, "profile.json")
+        )
+        self.assertIn("不能包含 ..", rendered)
+
+
 class ArtifactHashTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

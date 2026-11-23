@@ -139,10 +139,18 @@ python -m sdd check --all --stage ci --check-git
 `--check-git` 只要求未合并 Spec 的最近提交带 `Spec-Id` trailer；已 `MERGED`
 的历史 Spec 以 `state.json` 审计记录为准，不受 20 个提交窗口限制。
 
-工作流预设只有 `l2-standard`、`l2-hotfix`、`l2-strict` 三个。Spec 创建时会把
-`sdd/workflows/<name>.json` 快照到 `docs/specs/<Spec>/workflow.json`；之后仓库
-预设升级不会改变旧 Spec。`l2-strict` 的 G0–G5 全部需要人工，且验证报告必须有
-独立审查；`l2-hotfix` 使用轻量设计并拒绝高风险。
+工作流预设包括 `l2-standard`、`l2-hotfix`、`l2-strict` 三个 schema 1 预设，
+以及 schema 2 的 `l2-refactor`。Spec 创建时会把 `sdd/workflows/<name>.json`
+快照到 `docs/specs/<Spec>/workflow.json`；之后仓库预设升级不会改变旧 Spec。
+`l2-strict` 的 G0–G5 全部需要人工，且验证报告必须有独立审查；`l2-hotfix`
+使用轻量设计并拒绝高风险；`l2-refactor` 裁剪 advisory 检查并纳入知识目录上下文。
+
+schema 2 profile 仍由 `sdd/scripts/sdd.py` 解释，只声明数据，不支持任意 DAG 或
+脚本。新增或修改后先校验：
+
+```powershell
+python -m sdd workflow validate --file sdd/workflows/l2-refactor.json
+```
 
 ## 6. MCP（可选）
 

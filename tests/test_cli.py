@@ -7,12 +7,18 @@ import unittest
 from pathlib import Path
 
 try:
-    from test_sdd import DESIGN_TEXT, SPEC_TEXT, TASKS_TEXT
+    from test_sdd import DESIGN_TEXT, SPEC_TEXT, TASKS_TEXT, valid_v2_profile
 except ImportError:  # pragma: no cover
     try:
-        from tests.test_sdd import DESIGN_TEXT, SPEC_TEXT, TASKS_TEXT
+        from tests.test_sdd import (
+            DESIGN_TEXT,
+            SPEC_TEXT,
+            TASKS_TEXT,
+            valid_v2_profile,
+        )
     except ImportError:
         SPEC_TEXT = DESIGN_TEXT = TASKS_TEXT = ""
+        valid_v2_profile = None
 
 
 KIT_ROOT = Path(__file__).resolve().parents[1]
@@ -306,6 +312,102 @@ class CliTest(unittest.TestCase):
             encoding="utf-8",
         )
         self.assertFalse(self.run_cli("verify-agent", expect=1)["ok"])
+
+
+class WorkflowCliTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name)
+        shutil.copytree(KIT_ROOT / "sdd", self.root / "sdd")
+        shutil.copyfile(KIT_ROOT / "AGENTS.md", self.root / "AGENTS.md")
+        (self.root / "docs").mkdir()
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def run_cli(self, *args, session="workflow-session", expect=0):
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "sdd",
+                "--root",
+                str(self.root),
+                "--session-key",
+                session,
+                *args,
+                "--json",
+            ],
+            cwd=KIT_ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        self.assertEqual(
+            result.returncode,
+            expect,
+            msg=f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}",
+        )
+        try:
+            return json.loads(result.stdout)
+        except json.JSONDecodeError:
+            return {"raw": result.stdout, "stderr": result.stderr}
+
+    def write_profile(self, preset, name=None):
+        name = name or preset["name"]
+        path = self.root / "sdd" / "workflows" / f"{name}.json"
+        path.write_text(
+            json.dumps(preset, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        return path
+
+    def test_workflow_validate_json(self):
+        # [AC-004-1]
+        path = self.write_profile(valid_v2_profile())
+        payload = self.run_cli(
+            "workflow", "validate", "--file", str(path)
+        )
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["name"], "l2-refactor")
+        self.assertEqual(payload["version"], 1)
+        self.assertRegex(payload["digest"], r"^[0-9a-f]{64}$")
+
+    def test_workflow_validate_errors(self):
+        # [AC-004-2]
+        missing = self.run_cli(
+            "workflow",
+            "validate",
+            "--file",
+            str(self.root / "sdd" / "workflows" / "missing.json"),
+            expect=1,
+        )
+        self.assertFalse(missing["ok"])
+        self.assertTrue(missing["errors"][0]["message"])
+
+        broken = self.root / "sdd" / "workflows" / "broken.json"
+        broken.write_text("{ not json", encoding="utf-8")
+        parsed = self.run_cli(
+            "workflow", "validate", "--file", str(broken), expect=1
+        )
+        self.assertFalse(parsed["ok"])
+        self.assertIn("JSON", parsed["errors"][0]["message"])
+
+        unknown = valid_v2_profile("l2-unknown")
+        unknown["unexpected"] = True
+        path = self.write_profile(unknown)
+        invalid = self.run_cli(
+            "workflow", "validate", "--file", str(path), expect=1
+        )
+        self.assertFalse(invalid["ok"])
+        self.assertTrue(
+            any(
+                error["path"] == "$.unexpected"
+                for error in invalid["errors"]
+            )
+        )
+        self.assertFalse((self.root / "docs" / "specs").exists())
 
 
 if __name__ == "__main__":

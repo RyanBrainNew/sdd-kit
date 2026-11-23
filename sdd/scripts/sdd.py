@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import fnmatch
 import glob
 import hashlib
 import json
@@ -23,7 +24,7 @@ from pathlib import Path
 from typing import Any, Iterable, Optional
 
 
-VERSION = "0.9.1"
+VERSION = "0.9.4"
 EVENT_SCHEMA = 2
 
 SPEC_SECTIONS = (
@@ -268,9 +269,51 @@ STAGE_ORDER = (
 )
 
 WORKFLOW_SCHEMA = 1
+WORKFLOW_SCHEMA_V2 = 2
+WORKFLOW_SCHEMAS = {WORKFLOW_SCHEMA, WORKFLOW_SCHEMA_V2}
 DEFAULT_WORKFLOW = "l2-standard"
 WORKFLOW_POLICIES = {"human", "auto", "auto_if_no_risk"}
 WORKFLOW_DESIGN_MODES = {"full", "lite"}
+WORKFLOW_V2_FIELDS = {
+    "schema",
+    "name",
+    "version",
+    "description",
+    "stages",
+    "artifacts",
+    "gates",
+    "required_gates",
+    "gate_checks",
+    "human_checkpoints",
+    "design_mode",
+    "review_required",
+    "risk_stop",
+    "context_rules",
+    "allow_rewind_to",
+    "risk_policy",
+}
+HUMAN_CHECKPOINT_TYPES = {"approve_spec", "confirm_delivery", "complete_gate"}
+HUMAN_CHECKPOINT_FIELDS = {"type", "gate"}
+CONTEXT_RULE_FIELDS = {"include", "exclude"}
+RISK_POLICY_FIELDS = {"max_risk", "deny_risk_stop"}
+CANONICAL_STAGE_ARTIFACTS = {
+    "DRAFT": "spec.md",
+    "SPEC_READY": "design.md",
+    "DESIGN_READY": "tasks.md",
+    "TASKS_READY": "tasks.md",
+    "IMPLEMENTING": "tasks.md",
+    "VERIFYING": "verification.md",
+    "PR_READY": "PR_BODY.md",
+}
+GATE_OWNER_STAGE = {
+    "G0": "SPEC_READY",
+    "G1": "SPEC_READY",
+    "G2": "DESIGN_READY",
+    "G3": "TASKS_READY",
+    "G4": "VERIFYING",
+    "G5": "PR_READY",
+}
+WORKFLOW_REQUIRED_STAGES = {"IMPLEMENTING", "VERIFYING"}
 RISK_RANK = {"low": 0, "medium": 1, "high": 2}
 LEGACY_STANDARD_GATES = {
     "G0": "human",
@@ -587,6 +630,22 @@ def workflow_defaults() -> dict[str, list[str]]:
 def validate_workflow_preset(
     preset: dict[str, Any], source: str
 ) -> list[str]:
+    if not isinstance(preset, dict):
+        return [f"{source} 必须是 JSON 对象"]
+    schema = preset.get("schema")
+    if schema == WORKFLOW_SCHEMA:
+        return validate_workflow_v1(preset, source)
+    if schema == WORKFLOW_SCHEMA_V2:
+        return validate_workflow_v2(preset, source)
+    return [
+        f"{source} 的 schema 必须是 "
+        + " 或 ".join(str(item) for item in sorted(WORKFLOW_SCHEMAS))
+    ]
+
+
+def validate_workflow_v1(
+    preset: dict[str, Any], source: str
+) -> list[str]:
     errors: list[str] = []
     if not isinstance(preset, dict):
         return [f"{source} 必须是 JSON 对象"]
@@ -664,6 +723,340 @@ def validate_workflow_preset(
         if not isinstance(risk_policy, dict):
             errors.append(f"{source} 的 risk_policy 必须是对象")
         else:
+            max_risk = risk_policy.get("max_risk")
+            if max_risk is not None and max_risk not in RISK_RANK:
+                errors.append(
+                    f"{source} 的 risk_policy.max_risk 必须是 low/medium/high"
+                )
+            if "deny_risk_stop" in risk_policy and not isinstance(
+                risk_policy["deny_risk_stop"], bool
+            ):
+                errors.append(
+                    f"{source} 的 risk_policy.deny_risk_stop 必须是布尔值"
+                )
+    return errors
+
+
+def validate_workflow_stages(
+    stages: Any, source: str
+) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(stages, list) or not stages:
+        return [f"{source} 的 stages 必须是非空数组"]
+    seen: dict[str, int] = {}
+    for index, stage in enumerate(stages):
+        path = f"stages[{index}]"
+        if not isinstance(stage, str):
+            errors.append(f"{source} 的 {path} 必须是字符串")
+            continue
+        if stage not in STAGE_ORDER:
+            errors.append(f"{source} 的 {path} 不是规范阶段：{stage}")
+            continue
+        if stage in seen:
+            errors.append(
+                f"{source} 的 {path} 重复出现：{stage}（已在 stages[{seen[stage]}]）"
+            )
+            continue
+        seen[stage] = index
+    if errors:
+        return errors
+    if stages[0] != "DRAFT":
+        errors.append(f"{source} 的 stages[0] 必须是 DRAFT")
+    if stages[-1] != "MERGED":
+        errors.append(f"{source} 的 stages[-1] 必须是 MERGED")
+    for index in range(1, len(stages)):
+        previous = STAGE_ORDER.index(stages[index - 1])
+        current = STAGE_ORDER.index(stages[index])
+        if current <= previous:
+            errors.append(
+                f"{source} 的 stages[{index}] 必须严格晚于 stages[{index - 1}]"
+            )
+    for stage in STAGE_ORDER:
+        if stage in seen:
+            continue
+        if stage in WORKFLOW_REQUIRED_STAGES:
+            errors.append(
+                f"{source} 的 stages 不能省略 {stage}；该阶段承载不可跳过的执行工作"
+            )
+    return errors
+
+
+def context_rule_pattern_errors(
+    source: str, path: str, value: Any
+) -> list[str]:
+    if not isinstance(value, str) or not value.strip():
+        return [f"{source} 的 {path} 必须是非空字符串"]
+    pattern = value.strip().replace("\\", "/")
+    errors: list[str] = []
+    if pattern.startswith("/") or re.match(r"^[A-Za-z]:", pattern):
+        errors.append(f"{source} 的 {path} 不能是绝对路径：{value}")
+    if ".." in pattern.split("/"):
+        errors.append(f"{source} 的 {path} 不能包含 ..：{value}")
+    if pattern == "docs/specs" or pattern.startswith("docs/specs/"):
+        errors.append(f"{source} 的 {path} 不能引用 docs/specs 目录：{value}")
+    if pattern == ".sdd" or pattern.startswith(".sdd/"):
+        errors.append(f"{source} 的 {path} 不能引用 .sdd 运行目录：{value}")
+    return errors
+
+
+def validate_workflow_v2(
+    preset: dict[str, Any], source: str
+) -> list[str]:
+    errors: list[str] = []
+    for key in sorted(set(preset) - WORKFLOW_V2_FIELDS):
+        errors.append(
+            f"{source} 的 $.{key} 不是 schema 2 支持的字段"
+        )
+    if preset.get("schema") != WORKFLOW_SCHEMA_V2:
+        errors.append(f"{source} 的 schema 必须是 {WORKFLOW_SCHEMA_V2}")
+    name = str(preset.get("name") or "")
+    if not re.fullmatch(r"[a-z][a-z0-9-]*", name):
+        errors.append(f"{source} 的 name 必须是小写字母、数字和短横线")
+    version = preset.get("version")
+    if not isinstance(version, int) or version < 1:
+        errors.append(f"{source} 的 version 必须是正整数")
+    description = preset.get("description")
+    if not isinstance(description, str) or not description.strip():
+        errors.append(f"{source} 的 description 必须是非空说明")
+
+    stages = preset.get("stages")
+    stage_errors = validate_workflow_stages(stages, source)
+    errors.extend(stage_errors)
+    declared = (
+        [stage for stage in stages if isinstance(stage, str)]
+        if isinstance(stages, list) and not stage_errors
+        else []
+    )
+    declared_set = set(declared)
+
+    artifacts = preset.get("artifacts")
+    if not isinstance(artifacts, dict):
+        errors.append(f"{source} 的 artifacts 必须是对象")
+    else:
+        for stage, artifact in artifacts.items():
+            path = f"artifacts.{stage}"
+            if stage not in STAGE_ORDER:
+                errors.append(f"{source} 的 {path} 包含未知阶段：{stage}")
+                continue
+            if declared_set and stage not in declared_set:
+                errors.append(f"{source} 的 {path} 指向未声明的阶段：{stage}")
+                continue
+            canonical = CANONICAL_STAGE_ARTIFACTS.get(str(stage))
+            if canonical is None:
+                errors.append(f"{source} 的 {path} 没有可声明的规范产物")
+            elif artifact != canonical:
+                errors.append(
+                    f"{source} 的 {path} 必须是 {canonical}（不允许重命名产物）"
+                )
+        if declared_set:
+            for stage in declared:
+                if stage == "MERGED":
+                    continue
+                if stage not in artifacts:
+                    errors.append(
+                        f"{source} 的 artifacts.{stage} 缺失；每个已声明阶段必须映射产物"
+                    )
+
+    gates = preset.get("gates")
+    if not isinstance(gates, dict):
+        errors.append(f"{source} 的 gates 必须是对象")
+    else:
+        missing = [gate for gate in GATE_STAGES if gate not in gates]
+        if missing:
+            errors.append(f"{source} 的 gates 缺少：" + ", ".join(missing))
+        for gate, policy in gates.items():
+            path = f"gates.{gate}"
+            if gate not in GATE_STAGES:
+                errors.append(f"{source} 的 {path} 是未知 Gate：{gate}")
+            elif str(policy) not in WORKFLOW_POLICIES:
+                errors.append(
+                    f"{source} 的 {path} 必须是 "
+                    + ", ".join(sorted(WORKFLOW_POLICIES))
+                )
+
+    required = preset.get("required_gates")
+    if not isinstance(required, dict):
+        errors.append(f"{source} 的 required_gates 必须是对象")
+    else:
+        for stage in required:
+            if stage not in STAGE_ORDER:
+                errors.append(
+                    f"{source} 的 required_gates.{stage} 是未知阶段"
+                )
+            elif declared_set and stage not in declared_set:
+                errors.append(
+                    f"{source} 的 required_gates.{stage} 指向未声明的阶段"
+                )
+        if declared_set:
+            for stage in declared:
+                expected = required_gates(stage)
+                actual = required.get(stage)
+                if actual != expected:
+                    errors.append(
+                        f"{source} 的 required_gates.{stage} 必须是 {expected}"
+                    )
+
+    gate_checks = preset.get("gate_checks")
+    if gate_checks is not None:
+        if not isinstance(gate_checks, dict):
+            errors.append(f"{source} 的 gate_checks 必须是对象")
+        else:
+            known_by_gate: dict[str, set[str]] = {}
+            required_by_gate: dict[str, set[str]] = {}
+            for item in CHECK_REGISTRY:
+                gate = str(item["gate"])
+                known_by_gate.setdefault(gate, set()).add(str(item["id"]))
+                if item["level"] == "required":
+                    required_by_gate.setdefault(gate, set()).add(str(item["id"]))
+            for gate, checks in gate_checks.items():
+                path = f"gate_checks.{gate}"
+                if gate not in GATE_STAGES:
+                    errors.append(f"{source} 的 {path} 是未知 Gate：{gate}")
+                    continue
+                if not isinstance(checks, list) or not all(
+                    isinstance(check, str) for check in checks
+                ):
+                    errors.append(f"{source} 的 {path} 必须是检查 ID 数组")
+                    continue
+                duplicates = sorted(
+                    {check for check in checks if checks.count(check) > 1}
+                )
+                if duplicates:
+                    errors.append(
+                        f"{source} 的 {path} 包含重复检查：" + ", ".join(duplicates)
+                    )
+                unknown = sorted(set(checks) - known_by_gate.get(gate, set()))
+                if unknown:
+                    errors.append(
+                        f"{source} 的 {path} 包含未知检查 ID：" + ", ".join(unknown)
+                    )
+                missing = sorted(required_by_gate.get(gate, set()) - set(checks))
+                if missing:
+                    errors.append(
+                        f"{source} 的 {path} 缺少 required 检查："
+                        + ", ".join(missing)
+                    )
+
+    checkpoints = preset.get("human_checkpoints")
+    if not isinstance(checkpoints, list) or not checkpoints:
+        errors.append(f"{source} 的 human_checkpoints 必须是非空数组")
+    else:
+        seen_types: set[str] = set()
+        for index, item in enumerate(checkpoints):
+            path = f"human_checkpoints[{index}]"
+            if not isinstance(item, dict):
+                errors.append(f"{source} 的 {path} 必须是对象")
+                continue
+            for key in sorted(set(item) - HUMAN_CHECKPOINT_FIELDS):
+                errors.append(
+                    f"{source} 的 {path}.{key} 不是支持的字段"
+                )
+            checkpoint_type = item.get("type")
+            if checkpoint_type not in HUMAN_CHECKPOINT_TYPES:
+                errors.append(
+                    f"{source} 的 {path}.type 必须是 "
+                    + ", ".join(sorted(HUMAN_CHECKPOINT_TYPES))
+                )
+                continue
+            seen_types.add(str(checkpoint_type))
+            if checkpoint_type == "complete_gate":
+                gate = item.get("gate")
+                if gate not in GATE_STAGES:
+                    errors.append(
+                        f"{source} 的 {path}.gate 必须是 G0–G5"
+                    )
+                    continue
+                if isinstance(gates, dict) and str(gates.get(gate)) != "human":
+                    errors.append(
+                        f"{source} 的 {path}.gate 只能绑定 gates 中策略为 human 的 Gate"
+                    )
+                owner = GATE_OWNER_STAGE.get(str(gate))
+                if declared_set and owner and owner not in declared_set:
+                    errors.append(
+                        f"{source} 的 {path}.gate 无法绑定到被省略阶段 {owner}"
+                    )
+            elif "gate" in item:
+                errors.append(
+                    f"{source} 的 {path}.gate 只允许出现在 complete_gate"
+                )
+        missing_types = {"approve_spec", "confirm_delivery"} - seen_types
+        for missing in sorted(missing_types):
+            errors.append(
+                f"{source} 的 human_checkpoints 缺少 {missing}"
+            )
+        if declared_set and "SPEC_READY" not in declared_set:
+            errors.append(
+                f"{source} 的 human_checkpoints.approve_spec 无法绑定到被省略阶段 SPEC_READY"
+            )
+        if declared_set and "PR_READY" not in declared_set:
+            errors.append(
+                f"{source} 的 human_checkpoints.confirm_delivery 无法绑定到被省略阶段 PR_READY"
+            )
+
+    design_mode = str(preset.get("design_mode") or "")
+    if design_mode not in WORKFLOW_DESIGN_MODES:
+        errors.append(f"{source} 的 design_mode 必须是 full 或 lite")
+    review_required = preset.get("review_required")
+    if not isinstance(review_required, bool):
+        errors.append(f"{source} 的 review_required 必须是布尔值")
+
+    risk_stop = preset.get("risk_stop")
+    if risk_stop is not None:
+        if not isinstance(risk_stop, list) or not all(
+            isinstance(item, str) and item.strip() for item in risk_stop
+        ):
+            errors.append(f"{source} 的 risk_stop 必须是非空字符串数组")
+
+    context_rules = preset.get("context_rules")
+    if context_rules is not None:
+        if not isinstance(context_rules, dict):
+            errors.append(f"{source} 的 context_rules 必须是对象")
+        else:
+            for key in sorted(set(context_rules) - CONTEXT_RULE_FIELDS):
+                errors.append(
+                    f"{source} 的 context_rules.{key} 不是支持的字段"
+                )
+            for key in ("include", "exclude"):
+                values = context_rules.get(key)
+                if values is None:
+                    continue
+                if not isinstance(values, list):
+                    errors.append(
+                        f"{source} 的 context_rules.{key} 必须是数组"
+                    )
+                    continue
+                for index, value in enumerate(values):
+                    errors.extend(
+                        context_rule_pattern_errors(
+                            source,
+                            f"context_rules.{key}[{index}]",
+                            value,
+                        )
+                    )
+
+    allow_rewind = preset.get("allow_rewind_to")
+    if not isinstance(allow_rewind, list):
+        errors.append(f"{source} 的 allow_rewind_to 必须是数组")
+    else:
+        for stage in allow_rewind:
+            if stage not in REWIND_PLANS:
+                errors.append(
+                    f"{source} 的 allow_rewind_to 包含不支持的目标：{stage}"
+                )
+            elif declared_set and stage not in declared_set:
+                errors.append(
+                    f"{source} 的 allow_rewind_to 包含未声明的阶段：{stage}"
+                )
+
+    risk_policy = preset.get("risk_policy")
+    if risk_policy is not None:
+        if not isinstance(risk_policy, dict):
+            errors.append(f"{source} 的 risk_policy 必须是对象")
+        else:
+            for key in sorted(set(risk_policy) - RISK_POLICY_FIELDS):
+                errors.append(
+                    f"{source} 的 risk_policy.{key} 不是支持的字段"
+                )
             max_risk = risk_policy.get("max_risk")
             if max_risk is not None and max_risk not in RISK_RANK:
                 errors.append(
@@ -766,11 +1159,57 @@ def resolve_workflow(
             )
         return preset
 
+    config = load_config(root)
     preset = load_workflow_preset(
         root,
         str(config.get("workflow") or DEFAULT_WORKFLOW),
     )
     return preset
+
+
+def workflow_stages(workflow: Optional[dict[str, Any]]) -> list[str]:
+    if workflow:
+        stages = workflow.get("stages")
+        if isinstance(stages, list) and stages:
+            return [str(stage) for stage in stages]
+    return list(STAGE_ORDER)
+
+
+def next_declared_stage(
+    workflow: Optional[dict[str, Any]], target: str
+) -> str:
+    stages = workflow_stages(workflow)
+    if target in stages:
+        return target
+    target_index = STAGE_ORDER.index(target)
+    for stage in stages:
+        if STAGE_ORDER.index(stage) >= target_index:
+            return stage
+    return stages[-1]
+
+
+def resolve_declared_transition(
+    workflow: Optional[dict[str, Any]], canonical_target: str
+) -> str:
+    return next_declared_stage(workflow, canonical_target)
+
+
+def effective_risk_stop(
+    config: dict[str, Any],
+    workflow: Optional[dict[str, Any]] = None,
+) -> list[str]:
+    values = [
+        str(item).strip()
+        for item in config.get("risk_stop", [])
+        if str(item).strip()
+    ]
+    if workflow:
+        values.extend(
+            str(item).strip()
+            for item in workflow.get("risk_stop", []) or []
+            if str(item).strip()
+        )
+    return sorted(set(values))
 
 
 def workflow_risk_error(
@@ -790,7 +1229,7 @@ def workflow_risk_error(
         )
     if policy.get("deny_risk_stop"):
         labels = {str(item) for item in risk_labels}
-        stopped = labels & {str(item) for item in config.get("risk_stop", [])}
+        stopped = labels & set(effective_risk_stop(config, preset))
         if stopped:
             return (
                 f"工作流 {preset['name']} 不允许命中风险标签："
@@ -1637,7 +2076,7 @@ def requires_independent_review(
     }
     stops = {
         str(item).strip().lower()
-        for item in config.get("risk_stop", [])
+        for item in effective_risk_stop(config, workflow)
         if str(item).strip()
     }
     return bool(labels & stops)
@@ -2487,13 +2926,27 @@ GATE_CHECK_FUNCS = {
 }
 
 
-def run_gate_checks(gate: str, ctx: dict[str, Any]) -> list[dict[str, Any]]:
+def run_gate_checks(
+    gate: str,
+    ctx: dict[str, Any],
+    workflow: Optional[dict[str, Any]] = None,
+) -> list[dict[str, Any]]:
     registry_errors = validate_check_registry()
     if registry_errors:
         raise SddError("检查项注册表无效：" + "；".join(registry_errors))
+    selected: Optional[set[str]] = None
+    if isinstance(workflow, dict):
+        gate_checks = workflow.get("gate_checks")
+        if (
+            isinstance(gate_checks, dict)
+            and isinstance(gate_checks.get(gate), list)
+        ):
+            selected = {str(item) for item in gate_checks[gate]}
     rows: list[dict[str, Any]] = []
     for item in CHECK_REGISTRY:
         if str(item.get("gate")) != gate:
+            continue
+        if selected is not None and str(item["id"]) not in selected:
             continue
         func = GATE_CHECK_FUNCS.get(str(item["id"]))
         if func is None:
@@ -2939,7 +3392,7 @@ def gate_requires_human(
     if policy == "human":
         return True
     risk_labels = set(str(item) for item in state.get("risk_labels", []))
-    stop_labels = set(str(item) for item in config.get("risk_stop", []))
+    stop_labels = set(effective_risk_stop(config, workflow))
     is_risky = state.get("risk") == "high" or bool(risk_labels & stop_labels)
     return policy == "auto_if_no_risk" and is_risky
 
@@ -3013,8 +3466,8 @@ def run_checks(
     errors: list[str] = []
 
     if stage in {"spec", "design", "tasks", "verify", "ci"}:
-        errors.extend(gate_rows_errors(run_gate_checks("G0", ctx)))
-        errors.extend(gate_rows_errors(run_gate_checks("G1", ctx)))
+        errors.extend(gate_rows_errors(run_gate_checks("G0", ctx, workflow)))
+        errors.extend(gate_rows_errors(run_gate_checks("G1", ctx, workflow)))
     if stage in {"design", "tasks", "verify", "ci"}:
         errors.extend(check_design(design_text, spec_acs, workflow))
     if stage in {"tasks", "verify", "ci"}:
@@ -3273,11 +3726,72 @@ def task_scope_paths(task: dict[str, Any]) -> list[str]:
     return sorted(paths)
 
 
+def apply_context_rules(
+    root: Path,
+    bundle: dict[str, Any],
+    spec_dir: str,
+    workflow: Optional[dict[str, Any]],
+) -> None:
+    rules = (workflow or {}).get("context_rules")
+    if not isinstance(rules, dict):
+        return
+    includes = [
+        str(pattern).replace("\\", "/")
+        for pattern in rules.get("include", []) or []
+    ]
+    excludes = [
+        str(pattern).replace("\\", "/")
+        for pattern in rules.get("exclude", []) or []
+    ]
+    allowed = set(bundle.get("allowed_paths", []))
+    contracts = set(bundle.get("contracts", []))
+    if includes:
+        matched: list[str] = []
+        for pattern in includes:
+            for raw in glob.glob(str(root / pattern), recursive=True):
+                path = Path(raw)
+                if not path.is_file():
+                    continue
+                relative = path.relative_to(root).as_posix()
+                if relative == "docs/prd.md" or is_other_spec_path(
+                    relative, spec_dir
+                ):
+                    continue
+                if any(fnmatch.fnmatch(relative, item) for item in excludes):
+                    continue
+                try:
+                    if path.stat().st_size > 200 * 1024:
+                        continue
+                except OSError:
+                    continue
+                matched.append(relative)
+        for relative in sorted(set(matched))[:50]:
+            allowed.add(relative)
+            if relative.lower().endswith(CONTRACT_SUFFIXES):
+                contracts.add(relative)
+    if excludes:
+        allowed = {
+            value
+            for value in allowed
+            if not any(fnmatch.fnmatch(value, item) for item in excludes)
+        }
+        contracts = {
+            value
+            for value in contracts
+            if not any(fnmatch.fnmatch(value, item) for item in excludes)
+        }
+        extra = [item for item in excludes if item not in bundle["exclude"]]
+        bundle["exclude"].extend(extra)
+    bundle["allowed_paths"] = sorted(allowed)
+    bundle["contracts"] = sorted(contracts)
+
+
 def build_context_bundle(
     root: Path,
     directory: Path,
     state: dict[str, Any],
     task: Optional[dict[str, Any]] = None,
+    workflow: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     bundle: dict[str, Any] = {
         "task": None,
@@ -3290,10 +3804,11 @@ def build_context_bundle(
         "allowed_paths": [],
         "exclude": [],
     }
+    spec_dir = directory.relative_to(root).as_posix()
     if not task:
+        apply_context_rules(root, bundle, spec_dir, workflow)
         return bundle
 
-    spec_dir = directory.relative_to(root).as_posix()
     design_text = read_text(directory / "design.md")
     frs = sorted(set(task.get("frs") or []))
     acs = sorted(set(task.get("acs") or []))
@@ -3324,6 +3839,7 @@ def build_context_bundle(
             "exclude": list(CONTEXT_EXCLUDES),
         }
     )
+    apply_context_rules(root, bundle, spec_dir, workflow)
     return bundle
 
 
@@ -3390,16 +3906,41 @@ def build_next_action(
             }
         )
     elif state_name == "TASKS_READY":
-        base.update(
-            {
-                "action": "start_implementation",
-                "kind": "transition",
-                "step_id": f"{spec_id}:start_implementation",
-                "expected_result": "transition_completed",
-                "prompt": "sdd/prompts/driver.md",
-                "done_when": "sdd complete --evidence '开始实现'",
-            }
-        )
+        try:
+            config = load_config(root)
+            tasks_done = (
+                gate_report_status(
+                    gate_report_path(root, config, spec_id, "G3")
+                )
+                == "PASS"
+            )
+        except SddError:
+            tasks_done = True
+        if tasks_done:
+            base.update(
+                {
+                    "action": "start_implementation",
+                    "kind": "transition",
+                    "step_id": f"{spec_id}:start_implementation",
+                    "expected_result": "transition_completed",
+                    "prompt": "sdd/prompts/driver.md",
+                    "done_when": "sdd complete --evidence '开始实现'",
+                }
+            )
+        else:
+            base.update(
+                {
+                    "action": "write_tasks",
+                    "kind": "artifact",
+                    "step_id": f"{spec_id}:tasks",
+                    "expected_result": "artifact_submitted",
+                    "prompt": "sdd/prompts/tasks.md",
+                    "artifact": f"{relative_dir}/tasks.md",
+                    "done_when": (
+                        "sdd check --stage tasks 通过，然后 sdd complete --evidence ..."
+                    ),
+                }
+            )
     elif state_name == "IMPLEMENTING":
         tasks = parse_tasks(read_text(directory / "tasks.md"))
         pending = [task for task in tasks if not task["done"]]
@@ -3513,8 +4054,12 @@ def build_next_action(
             ),
             None,
         )
+    try:
+        workflow = resolve_workflow(root, directory, state)
+    except SddError:
+        workflow = None
     base["context_bundle"] = build_context_bundle(
-        root, directory, state, bundle_task
+        root, directory, state, bundle_task, workflow
     )
     return base
 
@@ -3868,6 +4413,8 @@ def pending_manual_gate(
         gate, stage = "G2", "design"
     elif state_name == "DESIGN_READY":
         gate, stage = "G3", "tasks"
+    elif state_name == "TASKS_READY":
+        gate, stage = "G3", "tasks"
     elif state_name == "IMPLEMENTING":
         tasks = parse_tasks(read_text(directory / "tasks.md"))
         if not tasks or not all(task["done"] for task in tasks):
@@ -3878,6 +4425,11 @@ def pending_manual_gate(
     else:
         return None
 
+    spec_id = str(state.get("spec_id", directory.name))
+    if gate_report_status(
+        gate_report_path(root, config, spec_id, gate)
+    ) == "PASS":
+        return None
     if not gate_requires_human(config, gate, state, workflow):
         return None
 
@@ -4358,8 +4910,8 @@ def command_approve(
     evidence = args.evidence or "requirement confirmed by human"
     sync_feat_map(root, config, state, read_text(directory / "spec.md"))
     ctx = gate_context(root, config, directory, state)
-    g0_rows = run_gate_checks("G0", ctx)
-    g1_rows = run_gate_checks("G1", ctx)
+    g0_rows = run_gate_checks("G0", ctx, workflow)
+    g1_rows = run_gate_checks("G1", ctx, workflow)
     g0_errors = gate_rows_errors(g0_rows)
     g1_errors = gate_rows_errors(g1_rows)
     try:
@@ -4638,7 +5190,7 @@ def command_complete(
             )
             transition(
                 state,
-                "VERIFYING",
+                resolve_declared_transition(workflow, "VERIFYING"),
                 "all tasks completed",
                 gate="G4",
                 actor=actor,
@@ -4702,7 +5254,7 @@ def command_complete(
         )
         transition(
             state,
-            "DESIGN_READY",
+            resolve_declared_transition(workflow, "DESIGN_READY"),
             evidence,
             gate="G2",
             actor=actor,
@@ -4753,7 +5305,7 @@ def command_complete(
         )
         transition(
             state,
-            "TASKS_READY",
+            resolve_declared_transition(workflow, "TASKS_READY"),
             evidence,
             gate="G3",
             actor=actor,
@@ -4769,9 +5321,34 @@ def command_complete(
                 eprint(f"- {error}")
             record_check_failure(directory, "tasks", errors, gate="G3")
             raise SddError("tasks 校验失败")
+        if gate_report_status(
+            gate_report_path(root, config, spec_id, "G3")
+        ) != "PASS":
+            mode = gate_mode(config, "G3", state, args.human, workflow)
+            if mode == "manual" and approver:
+                record_gate_approval(
+                    root, directory, state, "G3", approver, evidence
+                )
+            record_gate(
+                root,
+                config,
+                directory,
+                state,
+                "G3",
+                "TASKS_READY",
+                mode,
+                evidence,
+                [
+                    ("Task 字段完整", "PASS", "公司任务表字段完整"),
+                    ("AC 全覆盖", "PASS", "无孤立 AC"),
+                    ("依赖无环", "PASS", "依赖 DAG 校验通过"),
+                    ("测试映射", "PASS", "每个 Task 有测试类和命令"),
+                ],
+                approver=approver if mode == "manual" else None,
+            )
         transition(
             state,
-            "IMPLEMENTING",
+            resolve_declared_transition(workflow, "IMPLEMENTING"),
             evidence,
             actor=actor,
             role="implementer",
@@ -4828,7 +5405,7 @@ def command_complete(
         )
         transition(
             state,
-            "VERIFYING",
+            resolve_declared_transition(workflow, "VERIFYING"),
             evidence,
             gate="G4",
             actor=actor,
@@ -4890,7 +5467,7 @@ def command_complete(
         write_report(root, directory, state)
         transition(
             state,
-            "PR_READY",
+            resolve_declared_transition(workflow, "PR_READY"),
             evidence,
             gate="G5",
             actor=actor,

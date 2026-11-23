@@ -2,7 +2,7 @@
 
 > 本文是仓库 README 的完整内容归档，保留全部章节、命令与问答。
 > 项目首页见 [README](../README.md)，架构取舍见 [ARCHITECTURE.md](../ARCHITECTURE.md)。
-> 文中文件路径默认相对仓库根目录。当前版本 0.9.3。
+> 文中文件路径默认相对仓库根目录。当前版本 0.9.4。
 
 ---
 
@@ -16,7 +16,7 @@
 - 可选命名工作流预设：`l2-standard`、`l2-hotfix`、`l2-strict`，Spec 创建时固定版本；
 - MCP 是可选适配器；没有 MCP，`AGENTS.md + CLI + Git Hook + CI` 也能跑完整流程。
 
-当前版本：`0.9.3`。
+当前版本：`0.9.4`。
 
 ---
 
@@ -439,15 +439,34 @@ python -m sdd check --all --stage ci --check-git
 
 ### 5.4 工作流预设
 
-0.8.0 只支持仓库内固定的命名预设，不允许用户画任意 DAG。每个 Spec 在创建时
-把预设快照写入 `docs/specs/<Spec>/workflow.json`，之后修改 `sdd/workflows/`
-不会改变旧 Spec。
+工作流预设仍是仓库内的声明式 JSON，不允许任意 DAG、条件脚本或运行时插件。
+每个 Spec 在创建时把预设快照写入 `docs/specs/<Spec>/workflow.json`，之后修改
+`sdd/workflows/` 不会改变旧 Spec。
 
 | 预设 | 适用场景 | 关键差异 |
 |---|---|---|
 | `l2-standard` | 默认 L2 需求 | G0 人工；G2 高风险时人工；其余自动 |
 | `l2-hotfix` | 紧急修复，低/中风险 | 仍写 `design.md`，但使用轻量设计模板；G2 自动；高风险和 `risk_stop` 标签直接拒绝 |
 | `l2-strict` | 安全、数据迁移、破坏性变更 | G0–G5 全部人工；`verification.md` 必须有独立审查，且 reviewer session 不能等于实现 session |
+| `l2-refactor` | 行为保持型改造 | schema 2；保留全部阶段和人工检查点；裁剪 advisory 检查；上下文纳入 `docs/knowledge/**` |
+
+schema 2 profile 可以声明 `stages`、`artifacts`、`gates`、`required_gates`、
+`gate_checks`、`human_checkpoints`、`risk_stop` 和 `context_rules`。校验规则：
+
+- `stages` 必须是规范阶段的严格递增子序列，首 `DRAFT`、尾 `MERGED`；
+  `IMPLEMENTING`、`VERIFYING` 不可省略，`approve_spec` / `confirm_delivery`
+  仍分别绑定 `SPEC_READY` / `PR_READY`。
+- 省略 `DESIGN_READY` 或 `TASKS_READY` 时，对应强制 Gate 必须保留在后续阶段的
+  `required_gates` 中，引擎会在进入下一个已声明阶段时补齐。
+- `gate_checks` 只能裁剪 advisory 检查，required 检查必须全部保留。
+- `context_rules` 只接受仓库内相对 glob，拒绝绝对路径、`..`、`docs/specs/`
+  和 `.sdd/`。
+
+提交 profile 前先运行：
+
+```powershell
+python -m sdd workflow validate --file sdd/workflows/l2-refactor.json
+```
 
 ```powershell
 # 默认使用 config.json 的 workflow，当前是 l2-standard
@@ -466,7 +485,7 @@ python -m sdd new SPEC-PAY-002 --title "支付数据迁移" `
 优先级是：`sdd/config.json.gate_overrides` > 旧版 `config.json.gates`（仅当整份
 `gates` 已偏离标准默认）> 预设 `gates` > 代码默认值。旧 Spec 没有 `workflow`
 字段时按 `l2-standard@1` 处理。
-0.8.0 暂未提供 `upgrade-workflow` 命令；需要换预设时重新建 Spec 或等后续版本。
+当前版本仍未提供 `upgrade-workflow` 命令；需要换预设时重新建 Spec 或等后续版本。
 
 ---
 

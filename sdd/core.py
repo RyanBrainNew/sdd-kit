@@ -1150,6 +1150,9 @@ class Workspace:
                     "人类确认交付后执行 merge；确认前 Agent 不得创建 PR。"
                 ),
             }
+        manual = self._manual_gate_checkpoint(spec)
+        if manual:
+            return manual
         return {
             "required": False,
             "type": None,

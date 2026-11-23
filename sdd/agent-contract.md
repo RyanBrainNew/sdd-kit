@@ -12,8 +12,8 @@ Agent 不应向开发者询问当前阶段，只应询问一次工作项，然�
 python -m sdd start-work --work-item srdcloud-553377 --issue-url "https://..." --json
 ```
 
-需要非默认流程时加 `--workflow l2-hotfix` 或 `--workflow l2-strict`。工作流由
-创建 Spec 的人决定；Agent 不要自行改工作流。
+需要非默认流程时加 `--workflow l2-hotfix`、`--workflow l2-strict` 或
+`--workflow l2-refactor`。工作流由创建 Spec 的人决定；Agent 不要自行改工作流。
 
 恢复当前会话：
 
@@ -75,6 +75,11 @@ Gate 报告会绑定当前产物的 SHA-256。批准后修改 `spec.md`、`desig
 
 Spec 创建时会把工作流预设快照到 `docs/specs/<Spec>/workflow.json`；后续修改
 `sdd/workflows/` 不会影响旧 Spec。Agent 不得手工编辑该快照或 `state.json.workflow`。
+
+schema 2 profile 只声明阶段、产物、Gate、检查项、人工检查点、风险标签和上下文
+规则，仍由 `sdd/scripts/sdd.py` 解释。Agent 不得把状态机规则复制到 profile，
+也不得用 `gate_checks` 关闭 required 检查。新增或修改 profile 后先运行
+`python -m sdd workflow validate --file sdd/workflows/<name>.json`。
 
 ## 4. 强制边界
 

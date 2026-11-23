@@ -1,0 +1,66 @@
+{
+  "schema": 2,
+  "name": "l2-refactor",
+  "version": 1,
+  "description": "行为保持型改造：保留全部阶段与人工检查点，裁剪 advisory 检查并纳入知识目录上下文。",
+  "stages": [
+    "DRAFT",
+    "SPEC_READY",
+    "DESIGN_READY",
+    "TASKS_READY",
+    "IMPLEMENTING",
+    "VERIFYING",
+    "PR_READY",
+    "MERGED"
+  ],
+  "artifacts": {
+    "DRAFT": "spec.md",
+    "SPEC_READY": "design.md",
+    "DESIGN_READY": "tasks.md",
+    "TASKS_READY": "tasks.md",
+    "IMPLEMENTING": "tasks.md",
+    "VERIFYING": "verification.md",
+    "PR_READY": "PR_BODY.md"
+  },
+  "gates": {
+    "G0": "human",
+    "G1": "auto",
+    "G2": "auto_if_no_risk",
+    "G3": "auto",
+    "G4": "auto",
+    "G5": "auto"
+  },
+  "required_gates": {
+    "DRAFT": [],
+    "SPEC_READY": ["G0", "G1"],
+    "DESIGN_READY": ["G0", "G1", "G2"],
+    "TASKS_READY": ["G0", "G1", "G2", "G3"],
+    "IMPLEMENTING": ["G0", "G1", "G2", "G3"],
+    "VERIFYING": ["G0", "G1", "G2", "G3", "G4"],
+    "PR_READY": ["G0", "G1", "G2", "G3", "G4", "G5"],
+    "MERGED": ["G0", "G1", "G2", "G3", "G4", "G5"]
+  },
+  "gate_checks": {
+    "G0": ["G0-01", "G0-02", "G0-03", "G0-04", "G0-05", "G0-06"],
+    "G1": ["G1-01", "G1-02", "G1-03", "G1-04"]
+  },
+  "human_checkpoints": [
+    { "type": "approve_spec" },
+    { "type": "confirm_delivery" }
+  ],
+  "design_mode": "full",
+  "review_required": false,
+  "risk_stop": ["data-loss", "breaking-change"],
+  "context_rules": {
+    "include": ["docs/knowledge/**"],
+    "exclude": ["docs/prd.md"]
+  },
+  "allow_rewind_to": [
+    "DRAFT",
+    "SPEC_READY",
+    "DESIGN_READY",
+    "TASKS_READY",
+    "IMPLEMENTING",
+    "VERIFYING"
+  ]
+}
