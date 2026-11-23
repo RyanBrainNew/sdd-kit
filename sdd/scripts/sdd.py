@@ -4864,6 +4864,8 @@ def check_git(root: Path, spec_id: str, state: str = "DRAFT") -> list[str]:
             "prd_mode": "workitem",
         }
     shas = git_commits_since(root, base)
+    if not shas:
+        return []
     errors: list[str] = []
     seen_spec = False
     for sha in shas:
