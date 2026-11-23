@@ -69,7 +69,7 @@ except ImportError:  # pragma: no cover - package import fallback
         validate_review_findings,
     )
 
-VERSION = "0.9.6"
+VERSION = "0.9.7"
 EVENT_SCHEMA = 2
 
 SPEC_SECTIONS = (
@@ -4855,7 +4855,14 @@ def check_git(root: Path, spec_id: str, state: str = "DRAFT") -> list[str]:
         return [
             "无法确定 merge-base；需要 origin/main、main 或 master 之一"
         ]
-    config = load_config(root)
+    try:
+        config = load_config(root)
+    except SddError:
+        config = {
+            "spec_root": "docs/specs",
+            "prd_index": "docs/prd-index.md",
+            "prd_mode": "workitem",
+        }
     shas = git_commits_since(root, base)
     errors: list[str] = []
     seen_spec = False

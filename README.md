@@ -232,9 +232,7 @@ Gate 报告单独写入 `sdd/reports/<Spec ID>/`，与 `docs/` 下的 Spec 工�
 | 已交付 | 0.7.0 | `rewind`、`inbox`、`metrics`、事件 v2、产物哈希、审批身份 |
 | 已交付 | 0.8.0 | 三套命名工作流、Spec 快照、`l2-strict` 独立审查、Apache-2.0 与官网 |
 | 已交付 | 0.9.4 | schema 2 工作流 Profile、`workflow validate`、`l2-refactor` 示范预设 |
-| 已交付 | 0.9.5 | G0–G5 稳定检查 ID、`pass/warn/block`、范围化人工豁免、告警与按 ID 指标 |
-| 已交付 | 0.9.6 | 审批版本绑定、人工 `reapprove`、`change-set` / `impact` 与提交阻断 |
-| 已交付 | 0.9.7 | merge-base 全量 commit 审计与只读 `sdd trace` |
+| 已交付 | 0.9.5–0.9.7 | G0–G5 分级/豁免；审批绑定与 `change-set`；全量 commit 审计与 `trace` |
 | 未开发（0.9.0） | [#1](https://github.com/RyanBrainNew/sdd-kit/issues/1) | 只读单文件 HTML 运行视图 `sdd view` |
 | 未开发（0.9.0） | [#2](https://github.com/RyanBrainNew/sdd-kit/issues/2) | 外部 runner 接入契约 `deploy/runner/CONTRACT.md` |
 | 未开发（后续） | [#3](https://github.com/RyanBrainNew/sdd-kit/issues/3) | 固定预设升级 `upgrade-workflow` |
