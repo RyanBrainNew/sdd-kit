@@ -17,8 +17,8 @@
   },
   "state": "MERGED",
   "created_at": "2026-11-23T10:34:28+08:00",
-  "updated_at": "2026-11-23T17:07:18+08:00",
-  "pr_url": null,
+  "updated_at": "2026-11-23T18:05:24+08:00",
+  "pr_url": "https://github.com/RyanBrainNew/sdd-kit/pull/18",
   "history": [
     {
       "state": "DRAFT",
@@ -391,6 +391,17 @@
       "source": "cli",
       "role": "approver",
       "approver": "linjinlong <fflinjinlong@chinatelecom.cn>"
+    },
+    {
+      "state": "MERGED",
+      "at": "2026-11-23T18:05:24+08:00",
+      "evidence": "PR recorded",
+      "actor": "agent",
+      "session": "17c06afdefe3",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "pr_url": "https://github.com/RyanBrainNew/sdd-kit/pull/18",
+      "role": "orchestrator"
     }
   ],
   "approvals": [
