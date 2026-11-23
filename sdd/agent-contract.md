@@ -81,6 +81,11 @@ Spec 创建时会把工作流预设快照到 `docs/specs/<Spec>/workflow.json`�
 `events.jsonl` 使用事件哈希链；`events --json` 的 `audit.valid=false` 时，
 G5/CI 必须失败。Agent 不得通过重写事件文件“修复”审计失败。
 
+schema 2 profile 只声明阶段、产物、Gate、检查项、人工检查点、风险标签和上下文
+规则，仍由 `sdd/scripts/sdd.py` 解释。Agent 不得把状态机规则复制到 profile，
+也不得用 `gate_checks` 关闭 required 检查。新增或修改 profile 后先运行
+`python -m sdd workflow validate --file sdd/workflows/<name>.json`。
+
 ## 4. 强制边界
 
 - 不直接编辑 `state.json`。

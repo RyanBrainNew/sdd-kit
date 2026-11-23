@@ -10,6 +10,7 @@
 | SDD-GH-001 | N/A | current | FEAT-001 | SPEC-DEVTOOLS-001 | GitHub Pages 官网与开源 README | 0 |
 | SDD-GH-007 | https://github.com/RyanBrainNew/sdd-kit/issues/7 | current | FEAT-002 | SPEC-DEVTOOLS-002 | 轻量、可自定义、全链路可溯源的 SDD-L2 执行内核 | 0 |
 | SDD-HASH-001 | https://github.com/RyanBrainNew/sdd-kit/issues/15 | current | FEAT-003 | SPEC-REQ-001 | 工件哈希 CRLF/LF 规范化与 SDD CI 门禁对齐 | 0 |
+| SDD-PROFILE-001 | https://github.com/RyanBrainNew/sdd-kit/issues/7 | current | FEAT-004 | SPEC-REQ-002 | 工作流 Profile v2：可声明扩展与 workflow validate | 0 |
 
 ## FEAT 映射
 
@@ -29,3 +30,8 @@
 | FEAT-002 | SDD-GH-007 | SPEC-DEVTOOLS-002 | FR-008 | AC-008-1, AC-008-2, AC-008-3, AC-008-4, AC-008-5 |
 | FEAT-002 | SDD-GH-007 | SPEC-DEVTOOLS-002 | FR-009 | AC-009-1, AC-009-2, AC-009-3, AC-009-4, AC-009-5 |
 | FEAT-002 | SDD-GH-007 | SPEC-DEVTOOLS-002 | FR-010 | AC-010-1, AC-010-2, AC-010-3, AC-010-4, AC-010-5, AC-010-6 |
+| FEAT-004 | SDD-PROFILE-001 | SPEC-REQ-002 | FR-001 | AC-001-1, AC-001-2, AC-001-3 |
+| FEAT-004 | SDD-PROFILE-001 | SPEC-REQ-002 | FR-002 | AC-002-1, AC-002-2, AC-002-3 |
+| FEAT-004 | SDD-PROFILE-001 | SPEC-REQ-002 | FR-003 | AC-003-1, AC-003-2, AC-003-3 |
+| FEAT-004 | SDD-PROFILE-001 | SPEC-REQ-002 | FR-004 | AC-004-1, AC-004-2 |
+| FEAT-004 | SDD-PROFILE-001 | SPEC-REQ-002 | FR-005 | AC-005-1, AC-005-2, AC-005-3 |

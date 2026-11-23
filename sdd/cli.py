@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,7 @@ from .core import (
     verify_core,
     write_manifest,
 )
+from .scripts import sdd as engine
 
 
 def _print_json(payload: Any) -> None:
@@ -23,7 +25,13 @@ def _print_json(payload: Any) -> None:
 def _print_human(payload: dict[str, Any]) -> None:
     if payload.get("ok") is False:
         for error in payload.get("errors", []):
-            print(f"[sdd] {error}", file=sys.stderr)
+            if isinstance(error, dict):
+                print(
+                    f"[sdd] {error.get('path', '$')}: {error.get('message', '')}",
+                    file=sys.stderr,
+                )
+            else:
+                print(f"[sdd] {error}", file=sys.stderr)
         return
     if payload.get("skipped"):
         print("[sdd] no specs found; skip artifact check")
@@ -133,6 +141,13 @@ def _print_human(payload: dict[str, Any]) -> None:
         else:
             print("[sdd] AGENTS.md managed block already up to date")
         return
+    if payload.get("kind") == "workflow_validate":
+        if payload.get("ok"):
+            print(
+                f"[sdd] {payload.get('name')}@{payload.get('version')} "
+                f"digest={payload.get('digest')}"
+            )
+        return
     if payload.get("kind") in {"verify_core", "verify_agent"}:
         if payload.get("ok"):
             print(f"[sdd] {payload['kind']} passed")
@@ -202,6 +217,60 @@ def _read_content(args: argparse.Namespace) -> str:
 def _require_human(args: argparse.Namespace) -> None:
     if not getattr(args, "human", False):
         raise ValueError("this command is human-only; add --human to confirm")
+
+
+def _workflow_error_path(message: str) -> str:
+    match = re.search(
+        r"的 (\$[^\s]+|[A-Za-z0-9_]+(?:\[[0-9]+\])?(?:\.[A-Za-z0-9_]+)*) ",
+        message,
+    )
+    return match.group(1) if match else "$"
+
+
+def _workflow_validate(file_name: str) -> dict[str, Any]:
+    path = Path(file_name)
+    if not path.is_file():
+        return {
+            "ok": False,
+            "kind": "workflow_validate",
+            "errors": [
+                {"path": str(path), "message": f"文件不存在：{file_name}"}
+            ],
+        }
+    try:
+        preset = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {
+            "ok": False,
+            "kind": "workflow_validate",
+            "errors": [
+                {"path": str(path), "message": f"JSON 解析失败：{exc}"}
+            ],
+        }
+    source = path.name
+    errors = engine.validate_workflow_preset(preset, source)
+    if isinstance(preset, dict) and str(preset.get("name") or "") != path.stem:
+        errors.append(
+            f"{source} 的 name 必须与文件名一致（期望 {path.stem}）"
+        )
+    payload: dict[str, Any] = {
+        "ok": not errors,
+        "kind": "workflow_validate",
+        "name": preset.get("name") if isinstance(preset, dict) else None,
+        "version": preset.get("version") if isinstance(preset, dict) else None,
+        "schema": preset.get("schema") if isinstance(preset, dict) else None,
+    }
+    if isinstance(preset, dict):
+        payload["digest"] = engine.workflow_digest(preset)
+    if errors:
+        payload["errors"] = [
+            {
+                "path": _workflow_error_path(message),
+                "message": message,
+            }
+            for message in errors
+        ]
+    return payload
 
 
 def build_parser() -> argparse.ArgumentParser:

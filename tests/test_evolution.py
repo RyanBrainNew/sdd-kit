@@ -799,9 +799,13 @@ class ProfileTests(EvolutionTestBase):
             )
             payload = json.loads(result.stdout)
             self.assertFalse(payload["ok"])
+            messages = [
+                error["message"] if isinstance(error, dict) else error
+                for error in payload["errors"]
+            ]
             self.assertTrue(
-                any(expected in error for error in payload["errors"]),
-                payload["errors"],
+                any(expected in message for message in messages),
+                messages,
             )
 
         spec_id = "SPEC-REFACTOR-003"

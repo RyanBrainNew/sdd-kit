@@ -132,11 +132,23 @@ python -m sdd verify-agent
 python -m sdd check --all --stage ci --check-git
 ```
 
-工作流预设目前有 `l2-standard`、`l2-hotfix`、`l2-strict`、`l2-refactor` 四个。Spec 创建时会把
+文本工件按 LF 规范化后计算哈希；校验兼容历史 CRLF 哈希，正文变化仍会阻断。
+`--check-git` 只要求未合并 Spec 的最近提交带 `Spec-Id` trailer；已 `MERGED`
+的历史 Spec 以 `state.json` 审计记录为准，不受 20 个提交窗口限制。
+
+工作流预设包括 `l2-standard`、`l2-hotfix`、`l2-strict` 三个 schema 1 预设，
+以及 schema 2 的 `l2-refactor`。Spec 创建时会把
 `sdd/workflows/<name>.json` 快照到 `docs/specs/<Spec>/workflow.json`；之后仓库
 预设升级不会改变旧 Spec。`l2-strict` 的 G0–G5 全部需要人工，且验证报告必须有
 独立审查；`l2-hotfix` 使用轻量设计并拒绝高风险；`l2-refactor` 只通过声明式
 JSON 增加行为保持、回归证据和回滚要求，不复制状态机规则。
+
+schema 2 profile 仍由 `sdd/scripts/sdd.py` 解释，只声明数据，不支持任意 DAG 或
+脚本。新增或修改后先校验：
+
+```powershell
+python -m sdd workflow validate --file sdd/workflows/l2-refactor.json
+```
 
 `context_bundle` 只读，包含当前 Task、关联 FR/AC、设计章节、契约、项目约束、
 Review overlay、Fix Pattern、允许路径和排除项。Agent 不得静默扩大范围。

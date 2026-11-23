@@ -2,7 +2,7 @@
   "schema": 2,
   "name": "l2-refactor",
   "version": 1,
-  "description": "行为保持型存量改造：沿用 L2 检查点，强调改动边界、回归证据和可回滚。",
+  "description": "行为保持型存量改造：保留全部阶段与 L2 人工检查点，纳入知识目录上下文，强调改动边界、回归证据和可回滚。",
   "stages": [
     "DRAFT",
     "SPEC_READY",
@@ -17,6 +17,7 @@
     "DRAFT": "spec.md",
     "SPEC_READY": "design.md",
     "DESIGN_READY": "tasks.md",
+    "TASKS_READY": "tasks.md",
     "IMPLEMENTING": "tasks.md",
     "VERIFYING": "verification.md",
     "PR_READY": "PR_BODY.md"
@@ -31,60 +32,16 @@
   },
   "required_gates": {
     "DRAFT": [],
-    "SPEC_READY": [
-      "G0",
-      "G1"
-    ],
-    "DESIGN_READY": [
-      "G0",
-      "G1",
-      "G2"
-    ],
-    "TASKS_READY": [
-      "G0",
-      "G1",
-      "G2",
-      "G3"
-    ],
-    "IMPLEMENTING": [
-      "G0",
-      "G1",
-      "G2",
-      "G3"
-    ],
-    "VERIFYING": [
-      "G0",
-      "G1",
-      "G2",
-      "G3",
-      "G4"
-    ],
-    "PR_READY": [
-      "G0",
-      "G1",
-      "G2",
-      "G3",
-      "G4",
-      "G5"
-    ],
-    "MERGED": [
-      "G0",
-      "G1",
-      "G2",
-      "G3",
-      "G4",
-      "G5"
-    ]
+    "SPEC_READY": ["G0", "G1"],
+    "DESIGN_READY": ["G0", "G1", "G2"],
+    "TASKS_READY": ["G0", "G1", "G2", "G3"],
+    "IMPLEMENTING": ["G0", "G1", "G2", "G3"],
+    "VERIFYING": ["G0", "G1", "G2", "G3", "G4"],
+    "PR_READY": ["G0", "G1", "G2", "G3", "G4", "G5"],
+    "MERGED": ["G0", "G1", "G2", "G3", "G4", "G5"]
   },
   "gate_checks": {
-    "G0": [
-      "G0-01",
-      "G0-02",
-      "G0-03",
-      "G0-04",
-      "G0-05",
-      "G0-06"
-    ],
+    "G0": ["G0-01", "G0-02", "G0-03", "G0-04", "G0-05", "G0-06"],
     "G1": [
       "G1-01",
       "G1-02",
@@ -106,8 +63,8 @@
     ]
   },
   "human_checkpoints": [
-    "spec",
-    "merge"
+    {"type": "approve_spec"},
+    {"type": "confirm_delivery"}
   ],
   "allow_rewind_to": [
     "DRAFT",
@@ -123,10 +80,12 @@
     "security",
     "data_migration",
     "destructive_change",
-    "public_api_break"
+    "public_api_break",
+    "data-loss",
+    "breaking-change"
   ],
   "context_rules": {
-    "allowed_paths": [],
-    "exclude": []
+    "include": ["docs/knowledge/**"],
+    "exclude": ["docs/prd.md"]
   }
 }

@@ -21,7 +21,8 @@
 SDD Kit 把公司 SDD-L2 的流程做成**仓库自带的默认开发路径**，而不是另一份需要人工执行的规范文档。
 
 - **一个状态机**：阶段、工件校验、Gate 和审计事件只在 `sdd/scripts/sdd.py` 里定义。
-- **四套命名工作流**：`l2-standard`、`l2-hotfix`、`l2-strict`、`l2-refactor`，Spec 创建时固定版本。
+- **四套命名工作流**：`l2-standard`、`l2-hotfix`、`l2-strict`，以及 schema 2 的
+  `l2-refactor`；Spec 创建时固定版本。
 - **任何 Agent 都能接入**：Claude Code、Cursor、Kiro 或自研 Agent，只要能执行 shell，就调用同一个 CLI。
 - **零初始化**：平台团队 bootstrap 一次，开发者 `git clone` 后直接开始。
 - **流程能被强制**：Git Hook 与 CI 校验工件，`approve`、`merge`、`unblock`、`rewind` 强制由人执行。
@@ -34,7 +35,7 @@ SDD Kit 把公司 SDD-L2 的流程做成**仓库自带的默认开发路径**，
 |---|---|
 | CLI 入口 | `python -m sdd resume / start-work / submit / submit-task / check` |
 | 状态机 | `DRAFT` → `SPEC_READY` → `DESIGN_READY` → `TASKS_READY` → `IMPLEMENTING` → `VERIFYING` → `PR_READY` → `MERGED` |
-| 工作流 | `l2-standard` 默认；`l2-hotfix` 用轻量设计并拒绝高风险；`l2-strict` 的 G0–G5 全部人工 |
+| 工作流 | `l2-standard` 默认；`l2-hotfix` 用轻量设计并拒绝高风险；`l2-strict` 的 G0–G5 全部人工；`l2-refactor` 使用 schema 2 声明检查组合与上下文 |
 | 人工边界 | 正常流程只有 Spec 确认、交付确认两个计划内检查点；交付确认后才创建 PR；`unblock`、`rewind` 是例外动作 |
 | 证据链 | Gate 报告、产物 SHA-256、`state.json`、`events.jsonl`、测试证据都随 Git 提交 |
 | 可运维 | `board`、`inbox`、`metrics`、`events` 已可用；`rewind` 是人工回退动作 |
@@ -91,9 +92,11 @@ Agent 每次会话先运行 `python -m sdd resume --json`，读取 `next.action`
 | `l2-standard` | 默认 L2 需求 | G0 人工；G2 仅高风险人工；其余自动 |
 | `l2-hotfix` | 紧急修复，低/中风险 | 轻量设计模板；G2 自动；高风险与 `risk_stop` 标签直接拒绝 |
 | `l2-strict` | 安全、迁移、破坏性变更 | G0–G5 全部人工；验证需要独立审查人 |
-| `l2-refactor` | 行为保持型存量改造 | 强调改动边界、回归证据和可回滚；检查点沿用 L2 |
+| `l2-refactor` | 行为保持型存量改造 | schema 2；强调改动边界、回归证据和可回滚；上下文纳入 `docs/knowledge/**` |
 
 Spec 创建时会把预设快照写入 `docs/specs/<Spec>/workflow.json`；之后仓库预设升级不会改变旧 Spec。
+新增或修改 `sdd/workflows/*.json` 后先用
+`python -m sdd workflow validate --file sdd/workflows/<name>.json` 校验。
 
 ## 快速开始
 
@@ -145,6 +148,7 @@ LF 规范化，历史 CRLF 哈希仍可验证，Windows 与 Linux 工作区不�
 | `python -m sdd resume --json` | Agent | 恢复当前 Spec，返回唯一的下一个动作 |
 | `python -m sdd start-work --work-item <id> --json` | Agent | 把工作项绑定到新 Spec |
 | `python -m sdd start-work ... --workflow l2-hotfix` | 人 | 为紧急修复指定命名工作流 |
+| `python -m sdd workflow validate --file <profile>` | 人 / Agent | 校验工作流 profile 并返回 digest |
 | `python -m sdd submit --artifact <name> --file <path> --json` | Agent | 提交阶段工件并接受校验 |
 | `python -m sdd submit-task --task T-xxx --evidence "..." --json` | Agent | 完成一个任务并记录测试证据 |
 | `python -m sdd metrics --json` | Agent / 质量人员 | 查看检查统计、豁免率、逃逸缺陷、重开率和 Gate 一次通过率 |
@@ -179,7 +183,7 @@ sdd/
   core.py                    # Workspace、会话指针与 submit/report 编排
   cli.py                     # python -m sdd 入口
   templates/                 # 六个阶段骨架
-  workflows/                 # l2-standard / l2-hotfix / l2-strict
+  workflows/                 # l2-standard / l2-hotfix / l2-strict / l2-refactor
   prompts/                   # Agent 方法层
   context/                   # 服务卡、契约、ADR、术语模板
   hooks/                     # pre-commit / commit-msg
@@ -221,6 +225,7 @@ Gate 报告单独写入 `sdd/reports/<Spec ID>/`，与 `docs/` 下的 Spec 工�
 |---|---|---|
 | 已交付 | 0.7.0 | `rewind`、`inbox`、`metrics`、事件 v2、产物哈希、审批身份 |
 | 已交付 | 0.8.0 | 三套命名工作流、Spec 快照、`l2-strict` 独立审查、Apache-2.0 与官网 |
+| 已交付 | 0.9.4 | schema 2 工作流 Profile、`workflow validate`、`l2-refactor` 示范预设 |
 | 未开发（0.9.0） | [#1](https://github.com/RyanBrainNew/sdd-kit/issues/1) | 只读单文件 HTML 运行视图 `sdd view` |
 | 未开发（0.9.0） | [#2](https://github.com/RyanBrainNew/sdd-kit/issues/2) | 外部 runner 接入契约 `deploy/runner/CONTRACT.md` |
 | 未开发（后续） | [#3](https://github.com/RyanBrainNew/sdd-kit/issues/3) | 固定预设升级 `upgrade-workflow` |

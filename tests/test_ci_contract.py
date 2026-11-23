@@ -28,7 +28,7 @@ class CiWorkflowTests(SddFlowBase):
         return result
 
     def test_ci_workflow_runs_sdd_checks(self):
-        # [AC-003-1] [AC-003-2] [AC-003-3]
+        # [AC-003-1] [AC-003-2] [AC-003-3] [AC-005-3]
         workflow = (KIT_ROOT / ".github" / "workflows" / "tests.yml").read_text(
             encoding="utf-8"
         )
