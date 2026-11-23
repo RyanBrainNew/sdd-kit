@@ -3050,6 +3050,91 @@ def gate_g1_placeholders(ctx: dict[str, Any]) -> tuple[list[str], str]:
     return errors, "TODO/placeholder/clarification = 0"
 
 
+def gate_g2_design(ctx: dict[str, Any]) -> tuple[list[str], str]:
+    errors = check_design(
+        read_text(ctx["directory"] / "design.md"),
+        ctx["spec_acs"],
+        ctx.get("workflow"),
+    )
+    return errors, f"{len(ctx['spec_acs'])} AC covered in design"
+
+
+def gate_g3_tasks(ctx: dict[str, Any]) -> tuple[list[str], str]:
+    tasks_text = read_text(ctx["directory"] / "tasks.md")
+    errors = check_tasks(tasks_text, ctx["spec_acs"], ctx["config"])
+    return errors, f"{len(parse_tasks(tasks_text))} tasks parsed"
+
+
+def gate_g4_tasks_done(ctx: dict[str, Any]) -> tuple[list[str], str]:
+    tasks = parse_tasks(read_text(ctx["directory"] / "tasks.md"))
+    errors: list[str] = []
+    if not tasks:
+        errors.append("tasks.md 没有任务")
+    else:
+        pending = [
+            str(task["id"])
+            for task in tasks
+            if not task.get("done")
+        ]
+        if pending:
+            errors.append("以下 Task 尚未完成：" + ", ".join(pending))
+    return errors, f"{len(tasks)} tasks checked"
+
+
+def gate_g4_task_evidence(ctx: dict[str, Any]) -> tuple[list[str], str]:
+    tasks = parse_tasks(read_text(ctx["directory"] / "tasks.md"))
+    verification_text = read_text(ctx["directory"] / "verification.md")
+    missing = [
+        str(task["id"])
+        for task in tasks
+        if str(task["id"]) not in verification_text
+    ]
+    errors = (
+        ["以下 Task 没有验证证据：" + ", ".join(missing)]
+        if missing
+        else []
+    )
+    return errors, f"{len(tasks) - len(missing)}/{len(tasks)} tasks evidenced"
+
+
+def gate_g4_task_mapping(ctx: dict[str, Any]) -> tuple[list[str], str]:
+    tasks = parse_tasks(read_text(ctx["directory"] / "tasks.md"))
+    errors = task_table_error(tasks, ctx["spec_acs"], ctx["config"])
+    errors.extend(
+        task_test_name_errors(ctx["root"], ctx["config"], tasks)
+    )
+    return errors, f"{len(tasks)} task mappings checked"
+
+
+def gate_g5_verification(ctx: dict[str, Any]) -> tuple[list[str], str]:
+    text = read_text(ctx["directory"] / "verification.md")
+    errors = check_verification(
+        text,
+        ctx["spec_acs"],
+        ctx.get("workflow"),
+        ctx["state"],
+        ctx["config"],
+    )
+    return errors, f"{len(ctx['spec_acs'])} AC verification checked"
+
+
+def gate_g5_test_coverage(ctx: dict[str, Any]) -> tuple[list[str], str]:
+    errors = check_test_coverage(
+        ctx["root"], ctx["config"], ctx["spec_acs"]
+    )
+    return errors, f"{len(ctx['spec_acs'])} AC test coverage checked"
+
+
+def gate_g5_prior_gates(ctx: dict[str, Any]) -> tuple[list[str], str]:
+    errors = check_gates(
+        ctx["root"],
+        ctx["config"],
+        ctx["directory"],
+        "VERIFYING",
+    )
+    return errors, "G0-G4 reports checked"
+
+
 GATE_CHECK_FUNCS = {
     "G0-01": gate_g0_work_item,
     "G0-02": gate_g0_structure,
@@ -3062,7 +3147,31 @@ GATE_CHECK_FUNCS = {
     "G1-02": gate_g1_fr_ac,
     "G1-03": gate_g1_testability,
     "G1-04": gate_g1_placeholders,
+    "G2-01": gate_g2_design,
+    "G3-01": gate_g3_tasks,
+    "G4-01": gate_g4_tasks_done,
+    "G4-02": gate_g4_task_evidence,
+    "G4-03": gate_g4_task_mapping,
+    "G5-01": gate_g5_verification,
+    "G5-02": gate_g5_test_coverage,
+    "G5-03": gate_g5_prior_gates,
 }
+
+
+def classify_check_result(
+    item: dict[str, Any],
+    errors: list[str],
+    waiver: Optional[dict[str, Any]] = None,
+) -> str:
+    if not errors:
+        return "pass"
+    if item.get("redline"):
+        return "block"
+    if str(item.get("level") or "") == "advisory":
+        return "warn"
+    if waiver is not None:
+        return "warn"
+    return "block"
 
 
 def run_gate_checks(
@@ -3070,6 +3179,9 @@ def run_gate_checks(
     ctx: dict[str, Any],
     workflow: Optional[dict[str, Any]] = None,
 ) -> list[dict[str, Any]]:
+    if isinstance(workflow, dict):
+        ctx = dict(ctx)
+        ctx["workflow"] = workflow
     registry_errors = validate_check_registry()
     if registry_errors:
         raise SddError("检查项注册表无效：" + "；".join(registry_errors))
@@ -3093,6 +3205,11 @@ def run_gate_checks(
             detail = "missing check function"
         else:
             item_errors, detail = func(ctx)
+        if item_errors and item.get("redline"):
+            item_errors = list(item_errors) + [
+                f"{item['id']} 是安全/证据链红线，不能豁免或降级"
+            ]
+        result = classify_check_result(item, item_errors)
         rows.append(
             {
                 "id": item["id"],
@@ -3100,8 +3217,9 @@ def run_gate_checks(
                 "level": item["level"],
                 "trigger": item["trigger"],
                 "waivable": item["waivable"],
+                "redline": item["redline"],
                 "owner": item["owner"],
-                "result": "block" if item_errors else "pass",
+                "result": result,
                 "detail": detail,
                 "errors": item_errors,
             }
@@ -3110,7 +3228,21 @@ def run_gate_checks(
 
 
 def gate_rows_errors(rows: list[dict[str, Any]]) -> list[str]:
-    return [error for row in rows for error in row.get("errors", [])]
+    return [
+        error
+        for row in rows
+        if str(row.get("result") or "").lower() == "block"
+        for error in row.get("errors", [])
+    ]
+
+
+def gate_rows_warnings(rows: list[dict[str, Any]]) -> list[str]:
+    return [
+        error
+        for row in rows
+        if str(row.get("result") or "").lower() == "warn"
+        for error in row.get("errors", [])
+    ]
 
 
 def check_duplicate_spec_files(root: Path, config: dict[str, Any]) -> list[str]:
@@ -3306,6 +3438,7 @@ def normalize_check_rows(
                     "level": str(item.get("level") or "required"),
                     "result": str(item.get("result") or "pass").upper(),
                     "detail": str(item.get("detail") or ""),
+                    "waiver": str(item.get("waiver") or ""),
                 }
             )
             continue
@@ -3317,6 +3450,7 @@ def normalize_check_rows(
                 "level": "required",
                 "result": str(result).upper(),
                 "detail": str(detail),
+                "waiver": "",
             }
         )
     return rows
@@ -3357,6 +3491,9 @@ def write_gate_report(
     report_path = gate_report_path(root, config, spec_id, gate)
 
     check_rows = normalize_check_rows(gate, checks)
+    warning_rows = [
+        row for row in check_rows if row["result"] == "WARN"
+    ]
     lines = [
         f"# {gate} {label}报告",
         "",
@@ -3372,22 +3509,24 @@ def write_gate_report(
         f"| 检查时间 | {now()} |",
         f"| 执行模式 | {mode} |",
         f"| 总体结果 | {status} |",
+        f"| 告警数 | {len(warning_rows)} |",
         "",
         "## 2. 检查项",
         "",
-        "| 检查 ID | 检查项 | 级别 | 结果 | 证据 |",
-        "| --- | --- | --- | --- | --- |",
+        "| 检查 ID | 检查项 | 级别 | 结果 | 证据 | 豁免 |",
+        "| --- | --- | --- | --- | --- | --- |",
     ]
     for row in check_rows:
         safe_name = " ".join(row["name"].split()).replace("|", "\\|")
         safe_detail = " ".join(row["detail"].split()).replace("|", "\\|")
+        safe_waiver = " ".join(row["waiver"].split()).replace("|", "\\|")
         lines.append(
             f"| {row['id']} | {safe_name} | {row['level']} | "
-            f"{row['result']} | {safe_detail} |"
+            f"{row['result']} | {safe_detail} | {safe_waiver or '—'} |"
         )
     if not check_rows:
         lines.append(
-            f"| {gate}-00 | 无自动检查项 | required | PASS | 由人工评审 |"
+            f"| {gate}-00 | 无自动检查项 | required | PASS | 由人工评审 | — |"
         )
 
     lines.extend(
@@ -3440,7 +3579,15 @@ def write_gate_report(
     )
     if errors:
         lines.extend(f"- BLOCK：{error}" for error in errors)
-    else:
+    warning_messages = [
+        f"{row['id']}：{row['detail'] or '检查失败'}"
+        for row in checks
+        if isinstance(row, dict)
+        and str(row.get("result") or "").lower() == "warn"
+    ]
+    if warning_messages:
+        lines.extend(f"- WARN：{message}" for message in warning_messages)
+    if not errors and not warning_messages:
         lines.append("- 无阻断问题。")
     lines.append("")
     write_text(report_path, "\n".join(lines))
@@ -3608,28 +3755,24 @@ def run_checks(
         errors.extend(gate_rows_errors(run_gate_checks("G0", ctx, workflow)))
         errors.extend(gate_rows_errors(run_gate_checks("G1", ctx, workflow)))
     if stage in {"design", "tasks", "verify", "ci"}:
-        errors.extend(check_design(design_text, spec_acs, workflow))
+        errors.extend(gate_rows_errors(run_gate_checks("G2", ctx, workflow)))
     if stage in {"tasks", "verify", "ci"}:
-        errors.extend(
-            check_tasks(
-                tasks_text,
-                spec_acs,
-                config,
-                (
-                    root
-                    if stage in {"verify", "ci"} and not legacy_merged
-                    else None
-                ),
-            )
-        )
+        errors.extend(gate_rows_errors(run_gate_checks("G3", ctx, workflow)))
+    tasks = parse_tasks(tasks_text)
+    run_g4 = (
+        str(state.get("state")) == "IMPLEMENTING"
+        and bool(tasks)
+        and all(task.get("done") for task in tasks)
+    )
+    if run_g4 and not legacy_merged:
+        errors.extend(gate_rows_errors(run_gate_checks("G4", ctx, workflow)))
     if stage in {"verify", "ci"}:
-        errors.extend(
-            check_verification(
-                verification_text, spec_acs, workflow, state, config
-            )
-        )
-        if not legacy_merged:
-            errors.extend(check_test_coverage(root, config, spec_acs))
+        g5_rows = run_gate_checks("G5", ctx, workflow)
+        if legacy_merged:
+            g5_rows = [
+                row for row in g5_rows if row.get("id") != "G5-02"
+            ]
+        errors.extend(gate_rows_errors(g5_rows))
     if stage == "ci":
         if state.get("state") not in {"PR_READY", "MERGED"}:
             errors.append("CI 检查要求状态为 PR_READY 或 MERGED")
@@ -5220,6 +5363,7 @@ def command_complete(
         raise SddError(
             "require_approver=true；请用 --approver 提供审批人"
         )
+    ctx = gate_context(root, config, directory, state)
 
     if args.task:
         if state.get("state") != "IMPLEMENTING":
@@ -5276,18 +5420,8 @@ def command_complete(
             return 0
         if tasks and all(task["done"] for task in tasks):
             mode = gate_mode(config, "G4", state, args.human, workflow)
-            verification_text = read_text(directory / "verification.md")
-            missing_evidence = [
-                task["id"] for task in tasks if task["id"] not in verification_text
-            ]
-            errors = []
-            if missing_evidence:
-                errors.append(
-                    "以下 Task 没有验证证据：" + ", ".join(missing_evidence)
-                )
-            errors.extend(task_table_error(tasks, check_spec(
-                read_text(directory / "spec.md"), spec_id
-            )[1], config))
+            rows = run_gate_checks("G4", ctx, workflow)
+            errors = gate_rows_errors(rows)
             if errors:
                 record_check_failure(directory, "tasks", errors, gate="G4")
                 record_gate(
@@ -5299,7 +5433,7 @@ def command_complete(
                     "VERIFYING",
                     mode,
                     evidence,
-                    [("Task 完成与证据", "FAILED", "见问题清单")],
+                    rows,
                     errors,
                     approver,
                 )
@@ -5320,11 +5454,7 @@ def command_complete(
                 "VERIFYING",
                 mode,
                 "all tasks completed",
-                [
-                    ("Task 全部完成", "PASS", f"{len(tasks)} 个 Task 状态均为 Done"),
-                    ("Task 验证证据", "PASS", "verification.md 已记录每个 Task"),
-                    ("Task 测试映射", "PASS", "每个 Task 有测试类/方法和命令"),
-                ],
+                rows,
                 approver=approver if mode == "manual" else None,
             )
             transition(
@@ -5347,13 +5477,8 @@ def command_complete(
             "DRAFT 状态需要人类运行 `python -m sdd approve --human --evidence ...`"
         )
     if current == "SPEC_READY":
-        spec_text = read_text(directory / "spec.md")
-        _, spec_acs = check_spec(spec_text, spec_id)
-        errors = check_design(
-            read_text(directory / "design.md"),
-            spec_acs,
-            workflow,
-        )
+        rows = run_gate_checks("G2", ctx, workflow)
+        errors = gate_rows_errors(rows)
         if errors:
             for error in errors:
                 eprint(f"- {error}")
@@ -5367,7 +5492,7 @@ def command_complete(
                 "DESIGN_READY",
                 "auto",
                 evidence,
-                [("Design 完整性", "FAILED", "见问题清单")],
+                rows,
                 errors,
                 approver,
             )
@@ -5384,11 +5509,7 @@ def command_complete(
             "DESIGN_READY",
             mode,
             evidence,
-            [
-                ("Design 章节齐备", "PASS", "公司 14 章骨架"),
-                ("AC 设计覆盖", "PASS", "全部 AC 在 design.md 中有落点"),
-                ("方案与回滚", "PASS", "方案、风险、回滚章节已填写"),
-            ],
+            rows,
             approver=approver if mode == "manual" else None,
         )
         transition(
@@ -5402,8 +5523,8 @@ def command_complete(
             artifacts=gate_artifact_entries(root, directory, "G2"),
         )
     elif current == "DESIGN_READY":
-        _, spec_acs = check_spec(read_text(directory / "spec.md"), spec_id)
-        errors = check_tasks(read_text(directory / "tasks.md"), spec_acs, config)
+        rows = run_gate_checks("G3", ctx, workflow)
+        errors = gate_rows_errors(rows)
         if errors:
             for error in errors:
                 eprint(f"- {error}")
@@ -5417,7 +5538,7 @@ def command_complete(
                 "TASKS_READY",
                 "auto",
                 evidence,
-                [("Tasks 完整性", "FAILED", "见问题清单")],
+                rows,
                 errors,
                 approver,
             )
@@ -5434,12 +5555,7 @@ def command_complete(
             "TASKS_READY",
             mode,
             evidence,
-            [
-                ("Task 字段完整", "PASS", "公司任务表字段完整"),
-                ("AC 全覆盖", "PASS", "无孤立 AC"),
-                ("依赖无环", "PASS", "依赖 DAG 校验通过"),
-                ("测试映射", "PASS", "每个 Task 有测试类和命令"),
-            ],
+            rows,
             approver=approver if mode == "manual" else None,
         )
         transition(
@@ -5453,8 +5569,8 @@ def command_complete(
             artifacts=gate_artifact_entries(root, directory, "G3"),
         )
     elif current == "TASKS_READY":
-        _, spec_acs = check_spec(read_text(directory / "spec.md"), spec_id)
-        errors = check_tasks(read_text(directory / "tasks.md"), spec_acs, config)
+        rows = run_gate_checks("G3", ctx, workflow)
+        errors = gate_rows_errors(rows)
         if errors:
             for error in errors:
                 eprint(f"- {error}")
@@ -5477,12 +5593,7 @@ def command_complete(
                 "TASKS_READY",
                 mode,
                 evidence,
-                [
-                    ("Task 字段完整", "PASS", "公司任务表字段完整"),
-                    ("AC 全覆盖", "PASS", "无孤立 AC"),
-                    ("依赖无环", "PASS", "依赖 DAG 校验通过"),
-                    ("测试映射", "PASS", "每个 Task 有测试类和命令"),
-                ],
+                rows,
                 approver=approver if mode == "manual" else None,
             )
         transition(
@@ -5497,15 +5608,8 @@ def command_complete(
         if not tasks or not all(task["done"] for task in tasks):
             raise SddError("还有未完成的 task；用 `sdd complete --task T-xxx` 逐个完成")
         mode = gate_mode(config, "G4", state, args.human, workflow)
-        verification_text = read_text(directory / "verification.md")
-        missing_evidence = [
-            task["id"] for task in tasks if task["id"] not in verification_text
-        ]
-        _, spec_acs = check_spec(read_text(directory / "spec.md"), spec_id)
-        errors = task_table_error(tasks, spec_acs, config)
-        errors.extend(task_test_name_errors(root, config, tasks))
-        if missing_evidence:
-            errors.append("以下 Task 没有验证证据：" + ", ".join(missing_evidence))
+        rows = run_gate_checks("G4", ctx, workflow)
+        errors = gate_rows_errors(rows)
         if errors:
             record_check_failure(directory, "tasks", errors, gate="G4")
             record_gate(
@@ -5517,7 +5621,7 @@ def command_complete(
                 "VERIFYING",
                 mode,
                 evidence,
-                [("Task 完成与证据", "FAILED", "见问题清单")],
+                rows,
                 errors,
                 approver,
             )
@@ -5535,11 +5639,7 @@ def command_complete(
             "VERIFYING",
             mode,
             evidence,
-            [
-                ("Task 全部完成", "PASS", f"{len(tasks)} 个 Task 状态均为 Done"),
-                ("Task 验证证据", "PASS", "verification.md 已记录每个 Task"),
-                ("Task 测试映射", "PASS", "每个 Task 有测试类/方法和命令"),
-            ],
+            rows,
             approver=approver if mode == "manual" else None,
         )
         transition(
@@ -5553,18 +5653,8 @@ def command_complete(
             artifacts=gate_artifact_entries(root, directory, "G4"),
         )
     elif current == "VERIFYING":
-        _, spec_acs = check_spec(read_text(directory / "spec.md"), spec_id)
-        errors = check_verification(
-            read_text(directory / "verification.md"),
-            spec_acs,
-            workflow,
-            state,
-            config,
-        )
-        errors.extend(check_test_coverage(root, config, spec_acs))
-        errors.extend(
-            check_gates(root, config, directory, "VERIFYING")
-        )
+        rows = run_gate_checks("G5", ctx, workflow)
+        errors = gate_rows_errors(rows)
         if errors:
             for error in errors:
                 eprint(f"- {error}")
@@ -5578,7 +5668,7 @@ def command_complete(
                 "PR_READY",
                 "auto",
                 evidence,
-                [("规格验证", "FAILED", "见问题清单")],
+                rows,
                 errors,
                 approver,
             )
@@ -5595,12 +5685,7 @@ def command_complete(
             "PR_READY",
             mode,
             evidence,
-            [
-                ("全部 AC 有测试关联", "PASS", "test_globs 命中全部 AC"),
-                ("验证命令与结果", "PASS", "verification.md 已填写"),
-                ("Gate 5 结论", "PASS", "verification.md 明确 PASS"),
-                ("G0–G4 报告", "PASS", "Gate 报告齐备且为 PASS"),
-            ],
+            rows,
             approver=approver if mode == "manual" else None,
         )
         write_report(root, directory, state)

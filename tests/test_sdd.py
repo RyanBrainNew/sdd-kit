@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from sdd.core import Workspace
 from sdd.scripts import sdd as engine
@@ -1418,6 +1419,137 @@ class StatusTest(unittest.TestCase):
         )
         self.assertIn("--human", result.stderr)
         self.assertEqual(self.state()["state"], "DRAFT")
+
+
+class GateClassificationTests(SddFlowBase):
+    def test_required_failure_blocks(self):
+        # [AC-002-1]
+        self.new_spec()
+        self.write(
+            "docs/specs/SPEC-ORDER-001/spec.md",
+            SPEC_TEXT.replace(
+                "- Out-of-Scope：不支持已支付订单退款。",
+                "- Out-of-Scope：待补充",
+            ),
+        )
+        self.run_sdd(
+            "approve",
+            "--spec",
+            SPEC_ID,
+            "--human",
+            "--evidence",
+            "确认",
+            expect=2,
+        )
+        self.assertEqual(self.state()["state"], "DRAFT")
+        report = (
+            self.root / "sdd/reports/SPEC-ORDER-001/gate0-report.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("| 总体结果 | FAILED |", report)
+        self.assertIn("| G0-06 |", report)
+        self.assertIn("| BLOCK |", report)
+
+    def test_advisory_failure_warns(self):
+        # [AC-002-2]
+        self.new_spec()
+        spec_text = SPEC_TEXT
+        self.write("docs/specs/SPEC-ORDER-001/spec.md", spec_text)
+        failure = lambda ctx: (["演示 advisory 失败"], "advisory demo")
+        engine.sync_feat_map(
+            self.root,
+            engine.load_config(self.root),
+            self.state(),
+            spec_text,
+        )
+        with mock.patch.dict(engine.GATE_CHECK_FUNCS, {"G0-07": failure}):
+            config = engine.load_config(self.root)
+            directory = self.root / "docs/specs/SPEC-ORDER-001"
+            ctx = engine.gate_context(
+                self.root, config, directory, self.state()
+            )
+            rows = engine.run_gate_checks("G0", ctx)
+            self.assertEqual(engine.gate_rows_errors(rows), [])
+            self.assertEqual(
+                engine.gate_rows_warnings(rows), ["演示 advisory 失败"]
+            )
+            engine.record_gate(
+                self.root,
+                config,
+                directory,
+                self.state(),
+                "G0",
+                "SPEC_READY",
+                "manual",
+                "demo",
+                rows,
+            )
+        report = (
+            self.root / "sdd/reports/SPEC-ORDER-001/gate0-report.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("| 总体结果 | PASS |", report)
+        self.assertIn("| G0-07 |", report)
+        self.assertIn("| WARN |", report)
+        self.assertIn("| 告警数 | 1 |", report)
+
+    def test_redline_cannot_be_waived(self):
+        # [AC-002-3]
+        self.new_spec()
+        config = engine.load_config(self.root)
+        directory = self.root / "docs/specs/SPEC-ORDER-001"
+        ctx = engine.gate_context(self.root, config, directory, self.state())
+        rows = engine.run_gate_checks("G5", ctx)
+        row = next(item for item in rows if item["id"] == "G5-01")
+        self.assertEqual(row["result"], "block")
+        self.assertTrue(row["redline"])
+        self.assertIn("红线", "\n".join(row["errors"]))
+        self.assertEqual(
+            engine.classify_check_result(
+                {"level": "required", "redline": True},
+                ["failed"],
+                {"approver": "human"},
+            ),
+            "block",
+        )
+
+    def test_gate_report_renders_warn_and_block(self):
+        # [AC-002-4]
+        self.new_spec()
+        config = engine.load_config(self.root)
+        directory = self.root / "docs/specs/SPEC-ORDER-001"
+        rows = [
+            {
+                "id": "G4-01",
+                "name": "required check",
+                "level": "required",
+                "result": "block",
+                "detail": "required failed",
+            },
+            {
+                "id": "G4-02",
+                "name": "advisory check",
+                "level": "advisory",
+                "result": "warn",
+                "detail": "advisory failed",
+            },
+        ]
+        path = engine.write_gate_report(
+            self.root,
+            config,
+            directory,
+            self.state(),
+            "G4",
+            "VERIFYING",
+            "auto",
+            "demo",
+            rows,
+            ["required failed"],
+        )
+        report = path.read_text(encoding="utf-8")
+        self.assertIn("| 总体结果 | FAILED |", report)
+        self.assertIn("| G4-01 |", report)
+        self.assertIn("| G4-02 |", report)
+        self.assertIn("| BLOCK |", report)
+        self.assertIn("| WARN |", report)
 
 
 class GateRegistryTests(SddFlowBase):
