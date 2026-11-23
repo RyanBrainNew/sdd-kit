@@ -8200,6 +8200,12 @@ def build_trace(
         "path": change_path.relative_to(root).as_posix(),
         "records": change_set_records(directory),
     }
+    payload["chain"].append(
+        {
+            "link": "change_set",
+            "value": payload["change_set"]["path"],
+        }
+    )
     payload["commits"] = trace_commits(root, config, spec_id)
     if not payload["commits"]:
         missing.append(
@@ -8224,6 +8230,12 @@ def build_trace(
         "path": evidence_file.relative_to(root).as_posix(),
         "records": filtered,
     }
+    payload["chain"].append(
+        {
+            "link": "evidence",
+            "value": f"{len(filtered)} record(s)",
+        }
+    )
     if not filtered:
         missing.append(
             {"link": "evidence", "detail": "缺少 verification-evidence 记录"}
