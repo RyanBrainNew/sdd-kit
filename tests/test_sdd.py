@@ -1420,6 +1420,62 @@ class StatusTest(unittest.TestCase):
         self.assertEqual(self.state()["state"], "DRAFT")
 
 
+class GateRegistryTests(SddFlowBase):
+    def test_registry_covers_all_gates(self):
+        # [AC-001-1]
+        self.assertEqual(engine.validate_check_registry(), [])
+        ids = [str(item["id"]) for item in engine.CHECK_REGISTRY]
+        self.assertEqual(len(ids), len(set(ids)))
+        self.assertEqual(
+            {str(item["gate"]) for item in engine.CHECK_REGISTRY},
+            set(engine.GATE_STAGES),
+        )
+        for item in engine.CHECK_REGISTRY:
+            self.assertIn(item["level"], engine.CHECK_LEVELS)
+            self.assertIn(item["trigger"], engine.CHECK_TRIGGERS)
+            self.assertIsInstance(item["waivable"], bool)
+            self.assertIsInstance(item["redline"], bool)
+
+    def test_invalid_registry_metadata_rejected(self):
+        # [AC-001-2]
+        items = [dict(item) for item in engine.CHECK_REGISTRY]
+        items[0]["trigger"] = "approve"
+        items[1]["redline"] = "no"
+        items[2]["level"] = "optional"
+        items[3]["id"] = "G9-01"
+        items.append(dict(items[4]))
+        rendered = "\n".join(engine.validate_check_registry(tuple(items)))
+        self.assertIn("trigger", rendered)
+        self.assertIn("redline", rendered)
+        self.assertIn("required 或 advisory", rendered)
+        self.assertIn("G9-01", rendered)
+        self.assertIn("检查 ID 重复", rendered)
+
+    def test_legacy_ids_and_reports_supported(self):
+        # [AC-001-3]
+        ids = {str(item["id"]) for item in engine.CHECK_REGISTRY}
+        for check_id in (
+            "G0-01",
+            "G0-02",
+            "G0-03",
+            "G0-04",
+            "G0-05",
+            "G0-06",
+            "G0-07",
+            "G1-01",
+            "G1-02",
+            "G1-03",
+            "G1-04",
+        ):
+            self.assertIn(check_id, ids)
+        legacy = self.root / "legacy-gate-report.md"
+        legacy.write_text(
+            "# Legacy\n\n| 总体结果 | PASS |\n",
+            encoding="utf-8",
+        )
+        self.assertEqual(engine.gate_report_status(legacy), "PASS")
+
+
 class CheckRegistryTests(SddFlowBase):
     def test_registry_ids_are_unique(self):
         # [AC-003-4]

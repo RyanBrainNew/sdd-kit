@@ -138,9 +138,13 @@ CHECK_REQUIRED_FIELDS = (
     "level",
     "trigger",
     "waivable",
+    "redline",
     "evidence",
     "owner",
 )
+
+CHECK_LEVELS = {"required", "advisory"}
+CHECK_TRIGGERS = {"doc_pr", "code_pr", "local", "ci", "pipeline"}
 
 CHECK_REGISTRY = (
     {
@@ -148,8 +152,9 @@ CHECK_REGISTRY = (
         "gate": "G0",
         "name": "工作项与 Spec 元数据一致",
         "level": "required",
-        "trigger": "approve",
+        "trigger": "doc_pr",
         "waivable": False,
+        "redline": False,
         "evidence": "spec.md 工作项 ID 与 state/prd-index 一致",
         "owner": "planner",
     },
@@ -158,8 +163,9 @@ CHECK_REGISTRY = (
         "gate": "G0",
         "name": "PRD 索引结构可解析",
         "level": "required",
-        "trigger": "approve",
+        "trigger": "doc_pr",
         "waivable": False,
+        "redline": False,
         "evidence": "docs/prd-index.md 有 source/updated 且表格可解析",
         "owner": "planner",
     },
@@ -168,8 +174,9 @@ CHECK_REGISTRY = (
         "gate": "G0",
         "name": "PRD 澄清标记为 0",
         "level": "required",
-        "trigger": "approve",
+        "trigger": "doc_pr",
         "waivable": False,
+        "redline": False,
         "evidence": "docs/prd-index.md 不含 [NEEDS CLARIFICATION]",
         "owner": "planner",
     },
@@ -178,8 +185,9 @@ CHECK_REGISTRY = (
         "gate": "G0",
         "name": "FEAT 已登记且唯一",
         "level": "required",
-        "trigger": "approve",
+        "trigger": "doc_pr",
         "waivable": False,
+        "redline": False,
         "evidence": "spec.md FEAT ID 与 docs/prd-index.md 一致且不重复",
         "owner": "planner",
     },
@@ -188,8 +196,9 @@ CHECK_REGISTRY = (
         "gate": "G0",
         "name": "FEAT 映射覆盖全部 FR/AC",
         "level": "required",
-        "trigger": "approve",
+        "trigger": "doc_pr",
         "waivable": False,
+        "redline": False,
         "evidence": "## FEAT 映射 表覆盖 Spec 的全部 FR/AC，无孤儿项",
         "owner": "planner",
     },
@@ -198,8 +207,9 @@ CHECK_REGISTRY = (
         "gate": "G0",
         "name": "范围声明可判定",
         "level": "required",
-        "trigger": "approve",
+        "trigger": "doc_pr",
         "waivable": False,
+        "redline": False,
         "evidence": "spec.md 的 In-Scope / Out-of-Scope 已填写",
         "owner": "planner",
     },
@@ -208,8 +218,9 @@ CHECK_REGISTRY = (
         "gate": "G0",
         "name": "历史 Spec 兼容标注",
         "level": "advisory",
-        "trigger": "approve",
+        "trigger": "doc_pr",
         "waivable": True,
+        "redline": False,
         "evidence": "MERGED 历史 Spec 使用 legacy 校验并在报告标注",
         "owner": "planner",
     },
@@ -218,8 +229,9 @@ CHECK_REGISTRY = (
         "gate": "G1",
         "name": "Spec 章节齐备",
         "level": "required",
-        "trigger": "approve",
+        "trigger": "doc_pr",
         "waivable": False,
+        "redline": False,
         "evidence": "spec.md 核心章节存在",
         "owner": "planner",
     },
@@ -228,8 +240,9 @@ CHECK_REGISTRY = (
         "gate": "G1",
         "name": "FR/AC 映射完整",
         "level": "required",
-        "trigger": "approve",
+        "trigger": "doc_pr",
         "waivable": False,
+        "redline": False,
         "evidence": "每个 FR 至少有一条 AC",
         "owner": "planner",
     },
@@ -238,8 +251,9 @@ CHECK_REGISTRY = (
         "gate": "G1",
         "name": "AC 可测试性",
         "level": "required",
-        "trigger": "approve",
+        "trigger": "doc_pr",
         "waivable": False,
+        "redline": False,
         "evidence": "每条 AC 含 Given/When/Then 与执行路径",
         "owner": "planner",
     },
@@ -248,10 +262,99 @@ CHECK_REGISTRY = (
         "gate": "G1",
         "name": "无占位符与澄清标记",
         "level": "required",
-        "trigger": "approve",
+        "trigger": "doc_pr",
         "waivable": False,
+        "redline": False,
         "evidence": "spec.md 无 TODO、占位符或 [NEEDS CLARIFICATION]",
         "owner": "planner",
+    },
+    {
+        "id": "G2-01",
+        "gate": "G2",
+        "name": "Design 完整性与 AC 覆盖",
+        "level": "required",
+        "trigger": "doc_pr",
+        "waivable": False,
+        "redline": False,
+        "evidence": "design.md 章节、AC、方案、风险和回滚内容完整",
+        "owner": "designer",
+    },
+    {
+        "id": "G3-01",
+        "gate": "G3",
+        "name": "Tasks 结构、依赖与 AC 映射",
+        "level": "required",
+        "trigger": "doc_pr",
+        "waivable": False,
+        "redline": False,
+        "evidence": "tasks.md 章节、任务字段、依赖 DAG 和 AC 映射完整",
+        "owner": "planner",
+    },
+    {
+        "id": "G4-01",
+        "gate": "G4",
+        "name": "全部 Task 完成",
+        "level": "required",
+        "trigger": "code_pr",
+        "waivable": False,
+        "redline": False,
+        "evidence": "tasks.md 中全部任务状态为 Done",
+        "owner": "implementer",
+    },
+    {
+        "id": "G4-02",
+        "gate": "G4",
+        "name": "Task 验证证据",
+        "level": "required",
+        "trigger": "code_pr",
+        "waivable": True,
+        "redline": False,
+        "evidence": "verification.md 记录每个 Task 的执行证据",
+        "owner": "implementer",
+    },
+    {
+        "id": "G4-03",
+        "gate": "G4",
+        "name": "Task 表与测试映射",
+        "level": "required",
+        "trigger": "code_pr",
+        "waivable": False,
+        "redline": False,
+        "evidence": "Task FR/AC 完整且测试名可在测试文件定位",
+        "owner": "implementer",
+    },
+    {
+        "id": "G5-01",
+        "gate": "G5",
+        "name": "可复验命令证据与验证结构",
+        "level": "required",
+        "trigger": "ci",
+        "waivable": False,
+        "redline": True,
+        "evidence": "verification.md 结构完整且包含成功命令证据和独立审查",
+        "owner": "verifier",
+    },
+    {
+        "id": "G5-02",
+        "gate": "G5",
+        "name": "AC 测试覆盖",
+        "level": "required",
+        "trigger": "ci",
+        "waivable": False,
+        "redline": False,
+        "evidence": "测试函数体内覆盖 spec.md 的全部 AC",
+        "owner": "verifier",
+    },
+    {
+        "id": "G5-03",
+        "gate": "G5",
+        "name": "前置 Gate 报告齐备",
+        "level": "required",
+        "trigger": "ci",
+        "waivable": False,
+        "redline": False,
+        "evidence": "G0–G4 报告存在且总体结果为 PASS",
+        "owner": "verifier",
     },
 )
 
@@ -2784,6 +2887,7 @@ def validate_check_registry(
 ) -> list[str]:
     errors: list[str] = []
     seen: set[str] = set()
+    gates_seen: set[str] = set()
     for item in registry:
         if not isinstance(item, dict):
             errors.append("检查项必须是对象")
@@ -2798,13 +2902,48 @@ def validate_check_registry(
             errors.append("检查项缺少非空 ID")
         elif check_id in seen:
             errors.append(f"检查 ID 重复：{check_id}")
+        elif not re.fullmatch(r"G[0-5]-\d{2}", check_id):
+            errors.append(f"{check_id} 的 ID 必须符合 G[0-5]-NN")
         seen.add(check_id)
-        if str(item.get("gate") or "") not in GATE_STAGES:
+        gate = str(item.get("gate") or "")
+        if gate not in GATE_STAGES:
             errors.append(f"{check_id or '(unknown)'} 的 Gate 非法：{item.get('gate')}")
-        if str(item.get("level") or "") not in {"required", "advisory"}:
+        else:
+            gates_seen.add(gate)
+            if check_id and not check_id.startswith(f"{gate}-"):
+                errors.append(
+                    f"{check_id} 的 ID 前缀必须与 Gate {gate} 一致"
+                )
+        level = str(item.get("level") or "")
+        if level not in CHECK_LEVELS:
             errors.append(
                 f"{check_id or '(unknown)'} 的级别必须是 required 或 advisory"
             )
+        trigger = str(item.get("trigger") or "")
+        if trigger not in CHECK_TRIGGERS:
+            errors.append(
+                f"{check_id or '(unknown)'} 的 trigger 必须是 "
+                + ", ".join(sorted(CHECK_TRIGGERS))
+            )
+        for field in ("waivable", "redline"):
+            if not isinstance(item.get(field), bool):
+                errors.append(
+                    f"{check_id or '(unknown)'} 的 {field} 必须是布尔值"
+                )
+        if item.get("waivable") is True and item.get("redline") is True:
+            errors.append(
+                f"{check_id or '(unknown)'} 不能同时 waivable=true 和 redline=true"
+            )
+        for field in ("name", "evidence", "owner"):
+            if not isinstance(item.get(field), str) or not item.get(field, "").strip():
+                errors.append(
+                    f"{check_id or '(unknown)'} 的 {field} 必须是非空字符串"
+                )
+    missing_gates = [gate for gate in GATE_STAGES if gate not in gates_seen]
+    if missing_gates:
+        errors.append(
+            "检查项注册表缺少 Gate：" + ", ".join(missing_gates)
+        )
     return errors
 
 
