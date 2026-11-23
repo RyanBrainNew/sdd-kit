@@ -1019,6 +1019,15 @@ class Workspace:
             args.extend(["--rollback", rollback])
         return self._json(self._run(args))
 
+    def trace(self, entry_type: str, value: str) -> dict[str, Any]:
+        if entry_type not in {"test", "ac", "commit"}:
+            raise ValueError("trace entry_type must be test, ac or commit")
+        result = self._run(
+            ["trace", f"--{entry_type}", value, "--json"],
+            accept_exit=(0, 1),
+        )
+        return self._json(result)
+
     def merge(
         self, spec: str | None, evidence: str, approver: str | None = None
     ) -> dict[str, Any]:

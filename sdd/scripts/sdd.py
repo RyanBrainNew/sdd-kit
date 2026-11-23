@@ -3364,10 +3364,19 @@ def ensure_prd_index(
         feat = feat or feat_id or allocate_feat_id(root, config)
         safe_title = " ".join(title.split()).replace("|", "\\|")
         link = (issue or "N/A").replace("|", "\\|")
-        text += (
+        row = (
             f"| {work_item} | {link} | current | {feat} | {spec_id} | "
-            f"{safe_title} | 0 |\n"
+            f"{safe_title} | 0 |"
         )
+        marker = re.search(
+            r"(?im)^##\s*(FEAT\s*映射|FEAT\s*Mapping)\s*$", text
+        )
+        if marker:
+            head = text[: marker.start()].rstrip("\n")
+            tail = text[marker.start():].lstrip("\n")
+            text = head + "\n" + row + "\n\n" + tail
+        else:
+            text = text.rstrip("\n") + "\n" + row + "\n"
         write_text(path, text)
     return path
 
@@ -4707,24 +4716,159 @@ def gate_mode(
     return "auto"
 
 
-def check_git(root: Path, spec_id: str, state: str = "DRAFT") -> list[str]:
-    if not (root / ".git").exists():
-        return ["--check-git 需要 Git 仓库"]
-    if state == "MERGED":
-        return []
+CODE_COMMIT_TYPES = {"feat", "fix", "perf", "hotfix"}
+
+
+def git_read(root: Path, args: list[str]) -> tuple[int, str, str]:
     result = subprocess.run(
-        ["git", "log", "-20", "--pretty=%B"],
+        ["git", *args],
         cwd=root,
         capture_output=True,
         text=True,
         encoding="utf-8",
         errors="replace",
     )
-    if result.returncode != 0:
-        return ["git log 执行失败：" + result.stderr.strip()]
-    if f"Spec-Id: {spec_id}" not in result.stdout:
-        return [f"最近 20 个 commit 中没有 `Spec-Id: {spec_id}` trailer"]
-    return []
+    return result.returncode, result.stdout.strip(), result.stderr.strip()
+
+
+def resolve_merge_base(root: Path) -> tuple[str, str]:
+    for ref in ("origin/main", "main", "master"):
+        code, output, _ = git_read(root, ["merge-base", "HEAD", ref])
+        if code == 0 and output:
+            return output.splitlines()[0].strip(), ref
+    return "", ""
+
+
+def git_commits_since(root: Path, base: str) -> list[str]:
+    code, output, _ = git_read(root, ["rev-list", f"{base}..HEAD"])
+    if code != 0:
+        return []
+    return [line.strip() for line in output.splitlines() if line.strip()]
+
+
+def commit_parents(root: Path, sha: str) -> list[str]:
+    code, output, _ = git_read(
+        root, ["rev-list", "--parents", "-n", "1", sha]
+    )
+    if code != 0 or not output:
+        return []
+    return output.split()[1:]
+
+
+def commit_body(root: Path, sha: str) -> str:
+    code, output, _ = git_read(root, ["show", "-s", "--format=%B", sha])
+    return output if code == 0 else ""
+
+
+def parse_commit_trailers(text: str) -> dict[str, Any]:
+    spec_ids = re.findall(
+        r"(?im)^Spec-Id:\s*(SPEC-[A-Z][A-Z0-9]*-[0-9]{3})\s*$", text
+    )
+    task_ids = re.findall(r"(?im)^Task-Id:\s*(T-[A-Za-z0-9_-]+)\s*$", text)
+    lines = text.splitlines()
+    header = lines[0] if lines else ""
+    match = COMMIT_HEADER_RE.match(header)
+    return {
+        "spec_ids": spec_ids,
+        "task_ids": task_ids,
+        "header": match,
+        "work_item": match.group("work") if match else "",
+        "type": match.group("type") if match else "",
+        "subject": header,
+    }
+
+
+def audit_commit(
+    root: Path,
+    config: dict[str, Any],
+    sha: str,
+) -> tuple[list[str], Optional[dict[str, Any]]]:
+    parents = commit_parents(root, sha)
+    if len(parents) >= 2:
+        return [], None
+    text = commit_body(root, sha)
+    if not text:
+        return [f"{sha[:7]} 无法读取 commit message"], None
+    parsed = parse_commit_trailers(text)
+    short = sha[:7]
+    errors: list[str] = []
+    header = parsed["header"]
+    if header is None:
+        errors.append(
+            f"{short} 首行必须匹配 %<工作项ID> <type>(<scope>): <描述>"
+        )
+    spec_ids = parsed["spec_ids"]
+    task_ids = parsed["task_ids"]
+    if len(spec_ids) != 1:
+        errors.append(f"{short} 必须包含且只包含一个合法 Spec-Id Trailer")
+    commit_type = str(parsed["type"])
+    if commit_type in CODE_COMMIT_TYPES and len(task_ids) != 1:
+        errors.append(
+            f"{short} 代码 Commit 必须包含且只包含一个 Task-Id"
+        )
+    if commit_type == "docs" and task_ids:
+        errors.append(f"{short} 文档 Commit 不得包含 Task-Id")
+    if len(task_ids) > 1:
+        errors.append(f"{short} 只能包含一个 Task-Id")
+    spec_id = spec_ids[0] if len(spec_ids) == 1 else ""
+    task_id = task_ids[0] if len(task_ids) == 1 else ""
+    if spec_id:
+        directory = spec_dir_for(root, config, spec_id)
+        spec_text = read_text(directory / "spec.md")
+        if not spec_text:
+            errors.append(f"{short} Spec-Id 对应的 spec.md 不存在：{spec_id}")
+        else:
+            declared = metadata_value(spec_text, "Spec ID", "SpecID")
+            if declared != spec_id:
+                errors.append(f"{short} Spec 目录与元数据中的 Spec ID 不一致")
+            work_item = metadata_value(spec_text, "工作项 ID", "工作项ID")
+            if parsed["work_item"] and work_item != parsed["work_item"]:
+                errors.append(
+                    f"{short} Commit 工作项 {parsed['work_item']} "
+                    f"与 Spec 元数据 {work_item} 不一致"
+                )
+        if task_id:
+            tasks_text = read_text(directory / "tasks.md")
+            if task_id not in tasks_text:
+                errors.append(
+                    f"{short} Task-Id 在 tasks.md 中不存在：{task_id}"
+                )
+    record = {
+        "sha": sha,
+        "short": short,
+        "subject": parsed["subject"],
+        "type": commit_type,
+        "spec_id": spec_id,
+        "task_id": task_id,
+        "work_item": parsed["work_item"],
+    }
+    return errors, record
+
+
+def check_git(root: Path, spec_id: str, state: str = "DRAFT") -> list[str]:
+    if not (root / ".git").exists():
+        return ["--check-git 需要 Git 仓库"]
+    if state == "MERGED":
+        return []
+    base, _ = resolve_merge_base(root)
+    if not base:
+        return [
+            "无法确定 merge-base；需要 origin/main、main 或 master 之一"
+        ]
+    config = load_config(root)
+    shas = git_commits_since(root, base)
+    errors: list[str] = []
+    seen_spec = False
+    for sha in shas:
+        commit_errors, record = audit_commit(root, config, sha)
+        errors.extend(commit_errors)
+        if record and record["spec_id"] == spec_id:
+            seen_spec = True
+    if not seen_spec:
+        errors.append(
+            f"merge-base {base[:7]} 之后没有 `Spec-Id: {spec_id}` 的 commit"
+        )
+    return list(dict.fromkeys(errors))
 
 
 def run_checks(
@@ -7770,6 +7914,353 @@ def command_reapprove(
     return 0
 
 
+def spec_directories(
+    root: Path, config: dict[str, Any]
+) -> list[Path]:
+    base = spec_root(root, config)
+    if not base.is_dir():
+        return []
+    return sorted(
+        path
+        for path in base.iterdir()
+        if path.is_dir() and (path / "state.json").is_file()
+    )
+
+
+def resolve_trace_test(
+    root: Path,
+    config: dict[str, Any],
+    selector: str,
+) -> tuple[Optional[dict[str, Any]], list[str]]:
+    parsed = parse_test_reference(selector)
+    method = parsed["method"]
+    if not method:
+        return None, [f"无法解析测试选择器：{selector}"]
+    files = collect_test_files(root, config)
+    definitions = scan_test_definitions(
+        [
+            (path.relative_to(root).as_posix(), read_text(path))
+            for path in files
+        ]
+    )
+    candidates: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for record in definitions.values():
+        key = (
+            str(record.get("path") or ""),
+            str(record.get("class") or ""),
+            str(record.get("name") or ""),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        if record.get("name") != method:
+            continue
+        if parsed["class"] and record.get("class") != parsed["class"]:
+            continue
+        if parsed["file"] and not str(record.get("path") or "").endswith(
+            parsed["file"]
+        ):
+            continue
+        candidates.append(record)
+    if not candidates:
+        return None, [f"测试定义不存在：{selector}"]
+    if len(candidates) > 1:
+        return None, [f"测试选择器命中多个测试，请更精确：{selector}"]
+    return candidates[0], []
+
+
+def find_spec_for_acs(
+    root: Path,
+    config: dict[str, Any],
+    acs: Iterable[str],
+) -> tuple[Optional[tuple[Path, dict[str, Any]]], list[str]]:
+    wanted = set(acs)
+    matches: list[tuple[Path, dict[str, Any]]] = []
+    for directory in spec_directories(root, config):
+        state = load_json(directory / "state.json")
+        spec_acs = set(extract_acs(read_text(directory / "spec.md")))
+        if spec_acs & wanted:
+            matches.append((directory, state))
+    if not matches:
+        return None, [
+            "找不到包含 AC 的 Spec：" + ", ".join(sorted(wanted))
+        ]
+    if len(matches) > 1:
+        return None, [
+            "AC 命中多个 Spec，请改用 --commit 或更精确的入口："
+            + ", ".join(str(state.get("spec_id")) for _, state in matches)
+        ]
+    return matches[0], []
+
+
+def trace_commits(
+    root: Path,
+    config: dict[str, Any],
+    spec_id: str,
+) -> list[dict[str, Any]]:
+    base, _ = resolve_merge_base(root)
+    if not base:
+        return []
+    commits: list[dict[str, Any]] = []
+    for sha in git_commits_since(root, base):
+        _, record = audit_commit(root, config, sha)
+        if record and record.get("spec_id") == spec_id:
+            commits.append(record)
+    return commits
+
+
+def build_trace(
+    root: Path,
+    config: dict[str, Any],
+    entry_type: str,
+    entry_value: str,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "schema": 1,
+        "kind": "trace",
+        "ok": False,
+        "entry": {"type": entry_type, "value": entry_value},
+        "spec": None,
+        "task": None,
+        "acs": [],
+        "feat": None,
+        "work_item": None,
+        "prd": {"path": "docs/prd-index.md", "registered": False},
+        "approval": {
+            "approved": False,
+            "digest_bound": False,
+            "approved_by": None,
+            "approved_at": None,
+        },
+        "change_set": {"path": None, "records": []},
+        "commits": [],
+        "evidence": {"path": None, "records": []},
+        "missing": [],
+        "chain": [],
+    }
+    missing: list[dict[str, str]] = []
+    acs: list[str] = []
+    task_id = ""
+    spec_choice: Optional[tuple[Path, dict[str, Any]]] = None
+    if entry_type == "test":
+        record, errors = resolve_trace_test(root, config, entry_value)
+        if errors:
+            missing.extend({"link": "test", "detail": e} for e in errors)
+        elif record:
+            acs = list(record.get("acs") or [])
+            if not acs:
+                missing.append(
+                    {"link": "ac", "detail": "测试函数体内没有 AC 标签"}
+                )
+            payload["chain"].append(
+                {
+                    "link": "test",
+                    "value": f"{record.get('path')}::{record.get('class')}#{record.get('name')}",
+                }
+            )
+    elif entry_type == "ac":
+        acs = [entry_value]
+    elif entry_type == "commit":
+        base, _ = resolve_merge_base(root)
+        if not base:
+            missing.append(
+                {"link": "commit", "detail": "无法确定 merge-base"}
+            )
+        text = commit_body(root, entry_value)
+        parsed = parse_commit_trailers(text)
+        if len(parsed["spec_ids"]) != 1:
+            missing.append(
+                {
+                    "link": "commit",
+                    "detail": f"{entry_value} 没有唯一 Spec-Id",
+                }
+            )
+        else:
+            directory = spec_dir_for(
+                root, config, parsed["spec_ids"][0]
+            )
+            if not (directory / "spec.md").is_file():
+                missing.append(
+                    {
+                        "link": "spec",
+                        "detail": parsed["spec_ids"][0],
+                    }
+                )
+            else:
+                spec_choice = (
+                    directory,
+                    load_json(directory / "state.json"),
+                )
+                task_id = (
+                    parsed["task_ids"][0]
+                    if len(parsed["task_ids"]) == 1
+                    else ""
+                )
+                payload["chain"].append(
+                    {"link": "commit", "value": entry_value}
+                )
+    if acs:
+        payload["chain"].append(
+            {"link": "ac", "value": ", ".join(sorted(set(acs)))}
+        )
+    if spec_choice is None and acs:
+        spec_choice, errors = find_spec_for_acs(root, config, acs)
+        missing.extend(
+            {"link": "spec", "detail": error} for error in errors
+        )
+    if spec_choice is None:
+        payload["missing"] = missing
+        return payload
+    directory, state = spec_choice
+    spec_id = str(state.get("spec_id") or directory.name)
+    spec_text = read_text(directory / "spec.md")
+    tasks_text = read_text(directory / "tasks.md")
+    tasks = parse_tasks(tasks_text)
+    if not task_id:
+        matched = [
+            task
+            for task in tasks
+            if set(task.get("acs") or []) & set(acs)
+        ]
+        if matched:
+            task_id = str(matched[0]["id"])
+    task = next((item for item in tasks if item["id"] == task_id), None)
+    if task is None:
+        missing.append(
+            {
+                "link": "task",
+                "detail": "找不到覆盖 AC 的 Task：" + ", ".join(acs),
+            }
+        )
+    else:
+        if not acs:
+            acs = list(task.get("acs") or [])
+        payload["chain"].append(
+            {"link": "task", "value": task_id}
+        )
+    payload["spec"] = spec_id
+    payload["task"] = task_id or None
+    payload["acs"] = sorted(set(acs))
+    payload["feat"] = metadata_value(spec_text, "FEAT ID", "FEATID", "FEAT")
+    payload["work_item"] = metadata_value(
+        spec_text, "工作项 ID", "工作项ID"
+    )
+    payload["chain"].append({"link": "spec", "value": spec_id})
+    payload["chain"].append({"link": "feat", "value": payload["feat"]})
+    payload["chain"].append(
+        {"link": "work_item", "value": payload["work_item"]}
+    )
+    rows = prd_index_rows(read_text(prd_index_path(root, config)))
+    payload["prd"]["registered"] = any(
+        row.get("specid") == spec_id
+        and row.get("工作项id", row.get("workitemid", ""))
+        == payload["work_item"]
+        for row in rows
+    )
+    if not payload["prd"]["registered"]:
+        missing.append(
+            {"link": "prd", "detail": "docs/prd-index.md 未登记当前 Spec"}
+        )
+    approvals = [
+        item
+        for item in state.get("approvals", [])
+        if isinstance(item, dict)
+        and item.get("action") in {"approve_spec", "reapprove_spec"}
+    ]
+    payload["approval"] = {
+        "approved": bool(approvals),
+        "digest_bound": bool(
+            state.get("approved_spec_digest")
+            and current_spec_digest(directory)
+            == state.get("approved_spec_digest")
+        ),
+        "approved_by": state.get("approved_by"),
+        "approved_at": state.get("approved_at"),
+    }
+    if not approvals:
+        missing.append(
+            {"link": "approval", "detail": "缺少 approve/reapprove 记录"}
+        )
+    elif not payload["approval"]["digest_bound"]:
+        missing.append(
+            {
+                "link": "approval",
+                "detail": "审批摘要与当前 Spec 不一致",
+            }
+        )
+    payload["chain"].append(
+        {
+            "link": "approval",
+            "value": payload["approval"]["approved_by"] or "-",
+        }
+    )
+    change_path = change_set_path(directory)
+    payload["change_set"] = {
+        "path": change_path.relative_to(root).as_posix(),
+        "records": change_set_records(directory),
+    }
+    payload["commits"] = trace_commits(root, config, spec_id)
+    if not payload["commits"]:
+        missing.append(
+            {"link": "commit", "detail": "merge-base 后没有关联 commit"}
+        )
+    for record in payload["commits"]:
+        payload["chain"].append(
+            {"link": "commit", "value": record["short"]}
+        )
+    evidence_file = evidence_path(directory)
+    records, _ = load_verification_evidence(directory)
+    filtered = [
+        record
+        for record in records
+        if str(record.get("spec") or "") == spec_id
+        and (
+            not task_id
+            or str(record.get("task") or "") in {"", task_id}
+        )
+    ]
+    payload["evidence"] = {
+        "path": evidence_file.relative_to(root).as_posix(),
+        "records": filtered,
+    }
+    if not filtered:
+        missing.append(
+            {"link": "evidence", "detail": "缺少 verification-evidence 记录"}
+        )
+    payload["missing"] = missing
+    payload["ok"] = not missing
+    return payload
+
+
+def command_trace(
+    args: argparse.Namespace, root: Path, config: dict[str, Any]
+) -> int:
+    entry_type = ""
+    entry_value = ""
+    for name in ("test", "ac", "commit"):
+        value = getattr(args, name, None)
+        if value:
+            entry_type = name
+            entry_value = str(value)
+            break
+    if not entry_type:
+        raise SddError("trace 需要 --test、--ac 或 --commit 之一")
+    payload = build_trace(root, config, entry_type, entry_value)
+    if getattr(args, "json", False):
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        print(
+            f"[sdd] trace {entry_type}={entry_value} "
+            f"ok={str(payload['ok']).lower()}"
+        )
+        for item in payload["chain"]:
+            print(f"  {item['link']}: {item['value']}")
+        for item in payload["missing"]:
+            print(f"  missing {item['link']}: {item['detail']}")
+    return 0 if payload["ok"] else 1
+
+
 def command_approve(
     args: argparse.Namespace, root: Path, config: dict[str, Any]
 ) -> int:
@@ -9531,6 +10022,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--rollback")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=command_change)
+
+    p = sub.add_parser(
+        "trace",
+        help="read-only trace by test, AC or commit",
+    )
+    trace_group = p.add_mutually_exclusive_group(required=True)
+    trace_group.add_argument("--test")
+    trace_group.add_argument("--ac")
+    trace_group.add_argument("--commit")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=command_trace)
 
     p = sub.add_parser("waive", help="human-only Gate check waiver")
     add_spec_option(p)
