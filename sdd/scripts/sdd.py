@@ -2460,6 +2460,7 @@ def verification_evidence_errors(
             "需要 Command/CWD/Exit/Head/Plan-Hash/At"
         )
         return errors
+    blocks = blocks[:1]
     success = False
     structured_evidence = False
     if directory is not None:
