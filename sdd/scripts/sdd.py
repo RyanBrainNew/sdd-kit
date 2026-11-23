@@ -7378,6 +7378,13 @@ def build_impact(
         and not expected
     )
     missing: list[str] = []
+    for task in tasks:
+        for fr in task.get("frs", []):
+            if fr not in fr_ids:
+                missing.append(fr)
+        for ac in task.get("acs", []):
+            if ac not in ac_ids:
+                missing.append(ac)
     for record in records:
         for feat in record.get("feat", []):
             if feat not in feat_ids:
@@ -7419,7 +7426,9 @@ def render_change_record(record: dict[str, Any]) -> str:
         values = record.get(key) or []
         if not values:
             return "-"
-        return ", ".join(f"`{value}`" for value in values)
+        if key in {"tests", "code_paths"}:
+            return ", ".join(f"`{value}`" for value in values)
+        return ", ".join(str(value) for value in values)
 
     title = str(record.get("title") or "").strip()
     heading = f"## {record['id']}" + (f" {title}" if title else "")
