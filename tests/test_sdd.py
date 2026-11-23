@@ -2056,7 +2056,6 @@ class ArtifactHashTests(unittest.TestCase):
 
 class GitTrailerTests(unittest.TestCase):
     def test_recent_trailer_only_applies_to_active_specs(self):
-        # [AC-003-3]
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             subprocess.run(["git", "init", "-q"], cwd=root, check=True)

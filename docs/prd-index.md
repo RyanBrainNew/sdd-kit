@@ -15,8 +15,6 @@
 
 | FEAT | 工作项 ID | Spec ID | FR | AC |
 | --- | --- | --- | --- | --- |
-| --- | --- | --- | --- | --- |
-| --- | --- | --- | --- | --- |
 | FEAT-002 | SDD-EPIC-007 | SPEC-DEVTOOLS-002 | FR-001 | AC-001-1, AC-001-2, AC-001-3 |
 | FEAT-002 | SDD-EPIC-007 | SPEC-DEVTOOLS-002 | FR-002 | AC-002-1, AC-002-2, AC-002-3, AC-002-4, AC-002-5, AC-002-6, AC-002-7, AC-002-8 |
 | FEAT-002 | SDD-EPIC-007 | SPEC-DEVTOOLS-002 | FR-003 | AC-003-1, AC-003-2, AC-003-3, AC-003-4 |

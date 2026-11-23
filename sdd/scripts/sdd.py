@@ -364,10 +364,6 @@ def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def sha256_file(path: Path) -> str:
-    return sha256_bytes(path.read_bytes())
-
-
 def canonical_text_bytes(data: bytes) -> Optional[bytes]:
     try:
         text = data.decode("utf-8")
@@ -2965,10 +2961,10 @@ def gate_mode(
 
 
 def check_git(root: Path, spec_id: str, state: str = "DRAFT") -> list[str]:
-    if state == "MERGED":
-        return []
     if not (root / ".git").exists():
         return ["--check-git 需要 Git 仓库"]
+    if state == "MERGED":
+        return []
     result = subprocess.run(
         ["git", "log", "-20", "--pretty=%B"],
         cwd=root,
