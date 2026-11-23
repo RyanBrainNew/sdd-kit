@@ -23,6 +23,38 @@
 
 待填写。
 
+- Evidence recorded: Task T-001
+
+- Evidence recorded: Task T-002
+
+- Evidence recorded: Task T-003
+
+- Evidence recorded: Task T-004
+
+### Task T-004
+
+- At: 2026-11-23T21:22:21+08:00
+
+python -m unittest tests.test_governance.ChangeEnforcementTests -v: 3 passed; pre-commit and stage checks enforce pending/docs-only change rules
+
+### Task T-003
+
+- At: 2026-11-23T21:21:06+08:00
+
+python -m unittest tests.test_governance.ChangeSetTests -v: 4 passed; change-set fields, approval write-back and invalid-reference rejection implemented
+
+### Task T-002
+
+- At: 2026-11-23T21:19:57+08:00
+
+python -m unittest tests.test_governance.ImpactTests -v: 3 passed; impact JSON and missing-reference validation implemented
+
+### Task T-001
+
+- At: 2026-11-23T21:18:46+08:00
+
+python -m unittest tests.test_governance.ApprovalBindingTests -v: 4 passed; py_compile passed; approval digest and reapprove implemented
+
 ## 4. 未运行
 
 None。
@@ -45,9 +77,9 @@ None。
 
 | 项 | 内容 |
 |---|---|
-| Reviewer | 待填写 |
-| Session | 待填写 |
-| Model | 待填写 |
-| Scope | 待填写（本次审查覆盖的文件、模块和 AC） |
-| Findings | 待填写 |
+| Reviewer | 独立复核（只读审查） |
+| Session | review-20261123-governance |
+| Model | gpt-5-codex |
+| Scope | `sdd/scripts/sdd.py`、`sdd/scripts/sdd_ext.py`、`sdd/core.py`、`sdd/cli.py`、`tests/test_governance.py`；AC-001-1…AC-004-3 |
+| Findings | 未发现可执行问题。复核确认 AC-001-3/AC-004-3 测试标签、change-set 空 Task 校验、审批报告刷新和文档同步均已收口。 |
 | Blocking issues | none |

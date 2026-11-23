@@ -7474,7 +7474,7 @@ def validate_change_record(record: dict[str, Any]) -> list[str]:
     for key in CHANGE_REQUIRED_FIELDS:
         value = record.get(key)
         if isinstance(value, list):
-            if not value and key in {"feat", "fr", "ac", "task"}:
+            if not value and key in {"feat", "fr", "ac"}:
                 errors.append(f"{record.get('id', 'CHG')} 缺少字段：{key}")
         elif not str(value or "").strip():
             errors.append(f"{record.get('id', 'CHG')} 缺少字段：{key}")

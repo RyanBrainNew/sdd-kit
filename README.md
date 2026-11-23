@@ -44,7 +44,7 @@ SDD Kit 把公司 SDD-L2 的流程做成**仓库自带的默认开发路径**，
 | 官方门面 | `site/` 由 GitHub Pages 发布；本 README 只保留首页和导航 |
 
 尚未实现的能力不在本文里冒充“已有”：`sdd view`、`upgrade-workflow`、外部 runner 契约、
-审批版本绑定、`change-set` / `impact`、全量 commit 审计与 `trace` 都在下面的路线图中。
+全量 commit 审计与 `trace` 都在下面的路线图中。
 
 ## 为什么需要它
 
@@ -152,6 +152,8 @@ LF 规范化，历史 CRLF 哈希仍可验证，Windows 与 Linux 工作区不�
 | `python -m sdd workflow validate --file <profile>` | 人 / Agent | 校验工作流 profile 并返回 digest |
 | `python -m sdd submit --artifact <name> --file <path> --json` | Agent | 提交阶段工件并接受校验 |
 | `python -m sdd submit-task --task T-xxx --evidence "..." --json` | Agent | 完成一个任务并记录测试证据 |
+| `python -m sdd impact --spec <id> --json` | Agent | 只读查看 FEAT/FR/AC/Task/测试/代码影响面 |
+| `python -m sdd change --spec <id> --reason "..."` | Agent | 审批后变更先登记 change-set |
 | `python -m sdd metrics --json` | Agent / 质量人员 | 查看检查统计、豁免率、逃逸缺陷、重开率和 Gate 一次通过率 |
 | `python -m sdd events --spec <id> --json` | Agent / 审计人员 | 查看带哈希链和下一步的审计事件 |
 | `python -m sdd waive --spec <id> --check G5-09 ... --human` | 人 | 创建限范围、可到期的人工豁免 |
@@ -159,6 +161,7 @@ LF 规范化，历史 CRLF 哈希仍可验证，Windows 与 Linux 工作区不�
 | `python -m sdd report` | Agent | 生成 PR 正文与 Gate 摘要 |
 | `python -m sdd board` / `inbox` / `metrics` / `events` | 人 / Agent | 查看看板、待办、指标和审计事件 |
 | `python -m sdd approve --spec <id> --human --evidence "..."` | 人 | 确认 Spec |
+| `python -m sdd reapprove --spec <id> --human --reason "..." --evidence "..."` | 人 | 审批后范围变化时重新确认 Spec 版本 |
 | `python -m sdd merge --spec <id> --human --evidence "..."` | 人 | 确认交付（之后才开 PR） |
 | `python -m sdd rewind --spec <id> --to <stage> --reason "..." --human` | 人 | 回退到更早阶段并保留审计 |
 | `python -m sdd waive --spec <id> --check <check-id> --scope "..." --reason "..." --expires <iso> --evidence "..." --human` | 人 | 对可豁免检查记录有范围、有期限的人工豁免 |
@@ -229,10 +232,11 @@ Gate 报告单独写入 `sdd/reports/<Spec ID>/`，与 `docs/` 下的 Spec 工�
 | 已交付 | 0.8.0 | 三套命名工作流、Spec 快照、`l2-strict` 独立审查、Apache-2.0 与官网 |
 | 已交付 | 0.9.4 | schema 2 工作流 Profile、`workflow validate`、`l2-refactor` 示范预设 |
 | 已交付 | 0.9.5 | G0–G5 稳定检查 ID、`pass/warn/block`、范围化人工豁免、告警与按 ID 指标 |
+| 已交付 | 0.9.6 | 审批版本绑定、人工 `reapprove`、`change-set` / `impact` 与提交阻断 |
 | 未开发（0.9.0） | [#1](https://github.com/RyanBrainNew/sdd-kit/issues/1) | 只读单文件 HTML 运行视图 `sdd view` |
 | 未开发（0.9.0） | [#2](https://github.com/RyanBrainNew/sdd-kit/issues/2) | 外部 runner 接入契约 `deploy/runner/CONTRACT.md` |
 | 未开发（后续） | [#3](https://github.com/RyanBrainNew/sdd-kit/issues/3) | 固定预设升级 `upgrade-workflow` |
-| 设计阶段（P0） | [#8](https://github.com/RyanBrainNew/sdd-kit/issues/8) | 治理闭环：审批版本绑定、`change-set` / `impact`、可复验证据、全量 commit 审计与 `trace` |
+| 设计阶段（P0） | [#8](https://github.com/RyanBrainNew/sdd-kit/issues/8) | 治理闭环剩余项：全量 commit 审计与 `trace`（#21） |
 | 总纲（epic） | [#7](https://github.com/RyanBrainNew/sdd-kit/issues/7) | 轻量、可自定义、全链路可溯源的 SDD-L2 执行内核 |
 
 路线图以 GitHub Issues 为准；未开发项不会出现在命令表中，也不会在站点的“当前形态”里冒充已交付。

@@ -70,7 +70,7 @@ class ApprovalBindingTests(GovernanceFlowBase):
         self.assertIn(digest, report)
 
     def test_spec_change_blocks_until_reapprove(self):
-        """[AC-001-2] 审批后修改 Spec 触发 G1-08，reapprove 后恢复。"""
+        """[AC-001-2] [AC-001-3] 审批后修改 Spec 触发 G1-08，reapprove 后恢复。"""
         path = self.root / "docs/specs/SPEC-ORDER-001/spec.md"
         original = path.read_text(encoding="utf-8")
         path.write_text(
@@ -430,4 +430,19 @@ class GovernanceBoundaryTests(GovernanceFlowBase):
             state,
         )
         self.assertEqual(errors, [])
+
+    def test_release_metadata_matches_package_version(self):
+        """[AC-004-3] 发布版本文件与核心版本常量一致。"""
+        version = (self.root / "sdd" / "VERSION").read_text(
+            encoding="utf-8"
+        ).strip()
+        init_text = (self.root / "sdd" / "__init__.py").read_text(
+            encoding="utf-8"
+        )
+        engine_text = (self.root / "sdd" / "scripts" / "sdd.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(f'__version__ = "{version}"', init_text)
+        self.assertIn(f'VERSION = "{version}"', engine_text)
+        self.assertRegex(version, r"^\d+\.\d+\.\d+$")
 

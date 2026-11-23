@@ -46,7 +46,7 @@ python -m sdd.mcp.server --registry sdd-mcp.json `
 ## 它不负责什么
 
 - 不替代 dsh/Codex/Claude 改代码；
-- 不暴露 `approve`、`merge`、`unblock`、`rewind` 和 `waive`，这些永远是人；
+- 不暴露 `approve`、`reapprove`、`merge`、`unblock`、`rewind` 和 `waive`，这些永远是人；
 - 不把 SDD 规则复制进 MCP；规则仍在仓库的 `sdd.py` 和 `config.json`；
 - 不自动合并 PR。
 - 不在 server 看不到的本地 clone 上写文件。
@@ -214,7 +214,7 @@ MCP 本身不会监听文件，也不会自己调用模型。真正把流程串�
 | VERIFYING | AC 覆盖、测试标记、G0–G4 报告不全则拒绝 | 硬 |
 | PR_READY | 等待人类确认交付，不能创建或记录 PR | 硬 |
 | MERGED | 确认后才创建 PR，用 `sdd_pr` 记录 URL | 硬 |
-| 任意阶段 | `approve` / `merge` / `unblock` 没有 MCP 工具 | 硬（人类） |
+| 任意阶段 | `approve` / `reapprove` / `merge` / `unblock` 没有 MCP 工具 | 硬（人类） |
 | 测试证据 | 不能验证“证据是否真实”，只能要求非空并做工件校验 | 软 |
 
 关键点：**`next.action` 是 Agent 的唯一调度信号，`sdd_submit_*` 是硬门禁。**

@@ -336,6 +336,7 @@ DRAFT
 | 1 | 给一个工作项 | 例如“按 srdcloud-553377 做这次需求”，不需要说当前阶段 |
 | 2 | 审 Spec | 看 `docs/specs/<Spec ID>/spec.md` 的范围、AC、未决问题 |
 | 3 | 执行 Spec 确认 | `python -m sdd approve --spec <Spec ID> --human --evidence "需求已确认"` |
+| 3a | 审批后范围变化 | Agent 先 `python -m sdd change --spec <Spec ID> --reason "..."`；人审 change-set 后执行 `reapprove --human` |
 | 4 | 审最终 PR | 看 `PR_BODY.md`、AC 证据、diff、CI |
 | 5 | 合并并登记 | `python -m sdd merge --spec <Spec ID> --human --evidence "PR merged"` |
 

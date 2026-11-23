@@ -33,7 +33,7 @@ def create_server(service: SddService) -> Any:
             "approval or delivery confirmation). In shared registry mode, writes apply to "
             "server-side worktrees only; a remote server cannot modify a "
             "developer's local clone. Agents must not edit state.json. approve, "
-            "merge, unblock, rewind and waive are deliberately not exposed as "
+            "reapprove, merge, unblock, rewind and waive are deliberately not exposed as "
             "MCP tools."
         ),
     )
