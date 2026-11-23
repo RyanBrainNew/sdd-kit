@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import shutil
@@ -1972,6 +1973,49 @@ class ContextBundleTests(SddFlowBase):
         self.assertNotIn("api/other.yaml", rendered)
         self.assertIn("docs/specs/*（其他 Spec）", bundle["exclude"])
         self.assertEqual(bundle["fix_patterns"], [])
+
+
+class ArtifactHashTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name)
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def write_artifact(self, name: str, text: str, newline: str) -> Path:
+        path = self.root / name
+        path.write_bytes(text.replace("\n", newline).encode("utf-8"))
+        return path
+
+    def test_text_hash_is_line_ending_stable(self):
+        # [AC-001-1]
+        text = "# title\n\ncontent\n"
+        lf_path = self.write_artifact("lf.md", text, "\n")
+        crlf_path = self.write_artifact("crlf.md", text, "\r\n")
+        self.assertEqual(
+            engine.artifact_sha256(lf_path),
+            engine.artifact_sha256(crlf_path),
+        )
+
+    def test_check_ignores_line_ending_only_change(self):
+        # [AC-001-2]
+        text = "# title\n\ncontent\n"
+        lf_path = self.write_artifact("lf.md", text, "\n")
+        crlf_path = self.write_artifact("crlf.md", text, "\r\n")
+        expected = engine.artifact_sha256(crlf_path)
+        self.assertTrue(engine.artifact_hash_matches(lf_path, expected))
+
+    def test_check_rejects_text_change(self):
+        # [AC-001-3]
+        original = self.write_artifact(
+            "original.md", "# title\n\noriginal\n", "\r\n"
+        )
+        changed = self.write_artifact(
+            "changed.md", "# title\n\nchanged\n", "\n"
+        )
+        expected = engine.artifact_sha256(original)
+        self.assertFalse(engine.artifact_hash_matches(changed, expected))
 
 
 if __name__ == "__main__":

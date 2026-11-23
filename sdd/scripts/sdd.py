@@ -116,6 +116,8 @@ GATE_ARTIFACTS = {
     "G5": ("verification.md",),
 }
 
+TEXT_ARTIFACT_SUFFIXES = {".md", ".json", ".yaml", ".yml", ".txt"}
+
 TASK_PLAN_FIELDS = (
     "id",
     "description",
@@ -358,8 +360,33 @@ def write_json(path: Path, data: dict[str, Any]) -> None:
     write_text(path, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
 
 
+def sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
 def sha256_file(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    return sha256_bytes(path.read_bytes())
+
+
+def canonical_text_bytes(data: bytes) -> Optional[bytes]:
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+    return text.replace("\r\n", "\n").replace("\r", "\n").encode("utf-8")
+
+
+def artifact_sha256(path: Path) -> str:
+    data = path.read_bytes()
+    if path.suffix.lower() in TEXT_ARTIFACT_SUFFIXES:
+        canonical = canonical_text_bytes(data)
+        if canonical is not None:
+            return sha256_bytes(canonical)
+    return sha256_bytes(data)
+
+
+def artifact_hash_matches(path: Path, expected: str) -> bool:
+    return artifact_sha256(path) == expected
 
 
 def task_plan_hash(text: str) -> str:
@@ -387,7 +414,7 @@ def artifact_digest(
     relative = path.relative_to(root).as_posix()
     if not path.is_file():
         return relative, "MISSING", 0
-    return relative, sha256_file(path), path.stat().st_size
+    return relative, artifact_sha256(path), path.stat().st_size
 
 
 def history_meta() -> dict[str, Any]:
@@ -2629,12 +2656,11 @@ def check_gates(
             if not artifact_path.is_file():
                 errors.append(f"Gate 产物不存在：{relative}")
                 continue
-            actual = (
-                task_plan_hash(read_text(artifact_path))
-                if is_plan
-                else sha256_file(artifact_path)
-            )
-            if actual != expected:
+            if is_plan:
+                matches = task_plan_hash(read_text(artifact_path)) == expected
+            else:
+                matches = artifact_hash_matches(artifact_path, expected)
+            if not matches:
                 errors.append(
                     f"{gate} 绑定的 {relative} 已被修改；"
                     "请重新执行对应 Gate 或 rewind"
@@ -4369,7 +4395,7 @@ def command_approve(
             "approver": approver,
             "at": now(),
             "artifact": spec_path.relative_to(root).as_posix(),
-            "sha256": sha256_file(spec_path) if spec_path.is_file() else "",
+            "sha256": artifact_sha256(spec_path) if spec_path.is_file() else "",
         }
     )
     state["last_approver"] = approver
@@ -5258,7 +5284,7 @@ def command_rewind(
                 "kind": "artifact",
                 "source": source.relative_to(root).as_posix(),
                 "archived": destination.relative_to(root).as_posix(),
-                "sha256": sha256_file(destination),
+                "sha256": artifact_sha256(destination),
                 "bytes": destination.stat().st_size,
             }
         )
@@ -5404,7 +5430,7 @@ def command_merge(
             "approver": approver,
             "at": confirmed_at,
             "artifact": pr_body.relative_to(root).as_posix(),
-            "sha256": sha256_file(pr_body) if pr_body.is_file() else "",
+            "sha256": artifact_sha256(pr_body) if pr_body.is_file() else "",
             "head_sha": git_head_sha(root),
         }
     )
