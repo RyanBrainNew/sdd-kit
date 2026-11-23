@@ -14,9 +14,9 @@
     "digest": "ae89c532988018c3f6d3c222c4a66da2a44981f33c8401d62a632bef66a8e910",
     "snapshot": "workflow.json"
   },
-  "state": "IMPLEMENTING",
+  "state": "PR_READY",
   "created_at": "2026-11-23T22:37:30+08:00",
-  "updated_at": "2026-11-23T22:57:20+08:00",
+  "updated_at": "2026-11-24T00:05:56+08:00",
   "pr_url": null,
   "history": [
     {
@@ -191,6 +191,69 @@
       "task": "T-004",
       "commit": "46310ed",
       "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-23T22:58:50+08:00",
+      "evidence": "task started",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_start",
+      "task": "T-005",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-23T22:58:51+08:00",
+      "evidence": "python -m unittest tests.test_trace -v: 8 passed; version 0.9.7, manifest, docs and PRD placement synced",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_done",
+      "task": "T-005",
+      "commit": "28f1389",
+      "role": "implementer"
+    },
+    {
+      "state": "VERIFYING",
+      "at": "2026-11-23T22:58:51+08:00",
+      "evidence": "all tasks completed",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "gate": "G4",
+      "role": "implementer",
+      "approver": null,
+      "artifacts": [
+        {
+          "path": "docs/specs/SPEC-REQ-005/tasks.md#plan",
+          "sha256": "9ba84a7fcfb284b138366450a08beecb8fa083e9788cf9f0d0b0c1031f0df927",
+          "bytes": 6644
+        }
+      ]
+    },
+    {
+      "state": "PR_READY",
+      "at": "2026-11-24T00:05:56+08:00",
+      "evidence": "verification.md submitted via CLI and checked",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "gate": "G5",
+      "role": "verifier",
+      "approver": null,
+      "artifacts": [
+        {
+          "path": "docs/specs/SPEC-REQ-005/verification.md",
+          "sha256": "016d296d4b559bd8d64712ec965d213181285864e5054ae380a4c6081f24c617",
+          "bytes": 91160
+        }
+      ]
     }
   ],
   "artifact_hashes": {
@@ -205,6 +268,12 @@
     },
     "G3": {
       "docs/specs/SPEC-REQ-005/tasks.md#plan": "9ba84a7fcfb284b138366450a08beecb8fa083e9788cf9f0d0b0c1031f0df927"
+    },
+    "G4": {
+      "docs/specs/SPEC-REQ-005/tasks.md#plan": "9ba84a7fcfb284b138366450a08beecb8fa083e9788cf9f0d0b0c1031f0df927"
+    },
+    "G5": {
+      "docs/specs/SPEC-REQ-005/verification.md": "016d296d4b559bd8d64712ec965d213181285864e5054ae380a4c6081f24c617"
     }
   },
   "approved_spec_digest": "3ff4086d1d3de44d8d06073b6e2806ba271371c92e317b0c8c6d89a89e7aee5f",
@@ -221,5 +290,5 @@
     }
   ],
   "last_approver": "linjinlong <fflinjinlong@chinatelecom.cn>",
-  "previous_state": "TASKS_READY"
+  "previous_state": "VERIFYING"
 }

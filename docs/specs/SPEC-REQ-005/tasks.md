@@ -19,7 +19,7 @@
 | T-002 | 实现 docs/其它类型规则、引用存在性与 merge-base 缺失错误 | FR-001；FR-002；AC-001-3；AC-002-2；AC-002-3 | T-001 | S | docs 带 Task-Id 阻断；无主干明确报错；引用对象可校验 | `CommitAuditTests#test_docs_commit_with_task_id_blocks` | `python -m unittest tests.test_trace.CommitAuditTests -v` | Done | 4645ef6 |
 | T-003 | 实现 trace test/AC/commit 三入口与完整链路 JSON | FR-003；AC-003-1；AC-003-2；AC-003-3 | T-001 | S | 三入口输出同一 schema 与完整链路 | `TraceTests#test_trace_by_test_ac_and_commit` | `python -m unittest tests.test_trace.TraceTests -v` | Done | c4b282c |
 | T-004 | 实现断链 missing、多命中/只读保护 | FR-003；AC-003-4；AC-003-5 | T-003 | S | 缺失对象进入 missing；文件哈希前后不变 | `TraceTests#test_trace_reports_missing_link` | `python -m unittest tests.test_trace.TraceTests -v` | Done | 46310ed |
-| T-005 | 同步 CLI/文档/版本/manifest，兼容历史并修复 PRD 行落点 | FR-004；AC-004-1；AC-004-2；AC-004-3 | T-001,T-004 | S | trace 只读；MERGED 兼容；发布元数据一致 | `PrdIndexPlacementTests#test_new_spec_row_goes_into_main_table` | `python -m unittest tests.test_trace.PrdIndexPlacementTests -v` | Todo | — |
+| T-005 | 同步 CLI/文档/版本/manifest，兼容历史并修复 PRD 行落点 | FR-004；AC-004-1；AC-004-2；AC-004-3 | T-001,T-004 | S | trace 只读；MERGED 兼容；发布元数据一致 | `PrdIndexPlacementTests#test_new_spec_row_goes_into_main_table` | `python -m unittest tests.test_trace.PrdIndexPlacementTests -v` | Done | 28f1389 |
 
 字段规则：
 

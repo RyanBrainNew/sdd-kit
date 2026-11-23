@@ -6,3 +6,5 @@
 | G1 | SPEC_READY | auto | PASS | spec check passed | 2026-11-23T22:41:42+08:00 |
 | G2 | DESIGN_READY | auto | PASS | design.md submitted via CLI and checked | 2026-11-23T22:42:57+08:00 |
 | G3 | TASKS_READY | auto | PASS | tasks.md submitted via CLI and checked | 2026-11-23T22:46:15+08:00 |
+| G4 | VERIFYING | auto | PASS | all tasks completed | 2026-11-23T22:58:51+08:00 |
+| G5 | PR_READY | auto | PASS | verification.md submitted via CLI and checked | 2026-11-24T00:05:56+08:00 |
