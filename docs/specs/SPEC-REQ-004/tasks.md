@@ -19,7 +19,7 @@
 | T-002 | 新增只读 impact，输出 FEAT/FR/AC/Task/测试/代码路径与审批需求 | FR-002；AC-002-1；AC-002-2；AC-002-3 | T-001 | S | 字段稳定；缺失引用可见；approval_required 判定正确 | `ImpactTests#test_impact_lists_links_and_paths` | `python -m unittest tests.test_governance.ImpactTests -v` | Done | 18d6592 |
 | T-003 | 新增 change-set 解析/写入、sdd change 与 reapprove 回写 approved | FR-003；AC-003-1；AC-003-2；AC-003-5 | T-002 | S | 记录字段完整；reapprove 标记 approved；非法引用失败不落盘 | `ChangeSetTests#test_change_writes_required_fields` | `python -m unittest tests.test_governance.ChangeSetTests -v` | Done | d1fb2d6 |
 | T-004 | pre-commit 与 stage 检查阻断 pending/非法 docs-only 代码提交 | FR-003；AC-003-3；AC-003-4 | T-003 | S | pending 代码提交阻断；docs-only 放行文档、阻断代码；检查报 G1-09 | `ChangeEnforcementTests#test_pending_change_blocks_code_commit` | `python -m unittest tests.test_governance.ChangeEnforcementTests -v` | Done | f6efa69 |
-| T-005 | CLI/MCP 边界、历史兼容、文档、版本与 manifest 发布同步 | FR-004；AC-004-1；AC-004-2；AC-004-3 | T-001,T-004 | S | reapprove 仅 CLI 人工；MERGED 兼容；全量测试/verify/CI 通过 | `GovernanceBoundaryTests#test_reapprove_is_cli_only_human_action` | `python -m unittest tests.test_governance.GovernanceBoundaryTests -v` | Todo | — |
+| T-005 | CLI/MCP 边界、历史兼容、文档、版本与 manifest 发布同步 | FR-004；AC-004-1；AC-004-2；AC-004-3 | T-001,T-004 | S | reapprove 仅 CLI 人工；MERGED 兼容；全量测试/verify/CI 通过 | `GovernanceBoundaryTests#test_reapprove_is_cli_only_human_action` | `python -m unittest tests.test_governance.GovernanceBoundaryTests -v` | Done | b8a66db |
 
 字段规则：
 

@@ -31,6 +31,14 @@
 
 - Evidence recorded: Task T-004
 
+- Evidence recorded: Task T-005
+
+### Task T-005
+
+- At: 2026-11-23T21:29:49+08:00
+
+python -m unittest tests.test_governance -v: 17 passed; version 0.9.6, manifest, docs and AGENTS block synced; independent review recorded
+
 ### Task T-004
 
 - At: 2026-11-23T21:22:21+08:00

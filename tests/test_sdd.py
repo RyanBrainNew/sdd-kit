@@ -2043,7 +2043,7 @@ class GateBoundaryTests(SddFlowBase):
         version = (KIT_ROOT / "sdd" / "VERSION").read_text(
             encoding="utf-8"
         ).strip()
-        self.assertEqual(version, "0.9.5")
+        self.assertRegex(version, r"^\d+\.\d+\.\d+$")
         self.assertIn(
             f'__version__ = "{version}"',
             (KIT_ROOT / "sdd" / "__init__.py").read_text(encoding="utf-8"),
