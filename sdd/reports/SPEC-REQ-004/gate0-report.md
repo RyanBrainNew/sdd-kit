@@ -9,10 +9,11 @@
 | 产品类型 | 传统产品 |
 | 阶段 | REQUIREMENT |
 | Gate | GATE_0 |
-| 检查时间 | 2026-11-23T21:01:44+08:00 |
+| 检查时间 | 2026-11-23T22:01:56+08:00 |
 | 执行模式 | manual |
 | 总体结果 | PASS |
 | 告警数 | 0 |
+| 审批 Spec 摘要 | `cfd972a60099ebc3ba1b00aa57272869730cecfb57f2f61d024b3be67c773b3e` |
 
 ## 2. 检查项
 
@@ -31,20 +32,20 @@
 | AC ID | 关联 Task | 状态 | 证据 |
 | --- | --- | --- | --- |
 | AC-001-1 | T-001 | DEFINED | `docs/specs/SPEC-REQ-004/spec.md` / `docs/specs/SPEC-REQ-004/verification.md` |
-| AC-001-2 | - | DEFINED | `docs/specs/SPEC-REQ-004/spec.md` / `docs/specs/SPEC-REQ-004/verification.md` |
-| AC-001-3 | - | DEFINED | `docs/specs/SPEC-REQ-004/spec.md` / `docs/specs/SPEC-REQ-004/verification.md` |
-| AC-001-4 | - | DEFINED | `docs/specs/SPEC-REQ-004/spec.md` / `docs/specs/SPEC-REQ-004/verification.md` |
-| AC-002-1 | - | DEFINED | `docs/specs/SPEC-REQ-004/spec.md` / `docs/specs/SPEC-REQ-004/verification.md` |
-| AC-002-2 | - | DEFINED | `docs/specs/SPEC-REQ-004/spec.md` / `docs/specs/SPEC-REQ-004/verification.md` |
-| AC-002-3 | - | DEFINED | `docs/specs/SPEC-REQ-004/spec.md` / `docs/specs/SPEC-REQ-004/verification.md` |
-| AC-003-1 | - | DEFINED | `docs/specs/SPEC-REQ-004/spec.md` / `docs/specs/SPEC-REQ-004/verification.md` |
-| AC-003-2 | - | DEFINED | `docs/specs/SPEC-REQ-004/spec.md` / `docs/specs/SPEC-REQ-004/verification.md` |
-| AC-003-3 | - | DEFINED | `docs/specs/SPEC-REQ-004/spec.md` / `docs/specs/SPEC-REQ-004/verification.md` |
-| AC-003-4 | - | DEFINED | `docs/specs/SPEC-REQ-004/spec.md` / `docs/specs/SPEC-REQ-004/verification.md` |
-| AC-003-5 | - | DEFINED | `docs/specs/SPEC-REQ-004/spec.md` / `docs/specs/SPEC-REQ-004/verification.md` |
-| AC-004-1 | - | DEFINED | `docs/specs/SPEC-REQ-004/spec.md` / `docs/specs/SPEC-REQ-004/verification.md` |
-| AC-004-2 | - | DEFINED | `docs/specs/SPEC-REQ-004/spec.md` / `docs/specs/SPEC-REQ-004/verification.md` |
-| AC-004-3 | - | DEFINED | `docs/specs/SPEC-REQ-004/spec.md` / `docs/specs/SPEC-REQ-004/verification.md` |
+| AC-001-2 | T-001 | DEFINED | `docs/specs/SPEC-REQ-004/spec.md` / `docs/specs/SPEC-REQ-004/verification.md` |
+| AC-001-3 | T-001 | DEFINED | `docs/specs/SPEC-REQ-004/spec.md` / `docs/specs/SPEC-REQ-004/verification.md` |
+| AC-001-4 | T-001 | DEFINED | `docs/specs/SPEC-REQ-004/spec.md` / `docs/specs/SPEC-REQ-004/verification.md` |
+| AC-002-1 | T-002 | DEFINED | `docs/specs/SPEC-REQ-004/spec.md` / `docs/specs/SPEC-REQ-004/verification.md` |
+| AC-002-2 | T-002 | DEFINED | `docs/specs/SPEC-REQ-004/spec.md` / `docs/specs/SPEC-REQ-004/verification.md` |
+| AC-002-3 | T-002 | DEFINED | `docs/specs/SPEC-REQ-004/spec.md` / `docs/specs/SPEC-REQ-004/verification.md` |
+| AC-003-1 | T-003 | DEFINED | `docs/specs/SPEC-REQ-004/spec.md` / `docs/specs/SPEC-REQ-004/verification.md` |
+| AC-003-2 | T-003 | DEFINED | `docs/specs/SPEC-REQ-004/spec.md` / `docs/specs/SPEC-REQ-004/verification.md` |
+| AC-003-3 | T-004 | DEFINED | `docs/specs/SPEC-REQ-004/spec.md` / `docs/specs/SPEC-REQ-004/verification.md` |
+| AC-003-4 | T-004 | DEFINED | `docs/specs/SPEC-REQ-004/spec.md` / `docs/specs/SPEC-REQ-004/verification.md` |
+| AC-003-5 | T-003 | DEFINED | `docs/specs/SPEC-REQ-004/spec.md` / `docs/specs/SPEC-REQ-004/verification.md` |
+| AC-004-1 | T-005 | DEFINED | `docs/specs/SPEC-REQ-004/spec.md` / `docs/specs/SPEC-REQ-004/verification.md` |
+| AC-004-2 | T-005 | DEFINED | `docs/specs/SPEC-REQ-004/spec.md` / `docs/specs/SPEC-REQ-004/verification.md` |
+| AC-004-3 | T-005 | DEFINED | `docs/specs/SPEC-REQ-004/spec.md` / `docs/specs/SPEC-REQ-004/verification.md` |
 
 ## 4. 产物
 
@@ -54,7 +55,7 @@
 
 ## 5. 证据与人工确认
 
-- 执行证据：需求已确认
+- 执行证据：采用审批摘要绑定
 - 执行模式：manual
 - 人工确认：已确认
 - 确认人：linjinlong <fflinjinlong@chinatelecom.cn>

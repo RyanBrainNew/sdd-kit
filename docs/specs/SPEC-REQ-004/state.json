@@ -14,9 +14,9 @@
     "digest": "ae89c532988018c3f6d3c222c4a66da2a44981f33c8401d62a632bef66a8e910",
     "snapshot": "workflow.json"
   },
-  "state": "VERIFYING",
+  "state": "PR_READY",
   "created_at": "2026-11-23T19:32:26+08:00",
-  "updated_at": "2026-11-23T21:29:49+08:00",
+  "updated_at": "2026-11-23T22:02:57+08:00",
   "pr_url": null,
   "history": [
     {
@@ -235,6 +235,25 @@
           "bytes": 8114
         }
       ]
+    },
+    {
+      "state": "PR_READY",
+      "at": "2026-11-23T22:02:57+08:00",
+      "evidence": "verification.md submitted via CLI and checked",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "gate": "G5",
+      "role": "verifier",
+      "approver": null,
+      "artifacts": [
+        {
+          "path": "docs/specs/SPEC-REQ-004/verification.md",
+          "sha256": "8b83621a963f5f387f5fb6be804cd48e6560ea327f4d3a0241d49f8d29d5dd0c",
+          "bytes": 25993
+        }
+      ]
     }
   ],
   "artifact_hashes": {
@@ -252,6 +271,9 @@
     },
     "G4": {
       "docs/specs/SPEC-REQ-004/tasks.md#plan": "bd5dac7da2149f0b68f8f7d7f963bc2ec83334669a337ee12de900706c58865a"
+    },
+    "G5": {
+      "docs/specs/SPEC-REQ-004/verification.md": "8b83621a963f5f387f5fb6be804cd48e6560ea327f4d3a0241d49f8d29d5dd0c"
     }
   },
   "approvals": [
@@ -261,8 +283,22 @@
       "at": "2026-11-23T21:01:44+08:00",
       "artifact": "docs/specs/SPEC-REQ-004/spec.md",
       "sha256": "cfd972a60099ebc3ba1b00aa57272869730cecfb57f2f61d024b3be67c773b3e"
+    },
+    {
+      "action": "reapprove_spec",
+      "approver": "linjinlong <fflinjinlong@chinatelecom.cn>",
+      "at": "2026-11-23T22:01:56+08:00",
+      "reason": "legacy-migration",
+      "evidence": "采用审批摘要绑定",
+      "previous_digest": "",
+      "sha256": "cfd972a60099ebc3ba1b00aa57272869730cecfb57f2f61d024b3be67c773b3e",
+      "artifact": "docs/specs/SPEC-REQ-004/spec.md"
     }
   ],
   "last_approver": "linjinlong <fflinjinlong@chinatelecom.cn>",
-  "previous_state": "IMPLEMENTING"
+  "previous_state": "VERIFYING",
+  "approved_spec_digest": "cfd972a60099ebc3ba1b00aa57272869730cecfb57f2f61d024b3be67c773b3e",
+  "approved_at": "2026-11-23T22:01:56+08:00",
+  "approved_by": "linjinlong <fflinjinlong@chinatelecom.cn>",
+  "approval_evidence": "采用审批摘要绑定"
 }
