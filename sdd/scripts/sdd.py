@@ -145,6 +145,16 @@ CHECK_REQUIRED_FIELDS = (
 
 CHECK_LEVELS = {"required", "advisory"}
 CHECK_TRIGGERS = {"doc_pr", "code_pr", "local", "ci", "pipeline"}
+GATE_REPORT_RESULT_ALIASES = {
+    "PASS": "pass",
+    "OK": "pass",
+    "WARN": "warn",
+    "WARNING": "warn",
+    "WAIVED": "waived",
+    "BLOCK": "block",
+    "FAIL": "block",
+    "FAILED": "block",
+}
 
 CHECK_REGISTRY = (
     {
@@ -3383,6 +3393,125 @@ def gate_report_status(path: Path) -> str:
     return ""
 
 
+def parse_gate_report_checks(
+    report: str,
+    gate: str = "",
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    in_section = False
+    for line in report.splitlines():
+        if re.match(r"^##\s*2\.\s*检查项", line):
+            in_section = True
+            continue
+        if in_section and re.match(r"^##\s+", line):
+            break
+        if not in_section or not line.strip().startswith("|"):
+            continue
+        cells = split_table_row(line)
+        if len(cells) < 4:
+            continue
+        check_id = cells[0].strip().strip("`")
+        if not re.fullmatch(r"G[0-5]-\d{2}", check_id):
+            continue
+        raw_result = cells[3].strip().strip("`").upper()
+        result = GATE_REPORT_RESULT_ALIASES.get(raw_result)
+        if result is None:
+            continue
+        waiver = cells[5].strip() if len(cells) > 5 else ""
+        if waiver in {"—", "-", "N/A", "n/a"}:
+            waiver = ""
+        if result == "warn" and waiver:
+            result = "waived"
+        rows.append(
+            {
+                "gate": gate,
+                "check_id": check_id,
+                "name": cells[1].strip(),
+                "level": cells[2].strip().lower() or "required",
+                "result": result,
+                "detail": cells[4].strip() if len(cells) > 4 else "",
+                "waiver": waiver,
+            }
+        )
+    return rows
+
+
+def collect_gate_check_rows(
+    root: Path,
+    config: dict[str, Any],
+    spec_id: str,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for gate in GATE_STAGES:
+        path = gate_report_path(root, config, spec_id, gate)
+        if not path.is_file():
+            continue
+        report_path = path.relative_to(root).as_posix()
+        for row in parse_gate_report_checks(read_text(path), gate):
+            row["spec"] = spec_id
+            row["report"] = report_path
+            rows.append(row)
+    return rows
+
+
+def summarize_gate_checks(
+    rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    checks: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        check_id = str(row.get("check_id") or "")
+        result = str(row.get("result") or "")
+        if not check_id or result not in {"pass", "warn", "block", "waived"}:
+            continue
+        item = checks.setdefault(
+            check_id,
+            {
+                "check_id": check_id,
+                "gate": str(row.get("gate") or ""),
+                "name": str(row.get("name") or ""),
+                "level": str(row.get("level") or "required"),
+                "pass": 0,
+                "warn": 0,
+                "block": 0,
+                "waived": 0,
+                "total": 0,
+            },
+        )
+        item[result] += 1
+        item["total"] += 1
+    for item in checks.values():
+        total = int(item["total"])
+        for result, rate_name in (
+            ("pass", "pass_rate"),
+            ("warn", "warn_rate"),
+            ("block", "block_rate"),
+            ("waived", "waiver_rate"),
+        ):
+            item[rate_name] = (
+                round(int(item[result]) / total, 4) if total else 0.0
+            )
+    return [checks[key] for key in sorted(checks)]
+
+
+def gate_warning_items(
+    rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "spec": row["spec"],
+            "gate": row["gate"],
+            "check_id": row["check_id"],
+            "level": row["level"],
+            "result": str(row["result"]).upper(),
+            "detail": row["detail"],
+            "waiver": row["waiver"],
+            "report": row["report"],
+        }
+        for row in rows
+        if row["result"] in {"warn", "waived"}
+    ]
+
+
 def parse_artifact_hashes(report: str) -> list[tuple[str, str]]:
     rows: list[tuple[str, str]] = []
     in_section = False
@@ -4807,6 +4936,13 @@ def build_inbox_item(
     state_name = str(state.get("state", "UNKNOWN"))
     since = latest_event_at(directory, state) or str(state.get("created_at") or "")
     item: Optional[dict[str, Any]] = None
+    warnings = (
+        []
+        if state_name == "MERGED"
+        else gate_warning_items(
+            collect_gate_check_rows(root, config, spec_id)
+        )
+    )
 
     if state_name == "BLOCKED":
         item = {
@@ -4878,6 +5014,20 @@ def build_inbox_item(
                 ),
             }
 
+    if warnings:
+        if item is None:
+            item = {
+                "spec": spec_id,
+                "state": state_name,
+                "priority": 50,
+                "action": "review_warning",
+                "reason": f"{len(warnings)} 条 Gate 告警待复核",
+                "since": since,
+                "artifact": warnings[0]["report"],
+                "command": None,
+            }
+        item["warnings"] = warnings
+
     if item is None and stale_days is not None:
         since_dt = parse_timestamp(since)
         if since_dt is not None:
@@ -4940,11 +5090,17 @@ def command_inbox(args: argparse.Namespace, root: Path, config: dict[str, Any]) 
         )
         if item.get("command"):
             print(f"  {item['command']}")
+        for warning in item.get("warnings", []):
+            print(
+                f"  {warning['result']} {warning['gate']} "
+                f"{warning['check_id']}: {warning['detail']}"
+            )
     return 0
 
 
 def compute_spec_metrics(
     root: Path,
+    config: dict[str, Any],
     directory: Path,
     state: dict[str, Any],
     since: Optional[datetime],
@@ -5049,6 +5205,9 @@ def compute_spec_metrics(
         "artifact_changes": sum(
             1 for hashes in artifacts.values() if len(hashes) > 1
         ),
+        "checks": summarize_gate_checks(
+            collect_gate_check_rows(root, config, spec_id)
+        ),
     }
 
 
@@ -5069,12 +5228,21 @@ def command_metrics(
         else []
     )
     specs: list[dict[str, Any]] = []
+    check_rows: list[dict[str, Any]] = []
     for directory in directories:
+        state = load_json(directory / "state.json")
         item = compute_spec_metrics(
-            root, directory, load_json(directory / "state.json"), since
+            root, config, directory, state, since
         )
         if item:
             specs.append(item)
+            check_rows.extend(
+                collect_gate_check_rows(
+                    root,
+                    config,
+                    str(state.get("spec_id", directory.name)),
+                )
+            )
 
     lead_times = [
         item["lead_time_hours"]
@@ -5099,6 +5267,7 @@ def command_metrics(
                 item["human_interventions"] for item in specs
             ),
             "gate_failures": sum(item["gate_failures"] for item in specs),
+            "checks": summarize_gate_checks(check_rows),
         },
     }
     if args.json:

@@ -1726,6 +1726,189 @@ class GateWaiverTests(SddFlowBase):
         )
 
 
+class GateInboxMetricsTests(SddFlowBase):
+    def write_gate_rows(self, spec_id, gate, rows, six_columns=True):
+        if six_columns:
+            header = (
+                "| 检查 ID | 检查项 | 级别 | 结果 | 证据 | 豁免 |\n"
+                "| --- | --- | --- | --- | --- | --- |"
+            )
+        else:
+            header = (
+                "| 检查 ID | 检查项 | 级别 | 结果 | 证据 |\n"
+                "| --- | --- | --- | --- | --- |"
+            )
+        lines = []
+        for row in rows:
+            cells = [
+                row["id"],
+                row.get("name", row["id"]),
+                row.get("level", "required"),
+                row["result"],
+                row.get("detail", "ok"),
+            ]
+            if six_columns:
+                cells.append(row.get("waiver", "—"))
+            lines.append("| " + " | ".join(cells) + " |")
+        self.write(
+            f"sdd/reports/{spec_id}/gate{gate.lstrip('G')}-report.md",
+            "\n".join(
+                [
+                    f"# {gate} report",
+                    "",
+                    "## 1. 元数据",
+                    "",
+                    "| 项 | 内容 |",
+                    "| --- | --- |",
+                    "| 总体结果 | PASS |",
+                    "",
+                    "## 2. 检查项",
+                    "",
+                    header,
+                    *lines,
+                    "",
+                    "## 3. AC 清单",
+                    "",
+                    "| AC ID | 关联 Task | 状态 | 证据 |",
+                    "| --- | --- | --- | --- |",
+                ]
+            ),
+        )
+
+    def test_inbox_surfaces_gate_warnings(self):
+        # [AC-004-1]
+        self.new_spec()
+        self.write_gate_rows(
+            SPEC_ID,
+            "G4",
+            [
+                {
+                    "id": "G4-02",
+                    "level": "required",
+                    "result": "WARN",
+                    "detail": "T-001 证据缺失但已豁免",
+                    "waiver": "waived by Reviewer until 2026-12-31",
+                }
+            ],
+        )
+        inbox = json.loads(self.run_sdd("inbox", "--json").stdout)
+        warning = inbox["items"][0]["warnings"][0]
+        self.assertEqual(warning["spec"], SPEC_ID)
+        self.assertEqual(warning["gate"], "G4")
+        self.assertEqual(warning["check_id"], "G4-02")
+        self.assertEqual(warning["result"], "WAIVED")
+
+        state = self.state()
+        state["state"] = "IMPLEMENTING"
+        path = self.root / "docs" / "specs" / SPEC_ID / "state.json"
+        path.write_text(
+            json.dumps(state, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        warning_only = json.loads(
+            self.run_sdd("inbox", "--json").stdout
+        )
+        self.assertEqual(
+            warning_only["items"][0]["action"], "review_warning"
+        )
+        self.assertEqual(
+            warning_only["items"][0]["warnings"][0]["check_id"], "G4-02"
+        )
+
+    def test_metrics_group_by_check_id(self):
+        # [AC-004-2]
+        self.new_spec()
+        self.new_spec("SPEC-ORDER-002")
+        self.write_gate_rows(
+            SPEC_ID,
+            "G0",
+            [
+                {
+                    "id": "G0-07",
+                    "name": "历史兼容",
+                    "level": "advisory",
+                    "result": "WARN",
+                    "detail": "legacy report",
+                }
+            ],
+        )
+        self.write_gate_rows(
+            SPEC_ID,
+            "G4",
+            [
+                {
+                    "id": "G4-01",
+                    "result": "PASS",
+                    "detail": "all done",
+                },
+                {
+                    "id": "G4-02",
+                    "result": "WARN",
+                    "detail": "evidence gap",
+                    "waiver": "waived by Reviewer until 2026-12-31",
+                },
+            ],
+        )
+        self.write_gate_rows(
+            "SPEC-ORDER-002",
+            "G4",
+            [
+                {
+                    "id": "G4-01",
+                    "result": "BLOCK",
+                    "detail": "T-001 pending",
+                },
+                {
+                    "id": "G4-02",
+                    "result": "PASS",
+                    "detail": "evidence present",
+                },
+            ],
+        )
+        metrics = json.loads(self.run_sdd("metrics", "--json").stdout)
+        first = next(
+            item for item in metrics["specs"] if item["spec"] == SPEC_ID
+        )
+        first_checks = {row["check_id"]: row for row in first["checks"]}
+        self.assertEqual(first_checks["G0-07"]["warn"], 1)
+        self.assertEqual(first_checks["G0-07"]["warn_rate"], 1.0)
+        self.assertEqual(first_checks["G4-02"]["waived"], 1)
+        self.assertEqual(first_checks["G4-02"]["waiver_rate"], 1.0)
+
+        aggregate = {
+            row["check_id"]: row for row in metrics["aggregate"]["checks"]
+        }
+        self.assertEqual(aggregate["G4-01"]["pass"], 1)
+        self.assertEqual(aggregate["G4-01"]["block"], 1)
+        self.assertEqual(aggregate["G4-01"]["block_rate"], 0.5)
+        self.assertEqual(aggregate["G4-02"]["pass"], 1)
+        self.assertEqual(aggregate["G4-02"]["waived"], 1)
+        self.assertEqual(aggregate["G4-02"]["waiver_rate"], 0.5)
+
+    def test_legacy_report_rows_are_compatible(self):
+        # [AC-004-3]
+        self.new_spec()
+        self.write_gate_rows(
+            SPEC_ID,
+            "G0",
+            [
+                {"id": "G0-01", "result": "PASS", "detail": "work item ok"},
+                {"id": "G0-06", "result": "BLOCK", "detail": "scope missing"},
+            ],
+            six_columns=False,
+        )
+        inbox = json.loads(self.run_sdd("inbox", "--json").stdout)
+        self.assertEqual(inbox["items"][0].get("warnings", []), [])
+        metrics = json.loads(self.run_sdd("metrics", "--json").stdout)
+        checks = {
+            row["check_id"]: row
+            for row in metrics["specs"][0]["checks"]
+        }
+        self.assertEqual(checks["G0-01"]["pass"], 1)
+        self.assertEqual(checks["G0-06"]["block"], 1)
+        self.assertIn("block_rate", checks["G0-06"])
+
+
 class GateRegistryTests(SddFlowBase):
     def test_registry_covers_all_gates(self):
         # [AC-001-1]
