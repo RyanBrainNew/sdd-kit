@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import shutil
@@ -1972,6 +1973,112 @@ class ContextBundleTests(SddFlowBase):
         self.assertNotIn("api/other.yaml", rendered)
         self.assertIn("docs/specs/*（其他 Spec）", bundle["exclude"])
         self.assertEqual(bundle["fix_patterns"], [])
+
+
+class ArtifactHashTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name)
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def write_artifact(self, name: str, text: str, newline: str) -> Path:
+        path = self.root / name
+        path.write_bytes(text.replace("\n", newline).encode("utf-8"))
+        return path
+
+    def test_text_hash_is_line_ending_stable(self):
+        # [AC-001-1]
+        text = "# title\n\ncontent\n"
+        lf_path = self.write_artifact("lf.md", text, "\n")
+        crlf_path = self.write_artifact("crlf.md", text, "\r\n")
+        self.assertEqual(
+            engine.artifact_sha256(lf_path),
+            engine.artifact_sha256(crlf_path),
+        )
+
+    def test_check_ignores_line_ending_only_change(self):
+        # [AC-001-2]
+        text = "# title\n\ncontent\n"
+        lf_path = self.write_artifact("lf.md", text, "\n")
+        crlf_path = self.write_artifact("crlf.md", text, "\r\n")
+        expected = engine.artifact_sha256(crlf_path)
+        self.assertTrue(engine.artifact_hash_matches(lf_path, expected))
+
+    def test_check_rejects_text_change(self):
+        # [AC-001-3]
+        original = self.write_artifact(
+            "original.md", "# title\n\noriginal\n", "\r\n"
+        )
+        changed = self.write_artifact(
+            "changed.md", "# title\n\nchanged\n", "\n"
+        )
+        expected = engine.artifact_sha256(original)
+        self.assertFalse(engine.artifact_hash_matches(changed, expected))
+
+    def test_check_accepts_legacy_crlf_hash(self):
+        # [AC-002-1]
+        text = "# title\n\ncontent\n"
+        crlf_path = self.write_artifact("crlf.md", text, "\r\n")
+        lf_path = self.write_artifact("lf.md", text, "\n")
+        legacy_expected = hashlib.sha256(crlf_path.read_bytes()).hexdigest()
+        self.assertTrue(engine.artifact_hash_matches(lf_path, legacy_expected))
+
+    def test_check_rejects_content_change_with_legacy_hash(self):
+        # [AC-002-2]
+        original = self.write_artifact(
+            "legacy-original.md", "# title\n\noriginal\n", "\r\n"
+        )
+        changed = self.write_artifact(
+            "legacy-changed.md", "# title\n\nchanged\n", "\n"
+        )
+        legacy_expected = hashlib.sha256(original.read_bytes()).hexdigest()
+        self.assertFalse(engine.artifact_hash_matches(changed, legacy_expected))
+
+    def test_new_gate_hash_uses_lf(self):
+        # [AC-002-3]
+        text = "# title\n\ncontent\n"
+        crlf_path = self.write_artifact("gate-crlf.md", text, "\r\n")
+        relative, digest, _ = engine.artifact_digest(
+            self.root, self.root, "gate-crlf.md"
+        )
+        self.assertEqual(relative, "gate-crlf.md")
+        self.assertEqual(
+            digest,
+            hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        )
+        self.assertNotEqual(
+            digest,
+            hashlib.sha256(crlf_path.read_bytes()).hexdigest(),
+        )
+
+
+class GitTrailerTests(unittest.TestCase):
+    def test_recent_trailer_only_applies_to_active_specs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+            subprocess.run(
+                ["git", "config", "user.email", "test@example.invalid"],
+                cwd=root,
+                check=True,
+            )
+            subprocess.run(
+                ["git", "config", "user.name", "SDD Test"],
+                cwd=root,
+                check=True,
+            )
+            (root / "note.txt").write_text("no trailer\n", encoding="utf-8")
+            subprocess.run(["git", "add", "note.txt"], cwd=root, check=True)
+            subprocess.run(
+                ["git", "commit", "-q", "-m", "init"],
+                cwd=root,
+                check=True,
+            )
+
+            self.assertTrue(engine.check_git(root, SPEC_ID, "DRAFT"))
+            self.assertEqual(engine.check_git(root, SPEC_ID, "MERGED"), [])
 
 
 if __name__ == "__main__":

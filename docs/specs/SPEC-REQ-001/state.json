@@ -1,0 +1,270 @@
+{
+  "spec_id": "SPEC-REQ-001",
+  "title": "工件哈希 CRLF/LF 规范化与 SDD CI 门禁对齐",
+  "work_item": "SDD-HASH-001",
+  "issue": "https://github.com/RyanBrainNew/sdd-kit/issues/15",
+  "product_type": "传统产品",
+  "risk": "medium",
+  "risk_labels": [],
+  "workflow": {
+    "name": "l2-standard",
+    "version": 1,
+    "digest": "ae89c532988018c3f6d3c222c4a66da2a44981f33c8401d62a632bef66a8e910",
+    "snapshot": "workflow.json"
+  },
+  "state": "MERGED",
+  "created_at": "2026-11-23T11:10:05+08:00",
+  "updated_at": "2026-11-23T14:24:33+08:00",
+  "pr_url": "https://github.com/RyanBrainNew/sdd-kit/pull/16",
+  "history": [
+    {
+      "state": "DRAFT",
+      "at": "2026-11-23T11:10:05+08:00",
+      "evidence": "created",
+      "role": "planner"
+    },
+    {
+      "state": "SPEC_READY",
+      "at": "2026-11-23T11:19:15+08:00",
+      "evidence": "需求已确认",
+      "actor": "human",
+      "session": "43521a906ffe",
+      "session_source": "repo-fallback",
+      "source": "cli",
+      "gate": "G0/G1",
+      "role": "approver",
+      "approver": "linjinlong <fflinjinlong@chinatelecom.cn>",
+      "artifacts": [
+        {
+          "path": "docs/specs/SPEC-REQ-001/spec.md",
+          "sha256": "34617645982a2046e861c3e1cdbdcc3d1295a903f4fea0472b091a5b127492b7",
+          "bytes": 10109
+        }
+      ]
+    },
+    {
+      "state": "DESIGN_READY",
+      "at": "2026-11-23T11:22:06+08:00",
+      "evidence": "design.md submitted via CLI and checked",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "gate": "G2",
+      "role": "designer",
+      "approver": null,
+      "artifacts": [
+        {
+          "path": "docs/specs/SPEC-REQ-001/design.md",
+          "sha256": "7120291d2f11d637d6980eecae71405dae5e2d02d18d5452fbf38773a5469e31",
+          "bytes": 8129
+        }
+      ]
+    },
+    {
+      "state": "TASKS_READY",
+      "at": "2026-11-23T11:25:34+08:00",
+      "evidence": "tasks.md submitted via CLI and checked",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "gate": "G3",
+      "role": "planner",
+      "approver": null,
+      "artifacts": [
+        {
+          "path": "docs/specs/SPEC-REQ-001/tasks.md#plan",
+          "sha256": "4157d09c1a70383e387d96a8b47da50ffd0d7939af78574bab662825b1ea0ee0",
+          "bytes": 6308
+        }
+      ]
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-23T11:25:35+08:00",
+      "evidence": "implementation started automatically by CLI",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-23T11:40:55+08:00",
+      "evidence": "task started",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_start",
+      "task": "T-001",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-23T11:40:55+08:00",
+      "evidence": "python -m unittest tests.test_sdd.ArtifactHashTests -v -> Ran 3 tests OK; python -m unittest tests.test_sdd -v -> Ran 54 tests OK; CRLF/LF 哈希一致，行尾变化不报修改，正文变化仍阻断",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_done",
+      "task": "T-001",
+      "commit": "8475868",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-23T11:42:41+08:00",
+      "evidence": "task started",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_start",
+      "task": "T-002",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-23T11:42:42+08:00",
+      "evidence": "python -m unittest tests.test_sdd.ArtifactHashTests -v -> Ran 6 tests OK; 历史 CRLF 哈希可在 LF 文件通过，正文变化仍阻断，新 Gate 记录使用 LF 哈希",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_done",
+      "task": "T-002",
+      "commit": "e7da481",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-23T11:46:33+08:00",
+      "evidence": "task started",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_start",
+      "task": "T-003",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-23T11:46:34+08:00",
+      "evidence": "python -m unittest tests.test_ci_contract -v -> Ran 1 test OK; python -m sdd verify-core -> passed; python -m sdd verify-agent -> passed; GitHub Actions 已包含 verify-core、verify-agent、check --all --stage ci --check-git，版本升至 0.9.2，manifest 43 files",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_done",
+      "task": "T-003",
+      "commit": "17badc6",
+      "role": "implementer"
+    },
+    {
+      "state": "VERIFYING",
+      "at": "2026-11-23T11:46:34+08:00",
+      "evidence": "all tasks completed",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "gate": "G4",
+      "role": "implementer",
+      "approver": null,
+      "artifacts": [
+        {
+          "path": "docs/specs/SPEC-REQ-001/tasks.md#plan",
+          "sha256": "4157d09c1a70383e387d96a8b47da50ffd0d7939af78574bab662825b1ea0ee0",
+          "bytes": 6225
+        }
+      ]
+    },
+    {
+      "state": "PR_READY",
+      "at": "2026-11-23T12:41:57+08:00",
+      "evidence": "verification.md submitted via CLI and checked",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "gate": "G5",
+      "role": "verifier",
+      "approver": null,
+      "artifacts": [
+        {
+          "path": "docs/specs/SPEC-REQ-001/verification.md",
+          "sha256": "99e7c4164cbdf127847ed115f5b5c07feb25f671dc15c4211d7dd6dc938b3b36",
+          "bytes": 109510
+        }
+      ]
+    },
+    {
+      "state": "MERGED",
+      "at": "2026-11-23T14:22:46+08:00",
+      "evidence": "交付已确认",
+      "actor": "human",
+      "session": "43521a906ffe",
+      "session_source": "repo-fallback",
+      "source": "cli",
+      "role": "approver",
+      "approver": "linjinlong <fflinjinlong@chinatelecom.cn>"
+    },
+    {
+      "state": "MERGED",
+      "at": "2026-11-23T14:24:33+08:00",
+      "evidence": "PR recorded",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "pr_url": "https://github.com/RyanBrainNew/sdd-kit/pull/16",
+      "role": "orchestrator"
+    }
+  ],
+  "artifact_hashes": {
+    "G0": {
+      "docs/specs/SPEC-REQ-001/spec.md": "34617645982a2046e861c3e1cdbdcc3d1295a903f4fea0472b091a5b127492b7"
+    },
+    "G1": {
+      "docs/specs/SPEC-REQ-001/spec.md": "34617645982a2046e861c3e1cdbdcc3d1295a903f4fea0472b091a5b127492b7"
+    },
+    "G2": {
+      "docs/specs/SPEC-REQ-001/design.md": "7120291d2f11d637d6980eecae71405dae5e2d02d18d5452fbf38773a5469e31"
+    },
+    "G3": {
+      "docs/specs/SPEC-REQ-001/tasks.md#plan": "4157d09c1a70383e387d96a8b47da50ffd0d7939af78574bab662825b1ea0ee0"
+    },
+    "G4": {
+      "docs/specs/SPEC-REQ-001/tasks.md#plan": "4157d09c1a70383e387d96a8b47da50ffd0d7939af78574bab662825b1ea0ee0"
+    },
+    "G5": {
+      "docs/specs/SPEC-REQ-001/verification.md": "99e7c4164cbdf127847ed115f5b5c07feb25f671dc15c4211d7dd6dc938b3b36"
+    }
+  },
+  "approvals": [
+    {
+      "action": "approve_spec",
+      "approver": "linjinlong <fflinjinlong@chinatelecom.cn>",
+      "at": "2026-11-23T11:19:15+08:00",
+      "artifact": "docs/specs/SPEC-REQ-001/spec.md",
+      "sha256": "34617645982a2046e861c3e1cdbdcc3d1295a903f4fea0472b091a5b127492b7"
+    },
+    {
+      "action": "confirm_delivery",
+      "approver": "linjinlong <fflinjinlong@chinatelecom.cn>",
+      "at": "2026-11-23T14:22:46+08:00",
+      "artifact": "docs/specs/SPEC-REQ-001/PR_BODY.md",
+      "sha256": "1c0148f33fa9171dc2c8ded5ade5ae537a06807f289aedd81e6ef76489087cae",
+      "head_sha": "b5bb330134d1ee149b5b5f43eb654b7e169d305e"
+    }
+  ],
+  "last_approver": "linjinlong <fflinjinlong@chinatelecom.cn>",
+  "previous_state": "PR_READY",
+  "delivery_confirmed_at": "2026-11-23T14:22:46+08:00",
+  "merged_at": "2026-11-23T14:22:46+08:00"
+}
