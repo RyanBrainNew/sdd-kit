@@ -22,6 +22,14 @@
 
 待填写。
 
+- Evidence recorded: Task T-001
+
+### Task T-001
+
+- At: 2026-11-24T11:34:35+08:00
+
+python -m unittest tests.test_runner_contract.ContractDocumentTests -v: 6 passed; contract covers 7 phases, 4 result states, human-only actions and runner runtime ownership
+
 ## 4. 未运行
 
 None。

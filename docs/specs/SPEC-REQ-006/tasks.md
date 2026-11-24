@@ -15,7 +15,7 @@
 
 | Task ID | 任务描述 | 关联FR/AC | 依赖Task | 并行标识 | 验收标准 | 单元测试类/方法 | 单Task测试命令 | 状态 | Commit SHA |
 |---|---|---|---|---|---|---|---|---|---|
-| T-001 | 编写 `deploy/runner/CONTRACT.md` 七阶段契约、失败语义、人工边界、职责与示例，并新增结构测试 | FR-001；FR-002；AC-001-1；AC-001-2；AC-001-3；AC-002-1；AC-002-2；AC-002-3 | None | S | 七阶段齐全；四类返回语义齐全；六个人工命令被禁止；示例只用公开 CLI | `ContractDocumentTests#test_contract_has_required_phases` | `python -m unittest tests.test_runner_contract.ContractDocumentTests -v` | Todo | - |
+| T-001 | 编写 `deploy/runner/CONTRACT.md` 七阶段契约、失败语义、人工边界、职责与示例，并新增结构测试 | FR-001；FR-002；AC-001-1；AC-001-2；AC-001-3；AC-002-1；AC-002-2；AC-002-3 | None | S | 七阶段齐全；四类返回语义齐全；六个人工命令被禁止；示例只用公开 CLI | `ContractDocumentTests#test_contract_has_required_phases` | `python -m unittest tests.test_runner_contract.ContractDocumentTests -v` | Done | fac07cf |
 | T-002 | 在 `README.md` 与 `sdd/README.md` 增加契约入口，并新增入口链接测试 | FR-003；AC-003-1 | T-001 | S | 两处文档都能链接到契约文件 | `EntryPointTests#test_readme_links_runner_contract` | `python -m unittest tests.test_runner_contract.EntryPointTests -v` | Todo | - |
 | T-003 | 回归 MCP 人工动作边界与发布元数据一致性，确认未修改受保护核心 | FR-003；AC-003-2；AC-003-3 | T-001 | S | MCP 无人工动作；manifest 与 VERSION 一致；`verify-core` 通过 | `ReleaseBoundaryTests#test_mcp_exposes_no_human_actions` | `python -m unittest tests.test_runner_contract.ReleaseBoundaryTests tests.test_sdd.GateBoundaryTests -v` | Todo | - |
 

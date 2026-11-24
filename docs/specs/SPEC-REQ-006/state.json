@@ -16,7 +16,7 @@
   },
   "state": "IMPLEMENTING",
   "created_at": "2026-11-24T10:30:05+08:00",
-  "updated_at": "2026-11-24T11:32:53+08:00",
+  "updated_at": "2026-11-24T11:34:35+08:00",
   "pr_url": null,
   "history": [
     {
@@ -90,6 +90,31 @@
       "session": "c24c5cea67db",
       "session_source": "CODEX_THREAD_ID",
       "source": "cli",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-24T11:34:35+08:00",
+      "evidence": "task started",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_start",
+      "task": "T-001",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-24T11:34:35+08:00",
+      "evidence": "python -m unittest tests.test_runner_contract.ContractDocumentTests -v: 6 passed; contract covers 7 phases, 4 result states, human-only actions and runner runtime ownership",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_done",
+      "task": "T-001",
+      "commit": "fac07cf",
       "role": "implementer"
     }
   ],

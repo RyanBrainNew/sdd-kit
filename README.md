@@ -234,7 +234,7 @@ Gate 报告单独写入 `sdd/reports/<Spec ID>/`，与 `docs/` 下的 Spec 工�
 | 已交付 | 0.9.5 | G0–G5 稳定检查 ID、`pass/warn/block`、范围化人工豁免、告警与按 ID 指标 |
 | 已交付 | 0.9.6 | 审批版本绑定、人工 `reapprove`、`change-set` / `impact` 与提交阻断 |
 | 未开发（0.9.0） | [#1](https://github.com/RyanBrainNew/sdd-kit/issues/1) | 只读单文件 HTML 运行视图 `sdd view` |
-| 未开发（0.9.0） | [#2](https://github.com/RyanBrainNew/sdd-kit/issues/2) | 外部 runner 接入契约 `deploy/runner/CONTRACT.md` |
+| 已交付 | [#2](https://github.com/RyanBrainNew/sdd-kit/issues/2) | 外部 runner 接入契约 `deploy/runner/CONTRACT.md` |
 | 未开发（后续） | [#3](https://github.com/RyanBrainNew/sdd-kit/issues/3) | 固定预设升级 `upgrade-workflow` |
 | 设计阶段（P0） | [#8](https://github.com/RyanBrainNew/sdd-kit/issues/8) | 治理闭环剩余项：全量 commit 审计与 `trace`（#21） |
 | 总纲（epic） | [#7](https://github.com/RyanBrainNew/sdd-kit/issues/7) | 轻量、可自定义、全链路可溯源的 SDD-L2 执行内核 |
@@ -254,6 +254,7 @@ Gate 报告单独写入 `sdd/reports/<Spec ID>/`，与 `docs/` 下的 Spec 工�
 | [ADOPTION.md](ADOPTION.md) | 从单仓库试点到多仓库推广 |
 | [LANDSCAPE.md](LANDSCAPE.md) | 与 aidlc、Trellis、Spec Kitty 等方案的关系 |
 | [sdd/agent-contract.md](sdd/agent-contract.md) | Agent 自动循环与人类检查点契约 |
+| [deploy/runner/CONTRACT.md](deploy/runner/CONTRACT.md) | 外部 runner 接入契约：生命周期、失败语义与人工边界 |
 | [sdd/README.md](sdd/README.md) | 业务仓库内的执行手册 |
 | [sdd/mcp/README.md](sdd/mcp/README.md) | MCP 工具、本地与共享部署 |
 | [deploy/README.md](deploy/README.md) | 共享 MCP 的容器部署 |
