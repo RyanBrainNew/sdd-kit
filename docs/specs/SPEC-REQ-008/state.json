@@ -14,9 +14,9 @@
     "digest": "ae89c532988018c3f6d3c222c4a66da2a44981f33c8401d62a632bef66a8e910",
     "snapshot": "workflow.json"
   },
-  "state": "IMPLEMENTING",
+  "state": "PR_READY",
   "created_at": "2026-11-24T17:37:36+08:00",
-  "updated_at": "2026-11-24T17:54:48+08:00",
+  "updated_at": "2026-11-24T18:19:25+08:00",
   "pr_url": null,
   "history": [
     {
@@ -141,6 +141,69 @@
       "task": "T-002",
       "commit": "c0db4ed",
       "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-24T17:58:33+08:00",
+      "evidence": "task started",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_start",
+      "task": "T-003",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-24T17:58:34+08:00",
+      "evidence": "python -m unittest tests.test_upgrade_workflow.UpgradeBoundaryTests -v: 2 passed; verify-core and verify-agent passed; version 0.9.9 manifest 50 files docs synced",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_done",
+      "task": "T-003",
+      "commit": "f544606",
+      "role": "implementer"
+    },
+    {
+      "state": "VERIFYING",
+      "at": "2026-11-24T17:58:34+08:00",
+      "evidence": "all tasks completed",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "gate": "G4",
+      "role": "implementer",
+      "approver": null,
+      "artifacts": [
+        {
+          "path": "docs/specs/SPEC-REQ-008/tasks.md#plan",
+          "sha256": "1e7cd6272657e08a72ac9c017404bacfac9308a816a43218f7ea04fe0ca7f586",
+          "bytes": 6564
+        }
+      ]
+    },
+    {
+      "state": "PR_READY",
+      "at": "2026-11-24T18:19:25+08:00",
+      "evidence": "verification.md submitted via CLI and checked",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "gate": "G5",
+      "role": "verifier",
+      "approver": null,
+      "artifacts": [
+        {
+          "path": "docs/specs/SPEC-REQ-008/verification.md",
+          "sha256": "2bb604c4f177e4c3f6514aaff8841cac96f120bfc0f6dc1e2d83c04b80216fb4",
+          "bytes": 25386
+        }
+      ]
     }
   ],
   "artifact_hashes": {
@@ -155,6 +218,12 @@
     },
     "G3": {
       "docs/specs/SPEC-REQ-008/tasks.md#plan": "1e7cd6272657e08a72ac9c017404bacfac9308a816a43218f7ea04fe0ca7f586"
+    },
+    "G4": {
+      "docs/specs/SPEC-REQ-008/tasks.md#plan": "1e7cd6272657e08a72ac9c017404bacfac9308a816a43218f7ea04fe0ca7f586"
+    },
+    "G5": {
+      "docs/specs/SPEC-REQ-008/verification.md": "2bb604c4f177e4c3f6514aaff8841cac96f120bfc0f6dc1e2d83c04b80216fb4"
     }
   },
   "approved_spec_digest": "a6e40705b8ada68230aa63aa283b4ed5191d1f62b8decd44577fb8a1444a278b",
@@ -171,5 +240,5 @@
     }
   ],
   "last_approver": "linjinlong <fflinjinlong@chinatelecom.cn>",
-  "previous_state": "TASKS_READY"
+  "previous_state": "VERIFYING"
 }

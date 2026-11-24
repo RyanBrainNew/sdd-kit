@@ -17,7 +17,7 @@
 |---|---|---|---|---|---|---|---|---|---|
 | T-001 | 实现 `upgrade-workflow` 状态机命令、Workspace/CLI 入口、历史与原子写入 | FR-001；FR-002；FR-004；AC-001-1；AC-001-2；AC-001-3；AC-001-4；AC-001-5；AC-002-1；AC-002-2；AC-002-3；AC-004-1；AC-004-3 | None | S | 版本规则、降级例外、历史字段、工件保护与失败恢复正确 | `UpgradeWorkflowTests#test_upgrade_same_preset_version` | `python -m unittest tests.test_upgrade_workflow.UpgradeWorkflowTests tests.test_upgrade_workflow.UpgradeAuditTests -v` | Done | bf00660 |
 | T-002 | 实现升级后的 Gate 重校验、pending_gates 与 inbox 展示 | FR-003；AC-003-1；AC-003-2；AC-003-3 | T-001 | S | 缺失 Gate 记录并进入 inbox，PASS 后自动消失 | `UpgradeGateTests#test_upgrade_records_pending_gates` | `python -m unittest tests.test_upgrade_workflow.UpgradeGateTests -v` | Done | c0db4ed |
-| T-003 | 同步 README、执行手册、Agent 契约、版本与 manifest | FR-004；AC-004-2 | T-001 | S | 版本 0.9.9；manifest 重写；三处文档有命令 | `UpgradeBoundaryTests#test_release_metadata` | `python -m unittest tests.test_upgrade_workflow.UpgradeBoundaryTests -v` | Todo | - |
+| T-003 | 同步 README、执行手册、Agent 契约、版本与 manifest | FR-004；AC-004-2 | T-001 | S | 版本 0.9.9；manifest 重写；三处文档有命令 | `UpgradeBoundaryTests#test_release_metadata` | `python -m unittest tests.test_upgrade_workflow.UpgradeBoundaryTests -v` | Done | f544606 |
 
 字段规则：
 
