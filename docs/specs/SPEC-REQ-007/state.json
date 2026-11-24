@@ -14,9 +14,9 @@
     "digest": "ae89c532988018c3f6d3c222c4a66da2a44981f33c8401d62a632bef66a8e910",
     "snapshot": "workflow.json"
   },
-  "state": "IMPLEMENTING",
+  "state": "VERIFYING",
   "created_at": "2026-11-24T14:33:43+08:00",
-  "updated_at": "2026-11-24T14:46:08+08:00",
+  "updated_at": "2026-11-24T14:47:49+08:00",
   "pr_url": null,
   "history": [
     {
@@ -141,6 +141,50 @@
       "task": "T-002",
       "commit": "c8bae9f",
       "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-24T14:47:48+08:00",
+      "evidence": "task started",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_start",
+      "task": "T-003",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-24T14:47:49+08:00",
+      "evidence": "python -m unittest tests.test_view.ReleaseMetadataTests -v: 1 passed; verify-core and verify-agent passed; version 0.9.8, manifest 50 files, README/manual/agent contract synced",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_done",
+      "task": "T-003",
+      "commit": "731d8bb",
+      "role": "implementer"
+    },
+    {
+      "state": "VERIFYING",
+      "at": "2026-11-24T14:47:49+08:00",
+      "evidence": "all tasks completed",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "gate": "G4",
+      "role": "implementer",
+      "approver": null,
+      "artifacts": [
+        {
+          "path": "docs/specs/SPEC-REQ-007/tasks.md#plan",
+          "sha256": "76a6db359321d749117e0e39be25dc7719f738bc4f8aefd0413903a838a183c9",
+          "bytes": 5344
+        }
+      ]
     }
   ],
   "artifact_hashes": {
@@ -154,6 +198,9 @@
       "docs/specs/SPEC-REQ-007/design.md": "4275b6dae5b501a1af3cf80c0fd4d10bcbbbf92300742c23382691f6d7c60c76"
     },
     "G3": {
+      "docs/specs/SPEC-REQ-007/tasks.md#plan": "76a6db359321d749117e0e39be25dc7719f738bc4f8aefd0413903a838a183c9"
+    },
+    "G4": {
       "docs/specs/SPEC-REQ-007/tasks.md#plan": "76a6db359321d749117e0e39be25dc7719f738bc4f8aefd0413903a838a183c9"
     }
   },
@@ -171,5 +218,5 @@
     }
   ],
   "last_approver": "linjinlong <fflinjinlong@chinatelecom.cn>",
-  "previous_state": "TASKS_READY"
+  "previous_state": "IMPLEMENTING"
 }

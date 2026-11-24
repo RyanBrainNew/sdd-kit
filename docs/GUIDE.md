@@ -2,7 +2,7 @@
 
 > 本文是仓库 README 的完整内容归档，保留全部章节、命令与问答。
 > 项目首页见 [README](../README.md)，架构取舍见 [ARCHITECTURE.md](../ARCHITECTURE.md)。
-> 文中文件路径默认相对仓库根目录。当前版本 0.9.7。
+> 文中文件路径默认相对仓库根目录。当前版本 0.9.8。
 
 ---
 
@@ -15,7 +15,7 @@
 - 可选命名工作流预设：`l2-standard`、`l2-hotfix`、`l2-strict`、`l2-refactor`，Spec 创建时固定版本；
 - MCP 是可选适配器；没有 MCP，`AGENTS.md + CLI + Git Hook + CI` 也能跑完整流程。
 
-当前版本：`0.9.7`。官方 P0–P5 / G0–G5 映射见
+当前版本：`0.9.8`。官方 P0–P5 / G0–G5 映射见
 [标准符合性基线](STANDARD-CONFORMANCE.md)。
 
 ---
