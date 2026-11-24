@@ -9,7 +9,8 @@
 ```text
 开发者给一个工作项
   -> Agent 用 python -m sdd 自动循环
-  -> 人只在 Spec 确认和 PR 合并时介入
+  -> 开发者只在 Spec 确认和交付确认时介入
+  -> Agent 创建 PR，管理员审核合并
   -> CI 做最终硬校验
 ```
 
@@ -20,7 +21,8 @@
 | 仓库接入（平台团队，一次） | 执行 bootstrap、补项目事实、配 CODEOWNERS | `python bootstrap.py ...` |
 | 每个需求 | 审 `spec.md` 并确认 | `python -m sdd approve --spec <spec> --human --evidence "需求已确认"` |
 | 审批后范围变化 | 审 change-set 并重新确认 Spec | `python -m sdd reapprove --spec <spec> --human --reason "..." --evidence "需求重新确认"` |
-| 每个需求 | 审 PR、合并并登记 | `python -m sdd merge --spec <spec> --human --evidence "PR merged"` |
+| 每个需求 | 确认交付 | `python -m sdd merge --spec <spec> --human --evidence "交付已确认"` |
+| 每个需求 | 审 PR 并合并 | Agent 创建 PR；管理员按仓库规则审核合并 |
 
 `approve`、`reapprove`、`merge`、`unblock` 都强制 `--human`；Agent 不得代替。
 
@@ -88,8 +90,8 @@ DRAFT
 | `TASKS_READY` | 无需操作 | 上一次 submit 自动进入 `IMPLEMENTING` |
 | `IMPLEMENTING` | 一次做一个 Task | `submit-task --task T-xxx` |
 | `VERIFYING` | 写 `verification.md` | `submit --artifact verification.md` |
-| `PR_READY` | 生成并开 PR | `report`，然后 `pr --url ...` |
-| `MERGED` | 结束 | 无 |
+| `PR_READY` | 生成 `PR_BODY.md`，等人确认交付 | `report`，然后停 |
+| `MERGED` | 创建并登记 PR | `pr --url ...`，由管理员审核合并 |
 | `BLOCKED` | 等人回答 | 人 `unblock --human` |
 
 ## 5. 常用命令
@@ -126,7 +128,7 @@ python -m sdd trace --commit abc1234 --json
 # 人类动作
 python -m sdd approve --spec SPEC-ORDER-001 --human --evidence "需求已确认"
 python -m sdd reapprove --spec SPEC-ORDER-001 --human --reason "AC 调整" --evidence "需求重新确认"
-python -m sdd merge --spec SPEC-ORDER-001 --human --evidence "PR merged"
+python -m sdd merge --spec SPEC-ORDER-001 --human --evidence "交付已确认"
 python -m sdd unblock --spec SPEC-ORDER-001 --human --evidence "产品已确认"
 python -m sdd rewind --spec SPEC-ORDER-001 --to SPEC_READY --reason "设计遗漏" --human
 python -m sdd waive --spec SPEC-ORDER-001 --check G5-09 --scope verification --reason "纯文档变更" --expires-at 2026-12-31 --evidence "docs-only" --human

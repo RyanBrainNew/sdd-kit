@@ -1,6 +1,6 @@
 # SDD Kit 完整指南
 
-> 本文是仓库 README 的完整内容归档，保留全部章节、命令与问答。
+> 本文是 SDD Kit 的完整指南，覆盖接入、架构、命令、MCP 与问答。
 > 项目首页见 [README](../README.md)，架构取舍见 [ARCHITECTURE.md](../ARCHITECTURE.md)。
 > 文中文件路径默认相对仓库根目录。当前版本 0.9.8。
 
@@ -11,7 +11,7 @@
 - 平台团队维护一份 `sdd/` 核心，仓库接入一次，之后开发者 `git clone` 即用；
 - 任何能读仓库文件、能执行 shell 的 Agent 都能接入，不绑定 Kiro、Cursor 或某个 IDE；
 - 开发者只说一次工作项，Agent 按 `next.action` 自动调研、写工件、推进阶段；
-- 正常流程只有两个人类检查点：**Spec 确认**和 **PR 合并**；
+- 正常流程只有两个人类检查点：**Spec 确认**和 **交付确认**；PR 审核合并仍走仓库原有流程；
 - 可选命名工作流预设：`l2-standard`、`l2-hotfix`、`l2-strict`、`l2-refactor`，Spec 创建时固定版本；
 - MCP 是可选适配器；没有 MCP，`AGENTS.md + CLI + Git Hook + CI` 也能跑完整流程。
 
@@ -293,7 +293,7 @@ sequenceDiagram
   Agent->>CLI: report
   CLI->>Repo: 生成 PR_BODY.md
 
-  Note over Dev,CI: 人类检查点 2：审 PR、合并，执行 merge --human
+  Note over Dev,CI: 人类检查点 2：确认交付，执行 merge --human；之后 Agent 创建 PR
   Dev->>CLI: merge --spec ... --human
   CI->>Repo: verify-core / verify-agent / check --all --stage ci --check-git
 ```
@@ -337,8 +337,8 @@ DRAFT
 | 2 | 审 Spec | 看 `docs/specs/<Spec ID>/spec.md` 的范围、AC、未决问题 |
 | 3 | 执行 Spec 确认 | `python -m sdd approve --spec <Spec ID> --human --evidence "需求已确认"` |
 | 3a | 审批后范围变化 | Agent 先 `python -m sdd change --spec <Spec ID> --reason "..."`；人审 change-set 后执行 `reapprove --human` |
-| 4 | 审最终 PR | 看 `PR_BODY.md`、AC 证据、diff、CI |
-| 5 | 合并并登记 | `python -m sdd merge --spec <Spec ID> --human --evidence "PR merged"` |
+| 4 | 确认交付 | 看 `PR_BODY.md`、AC 证据、diff、CI；确认后执行 `python -m sdd merge --spec <Spec ID> --human --evidence "交付已确认"` |
+| 5 | 审 PR 并合并 | Agent 用 `PR_BODY.md` 创建 PR；管理员按仓库规则审核合并 |
 
 **这就是正常流程的全部人工步骤。**
 
@@ -574,25 +574,28 @@ python -m sdd submit --spec SPEC-ORDER-001 --artifact verification.md `
 
 默认会执行 `sdd/config.json` 的 `test_commands` 并追加证据。如果测试必须在别的环境跑，本地跑完后用 `--no-run-commands` 提交，但证据必须真实。
 
-### 6.7 生成 PR 并登记
+### 6.7 生成 PR 正文
 
 ```powershell
 python -m sdd report --spec SPEC-ORDER-001 --json
 ```
 
-用生成的 `PR_BODY.md` 开 PR，然后：
+`report` 写 `PR_BODY.md`。此时状态仍在 `PR_READY`，Agent 停下来等人工确认交付。
+
+### 6.8 人确认交付，随后创建 PR
+
+```powershell
+python -m sdd merge --spec SPEC-ORDER-001 --human --evidence "交付已确认"
+```
+
+没有 `--human` 会被拒绝。CLI 会再跑一次 CI 级校验；通过后状态机进入 `MERGED`。
+之后 Agent 用 `PR_BODY.md` 创建 PR，并登记 URL：
 
 ```powershell
 python -m sdd pr --spec SPEC-ORDER-001 --url "https://example.invalid/pr/1"
 ```
 
-### 6.8 人审 PR 并合并
-
-```powershell
-python -m sdd merge --spec SPEC-ORDER-001 --human --evidence "PR #1 已合并"
-```
-
-没有 `--human` 会被拒绝。合并前 CLI 会再跑一次 CI 级校验。
+PR 的审核与合并由管理员在 GitHub 或 GitLab 按仓库规则完成。
 
 ### 6.9 证据绑定与审计
 
@@ -667,8 +670,15 @@ Spec，并在没有其他人工事项时生成 `review_warning` 待办。`metric
 - `gates.md` 追加 `SUPERSEDED`，`state.json.reworks` 和 `events.jsonl` 记录原因与审批人。
 - `--to DESIGN_READY` 保留已批准的 `design.md`，只作废 G3–G5；要重写设计，用 `--to SPEC_READY`。
 
-`sdd board` 目前仍是文本/JSON 看板，没有 HTML 面板。单文件 HTML 运行视图
-仍属于后续候选能力，尚未实现。
+需要只读可视化时运行：
+
+```powershell
+python -m sdd view --spec SPEC-ORDER-001 `
+  --out .sdd/runtime/view/SPEC-ORDER-001.html
+```
+
+`sdd view` 生成单文件 HTML，只读展示状态、Gate、证据和下一步；它不写
+`state.json`，也不替代 `board` 的文本/JSON 输出。
 
 ---
 
