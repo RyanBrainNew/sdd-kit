@@ -130,18 +130,6 @@ class UpgradeTestBase(unittest.TestCase):
             encoding="utf-8",
         )
 
-    def write_custom_preset(self):
-        source = self.root / "sdd" / "workflows" / "l2-standard.json"
-        preset = json.loads(source.read_text(encoding="utf-8"))
-        preset["name"] = "custom-l2"
-        preset["version"] = 1
-        preset["required_gates"]["SPEC_READY"] = ["G0", "G1", "G2"]
-        path = self.root / "sdd" / "workflows" / "custom-l2.json"
-        path.write_text(
-            json.dumps(preset, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
-
     def upgrade(self, *target, expect=0, extra=()):
         return self.run_cli(
             "upgrade-workflow",
@@ -316,27 +304,31 @@ class UpgradeAuditTests(UpgradeTestBase):
 
 
 class UpgradeGateTests(UpgradeTestBase):
-    def _upgrade_with_extra_gate(self):
+    def _upgrade_with_missing_gate(self):
         self.new_spec()
         self.approve()
-        self.write_custom_preset()
-        return self.upgrade("custom-l2@1")
+        report = (
+            self.root / "sdd" / "reports" / SPEC_ID / "gate1-report.md"
+        )
+        report.unlink()
+        self.set_standard_version(2)
+        return self.upgrade("l2-standard@2")
 
     def test_upgrade_records_pending_gates(self):
         # [AC-003-1]
-        payload, _ = self._upgrade_with_extra_gate()
-        self.assertEqual(payload["pending_gates"], ["G2"])
+        payload, _ = self._upgrade_with_missing_gate()
+        self.assertEqual(payload["pending_gates"], ["G1"])
         entry = self.state()["workflow_history"][-1]
-        self.assertEqual(entry["pending_gates"], ["G2"])
+        self.assertEqual(entry["pending_gates"], ["G1"])
 
     def test_inbox_lists_pending_gate(self):
         # [AC-003-2]
-        self._upgrade_with_extra_gate()
+        self._upgrade_with_missing_gate()
         payload, _ = self.run_cli("inbox")
         items = [
             item
             for item in payload.get("items", [])
-            if item.get("gate") == "G2"
+            if item.get("gate") == "G1"
             and item.get("action") == "workflow_gate_missing"
         ]
         self.assertEqual(len(items), 1)
@@ -344,10 +336,10 @@ class UpgradeGateTests(UpgradeTestBase):
 
     def test_pending_gate_disappears_after_pass(self):
         # [AC-003-3]
-        self._upgrade_with_extra_gate()
+        self._upgrade_with_missing_gate()
         reports = self.root / "sdd" / "reports" / SPEC_ID
-        source = reports / "gate1-report.md"
-        (reports / "gate2-report.md").write_text(
+        source = reports / "gate0-report.md"
+        (reports / "gate1-report.md").write_text(
             source.read_text(encoding="utf-8"),
             encoding="utf-8",
         )
@@ -357,7 +349,7 @@ class UpgradeGateTests(UpgradeTestBase):
             for item in payload.get("items", [])
             if item.get("action") == "workflow_gate_missing"
         ]
-        self.assertNotIn("G2", gates)
+        self.assertNotIn("G1", gates)
 
 
 class UpgradeBoundaryTests(unittest.TestCase):

@@ -22,6 +22,14 @@
 
 待填写。
 
+- Evidence recorded: Task T-001
+
+### Task T-001
+
+- At: 2026-11-24T17:53:30+08:00
+
+python -m unittest tests.test_upgrade_workflow.UpgradeWorkflowTests tests.test_upgrade_workflow.UpgradeAuditTests -v: 9 passed; version rules, history, artifact protection and atomic rollback covered
+
 ## 4. 未运行
 
 None。

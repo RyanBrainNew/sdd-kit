@@ -6611,6 +6611,54 @@ def build_inbox_extras(
                     ),
                 }
             )
+    history = state.get("workflow_history") or []
+    latest = history[-1] if history and isinstance(history[-1], dict) else {}
+    pending_gates = [
+        str(gate) for gate in latest.get("pending_gates") or [] if str(gate)
+    ]
+    if pending_gates:
+        preset = latest.get("to_preset") or {}
+        gate_modes = preset.get("gates") if isinstance(preset, dict) else {}
+        gate_modes = gate_modes if isinstance(gate_modes, dict) else {}
+        target = latest.get("to") or {}
+        target_label = (
+            f"{target.get('name')}@{target.get('version')}"
+            if isinstance(target, dict) and target.get("name")
+            else "新预设"
+        )
+        for gate in pending_gates:
+            if (
+                gate_report_status(
+                    gate_report_path(root, config, spec_id, gate)
+                )
+                == "PASS"
+            ):
+                continue
+            if str(gate_modes.get(gate) or "") == "human":
+                command = (
+                    f"python -m sdd complete --spec {spec_id} --human "
+                    f'--evidence "{gate} 人工确认"'
+                )
+            else:
+                command = (
+                    f"python -m sdd check --spec {spec_id} "
+                    f"--stage {stage or 'ci'} --json"
+                )
+            items.append(
+                {
+                    "spec": spec_id,
+                    "state": state.get("state"),
+                    "priority": 35,
+                    "action": "workflow_gate_missing",
+                    "gate": gate,
+                    "reason": (
+                        f"{gate} 在升级到 {target_label} 后仍无 PASS 报告"
+                    ),
+                    "since": latest.get("at"),
+                    "artifact": None,
+                    "command": command,
+                }
+            )
     return items
 
 
