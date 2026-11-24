@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SDD Kit · 把 SDD 装进仓库</title>
-  <meta name="description" content="SDD Kit 把公司 SDD-L2 流程做进仓库：一个 CLI、一套状态机、任何 Agent 都能接入。人只在 Spec 确认和交付确认时出现。">
-  <meta name="color-scheme" content="dark">
+  <meta name="description" content="SDD Kit 把 SDD-L2 的工件、Gate 和证据链做成仓库里的状态机：一个 CLI，任何 Agent 都能接入，人只做两个决定。">
+  <meta name="color-scheme" content="light">
   <meta property="og:type" content="website">
   <meta property="og:title" content="SDD Kit · 把 SDD 装进仓库">
-  <meta property="og:description" content="一个 CLI、一套状态机、任何 Agent 都能接入的仓库自带 SDD 工作流。">
+  <meta property="og:description" content="让流程在每次提交时被执行，而不是写在文档里。一个 CLI，一套状态机，两个人工检查点。">
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
   <script src="app.js" defer></script>
@@ -20,7 +20,7 @@
     <div class="container nav-inner">
       <a class="brand" href="#top" aria-label="SDD Kit 首页">
         <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
-          <rect x="1" y="1" width="30" height="30" rx="8" fill="none" stroke="currentColor" stroke-opacity=".22"/>
+          <rect x="1" y="1" width="30" height="30" rx="9" fill="none" stroke="currentColor" stroke-opacity=".24"/>
           <path d="M10 10h8.5a3.5 3.5 0 0 1 0 7H13a3.5 3.5 0 0 0 0 7h9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
           <circle cx="10" cy="10" r="2" fill="currentColor"/>
           <circle cx="22" cy="24" r="2" fill="currentColor"/>
@@ -30,12 +30,12 @@
       </a>
 
       <nav class="nav-links" id="nav-links" aria-label="主导航">
-        <a href="#why">为什么</a>
-        <a href="#flow">工作流</a>
-        <a href="#architecture">架构</a>
-        <a href="#commands">命令</a>
-        <a href="#roadmap">路线图</a>
-        <a href="#faq">FAQ</a>
+        <a href="#why">问题</a>
+        <a href="#architecture">方法</a>
+        <a href="#flow">机制</a>
+        <a href="#commands">结果</a>
+        <a href="#quickstart">开始</a>
+        <a href="#roadmap">现状</a>
         <a class="nav-github" href="https://github.com/RyanBrainNew/sdd-kit">
           <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 0a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.93-.89-1.18-.89-1.18-.73-.5.06-.49.06-.49.8.06 1.23.83 1.23.83.72 1.22 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.03 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 8 0Z"/></svg>
           GitHub
@@ -52,68 +52,37 @@
     <section class="hero" aria-labelledby="hero-title">
       <div class="container hero-grid">
         <div class="hero-copy">
-          <div class="tags" aria-label="项目特征">
-            <span class="tag">CLI-first</span>
-            <span class="tag">仓库自带</span>
-            <span class="tag">MCP 可选</span>
-            <span class="tag">命名工作流</span>
-          </div>
-          <h1 id="hero-title">把 SDD 装进<span class="accent">仓库</span></h1>
-          <p class="hero-lede">开发者只说一次需求，Agent 按仓库里的 <code>next.action</code> 自动调研、写工件、推进阶段。你只在两个地方出现：确认 Spec，确认交付。</p>
+          <p class="kicker">SDD-L2 · repo-native workflow</p>
+          <h1 id="hero-title"><span class="line">把 SDD</span> <span class="line">装进<span class="accent">仓库</span></span></h1>
+          <p class="hero-lede">让流程在每次提交时被执行，而不是写在文档里。</p>
+          <p class="hero-sub">一个 CLI，一套状态机。任何 Agent 都能接入，人只做两个决定。</p>
           <div class="hero-actions">
-            <a class="btn btn-primary" href="#quickstart">30 秒接入</a>
-            <a class="btn btn-ghost" href="#flow">看完整链路</a>
+            <a class="btn btn-primary" href="#quickstart">快速开始</a>
+            <a class="btn btn-ghost" href="#flow">看它怎么工作</a>
           </div>
           <dl class="hero-facts">
-            <div><dt>依赖</dt><dd>Python 标准库</dd></div>
-            <div><dt>状态机</dt><dd>8 个阶段</dd></div>
-            <div><dt>人工检查点</dt><dd>2 个</dd></div>
+            <div><dt>入口</dt><dd>1 个 CLI</dd></div>
+            <div><dt>阶段</dt><dd>8 个</dd></div>
+            <div><dt>人工点</dt><dd>2 个</dd></div>
           </dl>
+          <p class="hero-note">Python 标准库 · 无服务端 · MCP 可选</p>
         </div>
 
-        <figure class="state-card" aria-labelledby="state-title">
-          <figcaption class="state-head" id="state-title">
-            <span>一次需求的状态轨迹</span>
-            <span class="state-source">sdd/scripts/sdd.py</span>
+        <figure class="state-rail">
+          <figcaption class="rail-head">
+            <span>ONE STATE MACHINE</span>
+            <code>sdd/scripts/sdd.py</code>
           </figcaption>
-          <ol class="track">
-            <li class="state is-done">
-              <span class="state-name">DRAFT</span>
-              <span class="state-note">写 Spec</span>
-            </li>
-            <li class="state is-gate">
-              <span class="state-name">SPEC_READY</span>
-              <span class="state-note">人确认 Spec</span>
-            </li>
-            <li class="state is-done">
-              <span class="state-name">DESIGN_READY</span>
-              <span class="state-note">设计定稿</span>
-            </li>
-            <li class="state is-done">
-              <span class="state-name">TASKS_READY</span>
-              <span class="state-note">任务覆盖 AC</span>
-            </li>
-            <li class="state is-active">
-              <span class="state-name">IMPLEMENTING</span>
-              <span class="state-note">逐 Task 实现</span>
-            </li>
-            <li class="state">
-              <span class="state-name">VERIFYING</span>
-              <span class="state-note">测试与 Gate</span>
-            </li>
-            <li class="state">
-              <span class="state-name">PR_READY</span>
-              <span class="state-note">等交付确认</span>
-            </li>
-            <li class="state is-gate">
-              <span class="state-name">MERGED</span>
-              <span class="state-note">人确认交付</span>
-            </li>
+          <ol class="rail">
+            <li class="rail-item"><span class="rail-name">DRAFT</span><span class="rail-note">写 Spec</span></li>
+            <li class="rail-item is-gate"><span class="rail-name">SPEC_READY</span><span class="rail-note">人确认 Spec</span></li>
+            <li class="rail-item"><span class="rail-name">DESIGN_READY</span><span class="rail-note">设计</span></li>
+            <li class="rail-item"><span class="rail-name">TASKS_READY</span><span class="rail-note">任务</span></li>
+            <li class="rail-item is-active"><span class="rail-name">IMPLEMENTING</span><span class="rail-note">实现</span></li>
+            <li class="rail-item"><span class="rail-name">VERIFYING</span><span class="rail-note">验证</span></li>
+            <li class="rail-item"><span class="rail-name">PR_READY</span><span class="rail-note">待交付</span></li>
+            <li class="rail-item is-gate"><span class="rail-name">MERGED</span><span class="rail-note">人确认交付</span></li>
           </ol>
-          <div class="state-foot">
-            <code>next.action = implement_task</code>
-            <span>任务 T-001</span>
-          </div>
         </figure>
       </div>
     </section>
@@ -121,315 +90,215 @@
     <section class="section" id="why" aria-labelledby="why-title">
       <div class="container">
         <div class="section-head">
-          <h2 id="why-title">不是再写一份流程文档</h2>
-          <p>把流程放进状态机，让每个 Agent、每个仓库走同一条路径。规则在 Git 里，不在某个人的 IDE 配置里。</p>
+          <p class="section-no">01 / 问题</p>
+          <h2 id="why-title">流程最后只剩下三样东西。</h2>
         </div>
-        <div class="cards">
-          <article class="card">
-            <span class="card-index">01</span>
-            <h3>任何 Agent，同一套规则</h3>
-            <p>规则、状态和工件都在仓库里。Claude Code、Cursor、Kiro 或自研 Agent，只要能执行 shell，就调用同一个 CLI。</p>
-            <code class="card-code">python -m sdd resume --json</code>
-          </article>
-          <article class="card">
-            <span class="card-index">02</span>
-            <h3>开发者零初始化</h3>
-            <p>平台团队 bootstrap 一次，开发者 clone 后直接开始。不注册 workflow，不装个人插件，不改业务代码结构。</p>
-            <code class="card-code">git clone &amp;&amp; python -m sdd resume</code>
-          </article>
-          <article class="card">
-            <span class="card-index">03</span>
-            <h3>流程能被强制</h3>
-            <p>Git Hook 与 CI 校验工件和 Gate。Agent 不能代替人执行 approve 或 merge，跳过步骤会在提交时暴露。</p>
-            <code class="card-code">python -m sdd check --all --stage ci</code>
-          </article>
+        <div class="problem-lines">
+          <p>规范没人读。</p>
+          <p>规则各一套。</p>
+          <p>证据在聊天里。</p>
         </div>
-      </div>
-    </section>
-
-    <section class="section" id="flow" aria-labelledby="flow-title">
-      <div class="container">
-        <div class="section-head">
-          <h2 id="flow-title">一次需求，两个人工检查点</h2>
-          <p>其余步骤由 Agent 按 <code>next.action</code> 自动推进。每次提交都由 CLI 重新校验，失败就按错误列表修复。</p>
-        </div>
-        <ol class="steps">
-          <li class="step">
-            <span class="step-num">01</span>
-            <div class="step-body">
-              <h3>恢复或开始</h3>
-              <p><code>resume</code> 判断会话绑定哪个 Spec；没有就 <code>start-work</code>。调研事实写进 <code>context.md</code>，未决问题写进 <code>unknowns.md</code>。</p>
-            </div>
-          </li>
-          <li class="step is-gate">
-            <span class="step-num">G1</span>
-            <div class="step-body">
-              <h3>人确认 Spec</h3>
-              <p>人执行 <code>approve --human</code>。Agent 停在这里，不代替人做需求判断。</p>
-            </div>
-          </li>
-          <li class="step">
-            <span class="step-num">02</span>
-            <div class="step-body">
-              <h3>设计与拆任务</h3>
-              <p>设计写清模块边界、接口契约和回滚；任务表保证每条 AC 都有覆盖、有测试命令、有真实依赖顺序。</p>
-            </div>
-          </li>
-          <li class="step">
-            <span class="step-num">03</span>
-            <div class="step-body">
-              <h3>逐 Task 实现</h3>
-              <p>失败测试先行。<code>submit-task</code> 必须带上执行过的命令、目录和结果，状态机才认这个任务完成。</p>
-            </div>
-          </li>
-          <li class="step">
-            <span class="step-num">04</span>
-            <div class="step-body">
-              <h3>验证并准备 PR</h3>
-              <p><code>report</code> 生成 PR 正文；CI 执行 <code>verify-core</code>、<code>verify-agent</code> 和全量检查，证据留在 Git 里。</p>
-            </div>
-          </li>
-          <li class="step is-gate">
-            <span class="step-num">G2</span>
-            <div class="step-body">
-              <h3>人确认交付</h3>
-              <p>人执行 <code>merge --human</code>。状态机进入 <code>MERGED</code>；随后 Agent 才创建 PR，由管理员合并。</p>
-            </div>
-          </li>
-        </ol>
+        <p class="turn">所以，我们把流程做成仓库里的状态机。</p>
+        <a class="section-next" href="#architecture">02 / 方法：一个状态机，一条薄链路 <span>→</span></a>
       </div>
     </section>
 
     <section class="section" id="architecture" aria-labelledby="arch-title">
       <div class="container">
         <div class="section-head">
-          <h2 id="arch-title">一个状态机，三层薄边界</h2>
-          <p>Agent 只看见协议，协议只调用 CLI，CLI 只调用状态机。任何一层都不复制另一层的规则。</p>
+          <p class="section-no">02 / 方法</p>
+          <h2 id="arch-title">一个状态机，一条薄链路。</h2>
+          <p class="section-lead">Agent 只看见协议，协议只调用 CLI，CLI 只调用状态机。</p>
         </div>
-        <div class="pipeline" aria-label="调用链">
-          <span>Agent</span><i></i><span>AGENTS.md</span><i></i><span>python -m sdd</span><i></i><span>sdd.py</span><i></i><span>Git</span>
-        </div>
-        <div class="arch-grid">
-          <div class="layers">
-            <article class="layer">
-              <span class="layer-tag">协议层</span>
-              <h3>AGENTS.md 是唯一入口</h3>
-              <p>托管块告诉 Agent 先 <code>resume</code>，再按返回的动作执行。0.8 起支持 <code>l2-standard</code>、<code>l2-hotfix</code>、<code>l2-strict</code> 命名预设，创建 Spec 时固定。</p>
-            </article>
-            <article class="layer">
-              <span class="layer-tag">状态机</span>
-              <h3>规则只写一次</h3>
-              <p><code>sdd/scripts/sdd.py</code> 负责阶段、工件校验、Gate 和事件日志。不要在提示词、Hook 或 MCP 里复制这些规则。</p>
-            </article>
-            <article class="layer">
-              <span class="layer-tag">适配层</span>
-              <h3>MCP 只是包装</h3>
-              <p>MCP 把同一套 CLI 能力变成结构化工具。没有 MCP，<code>AGENTS.md + CLI + Hook + CI</code> 仍然能跑完整流程。</p>
-            </article>
+        <div class="chain">
+          <div class="chain-node">
+            <span>Agent</span>
+            <strong>任意 harness</strong>
+            <small>Claude Code · Cursor · Kiro</small>
           </div>
-          <aside class="resume-panel" aria-labelledby="resume-title">
-            <div class="resume-head">
-              <span id="resume-title">Agent 看到的下一步</span>
-              <span class="resume-live">实时返回</span>
-            </div>
-            <pre class="resume-code"><code>{
-  "action": "implement_task",
-  "task": "T-001",
-  "artifact": "tasks.md",
-  "submit_with": "sdd submit-task",
-  "human_checkpoint": {
-    "required": false
-  }
-}</code></pre>
-            <p class="resume-note">阶段、下一步和是否停下都由 CLI 决定。Agent 不需要猜，也不应该问开发者“现在是什么阶段”。</p>
-          </aside>
+          <div class="chain-node">
+            <span>AGENTS.md</span>
+            <strong>托管协议</strong>
+            <small>只合并 SDD:MANAGED 块</small>
+          </div>
+          <div class="chain-node">
+            <span>python -m sdd</span>
+            <strong>唯一入口</strong>
+            <small>会话、校验、Gate</small>
+          </div>
+          <div class="chain-node">
+            <span>Git / CI</span>
+            <strong>证据与强制</strong>
+            <small>工件、报告、审计链</small>
+          </div>
         </div>
+        <p class="micro">MCP 只是可选适配。没有它，CLI + Hook + CI 仍然能跑完整流程。</p>
+        <a class="section-next" href="#flow">03 / 机制：一次需求，只停两次 <span>→</span></a>
+      </div>
+    </section>
+
+    <section class="section" id="flow" aria-labelledby="flow-title">
+      <div class="container">
+        <div class="section-head">
+          <p class="section-no">03 / 机制</p>
+          <h2 id="flow-title">一次需求，只停两次。</h2>
+          <p class="section-lead">其余阶段由 <code>next.action</code> 自动推进；失败就按 <code>errors</code> 修复。</p>
+        </div>
+        <ol class="flow-track">
+          <li class="flow-item"><span class="flow-name">DRAFT</span><span class="flow-note">写 Spec</span></li>
+          <li class="flow-item is-gate"><span class="flow-name">SPEC_READY</span><span class="flow-note">人确认 Spec</span></li>
+          <li class="flow-item"><span class="flow-name">DESIGN_READY</span><span class="flow-note">设计</span></li>
+          <li class="flow-item"><span class="flow-name">TASKS_READY</span><span class="flow-note">任务</span></li>
+          <li class="flow-item"><span class="flow-name">IMPLEMENTING</span><span class="flow-note">实现</span></li>
+          <li class="flow-item"><span class="flow-name">VERIFYING</span><span class="flow-note">验证</span></li>
+          <li class="flow-item"><span class="flow-name">PR_READY</span><span class="flow-note">待交付</span></li>
+          <li class="flow-item is-gate"><span class="flow-name">MERGED</span><span class="flow-note">人确认交付</span></li>
+        </ol>
+        <p class="micro"><code>merge</code> 是交付确认，不执行 Git 合并；之后 Agent 创建 PR，由管理员合并。</p>
+        <a class="section-next" href="#commands">04 / 结果：人只做两个决定 <span>→</span></a>
+      </div>
+    </section>
+
+    <section class="section is-tinted" id="commands" aria-labelledby="cmd-title">
+      <div class="container">
+        <div class="section-head">
+          <p class="section-no">04 / 结果</p>
+          <h2 id="cmd-title">人只做两个决定。</h2>
+          <p class="section-lead">Agent 负责循环，人保留判断。其余都写成可校验的证据。</p>
+        </div>
+        <div class="role-split">
+          <div class="role-card">
+            <span class="role-label">Agent 循环</span>
+            <p class="role-command">resume → submit → submit-task → report</p>
+          </div>
+          <div class="role-card">
+            <span class="role-label">人的边界</span>
+            <p class="role-command">sdd approve --human · sdd merge --human</p>
+          </div>
+        </div>
+        <p class="micro">PR 审核与合并仍按仓库原有规则执行。reapprove、rewind、unblock、waive 是人工例外动作。</p>
+        <a class="section-next" href="#quickstart">05 / 开始：接入一次，clone 即用 <span>→</span></a>
       </div>
     </section>
 
     <section class="section" id="quickstart" aria-labelledby="quick-title">
       <div class="container">
         <div class="section-head">
-          <h2 id="quick-title">三条命令，从 clone 到可验证</h2>
-          <p>平台团队做一次接入；开发者每次只恢复会话；合并前跑同一组校验。</p>
+          <p class="section-no">05 / 开始</p>
+          <h2 id="quick-title">接入一次，之后 clone 即用。</h2>
+          <p class="section-lead">平台团队做一次 bootstrap；开发者不初始化、不装插件、不记阶段。</p>
         </div>
-        <div class="quick">
+        <div class="quick-grid">
           <article class="quick-card">
-            <div class="quick-head">
-              <span class="quick-step">平台团队 · 每仓库一次</span>
-              <h3>接入核心与托管块</h3>
-            </div>
+            <span class="quick-step">平台团队 · 每仓库一次</span>
+            <h3>接入</h3>
             <div class="code">
               <div class="code-bar"><span>powershell</span><button class="copy" type="button" data-copy>复制</button></div>
-              <pre><code>cd D:\repos\order-api
-python D:\tools\sdd-kit\bootstrap.py `
-  --test-command "python -m pytest -q" `
-  --ci gitlab</code></pre>
+              <pre><code>python bootstrap.py</code></pre>
             </div>
-            <p class="quick-note">目标默认当前目录、项目 ID 默认目录名；复制 <code>sdd/</code> 核心、合并 <code>AGENTS.md</code> 托管块、安装 Hook 与 CI 模板。</p>
           </article>
-
           <article class="quick-card">
-            <div class="quick-head">
-              <span class="quick-step">开发者 · 每次会话</span>
-              <h3>恢复当前工作</h3>
-            </div>
+            <span class="quick-step">开发者 · 每次会话</span>
+            <h3>恢复</h3>
             <div class="code">
               <div class="code-bar"><span>powershell</span><button class="copy" type="button" data-copy>复制</button></div>
-              <pre><code>git clone &lt;repo&gt;
-cd &lt;repo&gt;
-python -m sdd resume --json</code></pre>
+              <pre><code>python -m sdd resume --json</code></pre>
             </div>
-            <p class="quick-note">不需要初始化。Agent 读到 <code>next.action</code> 后直接继续。</p>
           </article>
-
           <article class="quick-card">
-            <div class="quick-head">
-              <span class="quick-step">合并前 · 每次</span>
-              <h3>跑同一组校验</h3>
-            </div>
+            <span class="quick-step">合并前 · 每次</span>
+            <h3>校验</h3>
             <div class="code">
               <div class="code-bar"><span>powershell</span><button class="copy" type="button" data-copy>复制</button></div>
-              <pre><code>python -m unittest discover -s tests -v
-python -m sdd verify-core
+              <pre><code>python -m sdd verify-core
 python -m sdd verify-agent
 python -m sdd check --all --stage ci</code></pre>
             </div>
-            <p class="quick-note">CI 执行同样的命令。核心被改、托管块漂移或工件缺失都会失败。</p>
           </article>
         </div>
+        <p class="micro">完整命令与接入参数见 <a href="https://github.com/RyanBrainNew/sdd-kit/blob/main/sdd/README.md">sdd/README.md</a>。</p>
+        <a class="section-next" href="#roadmap">06 / 现状：0.9.8 已闭环 <span>→</span></a>
       </div>
     </section>
 
-    <section class="section" id="commands" aria-labelledby="cmd-title">
+    <section class="section is-paper" id="roadmap" aria-labelledby="roadmap-title">
       <div class="container">
         <div class="section-head">
-          <h2 id="cmd-title">命令不多，边界很清楚</h2>
-          <p>Agent 用前四条，人只用两条带 <code>--human</code> 的命令。其余是只读查询与校验。</p>
+          <p class="section-no">06 / 现状</p>
+          <h2 id="roadmap-title">0.9.8，闭环已经成形。</h2>
+          <p class="section-lead">流程、证据、运行视图都已落地。下一项公开在 Issues。</p>
         </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr><th scope="col">命令</th><th scope="col">执行者</th><th scope="col">作用</th></tr>
-            </thead>
-            <tbody>
-              <tr><td><code>sdd resume --json</code></td><td>Agent</td><td>恢复当前 Spec，返回唯一的下一步</td></tr>
-              <tr><td><code>sdd start-work</code></td><td>Agent</td><td>把工作项绑定到新的 Spec</td></tr>
-              <tr><td><code>sdd start-work --workflow l2-strict</code></td><td>人</td><td>为高风险变更选择命名工作流</td></tr>
-              <tr><td><code>sdd submit</code></td><td>Agent</td><td>提交阶段工件并接受校验</td></tr>
-              <tr><td><code>sdd submit-task</code></td><td>Agent</td><td>完成一个任务并记录测试证据</td></tr>
-              <tr><td><code>sdd report</code></td><td>Agent</td><td>生成 PR 正文与 Gate 摘要</td></tr>
-              <tr><td><code>sdd approve --human</code></td><td>人</td><td>确认 Spec，DRAFT 进入 SPEC_READY</td></tr>
-              <tr><td><code>sdd merge --human</code></td><td>人</td><td>确认交付，PR_READY 进入 MERGED；之后才创建 PR</td></tr>
-              <tr><td><code>sdd check --all</code></td><td>CI</td><td>校验全部工件、Gate 与 Git 状态</td></tr>
-            </tbody>
-          </table>
+        <div class="status-strip">
+          <div class="status-item">
+            <span class="status-label">0.9.8 · 已交付</span>
+            <p class="status-text">只读视图 <code>sdd view</code></p>
+          </div>
+          <div class="status-item">
+            <span class="status-label">0.9.x · 已交付</span>
+            <p class="status-text">Runner 契约 · 全链路 trace · 人工豁免</p>
+          </div>
+          <div class="status-item is-next">
+            <span class="status-label">Next · 未开发</span>
+            <p class="status-text">固定预设升级 <code>upgrade-workflow</code></p>
+          </div>
         </div>
-      </div>
-    </section>
-
-    <section class="section" id="roadmap" aria-labelledby="roadmap-title">
-      <div class="container">
-        <div class="section-head">
-          <h2 id="roadmap-title">0.8.0 已交付，下一阶段公开在 Issues</h2>
-          <p>当前版本把流程、证据和人工边界收进仓库。未开发能力以 GitHub Issues 为准，不在页面里冒充已交付。</p>
-        </div>
-        <div class="cards">
-          <article class="card">
-            <span class="card-index">0.7</span>
-            <h3>可运维</h3>
-            <p><code>rewind</code>、<code>inbox</code>、<code>metrics</code>、事件 v2、产物哈希和审批身份已经落地。</p>
-            <code class="card-code">sdd inbox --stale-days 7</code>
-          </article>
-          <article class="card">
-            <span class="card-index">0.8</span>
-            <h3>可配置但不失控</h3>
-            <p>三套命名工作流在创建 Spec 时快照；旧 Spec 不随仓库预设升级而漂移。</p>
-            <code class="card-code">sdd start-work --workflow l2-strict</code>
-          </article>
-          <article class="card">
-            <span class="card-index">next</span>
-            <h3>可见性与治理</h3>
-            <p>只读 HTML 视图、外部 runner 契约、预设升级和全链路 trace 正在 Issues 中拆解。</p>
-            <a class="card-code" href="https://github.com/RyanBrainNew/sdd-kit/issues">查看公开路线图 →</a>
-          </article>
-        </div>
-        <div class="table-wrap" style="margin-top: 16px;">
-          <table>
-            <thead>
-              <tr><th scope="col">状态</th><th scope="col">Issue</th><th scope="col">计划</th></tr>
-            </thead>
-            <tbody>
-              <tr><td>未开发（0.9.0）</td><td><a href="https://github.com/RyanBrainNew/sdd-kit/issues/1">#1</a></td><td>只读单文件 HTML 运行视图 <code>sdd view</code></td></tr>
-              <tr><td>未开发（0.9.0）</td><td><a href="https://github.com/RyanBrainNew/sdd-kit/issues/2">#2</a></td><td>外部 runner 接入契约</td></tr>
-              <tr><td>未开发（后续）</td><td><a href="https://github.com/RyanBrainNew/sdd-kit/issues/3">#3</a></td><td>固定预设升级 <code>upgrade-workflow</code></td></tr>
-              <tr><td>设计阶段（P0）</td><td><a href="https://github.com/RyanBrainNew/sdd-kit/issues/8">#8</a></td><td>治理闭环：P0 全部子项已拆分并交付，剩余跟踪 #21</td></tr>
-              <tr><td>总纲（epic）</td><td><a href="https://github.com/RyanBrainNew/sdd-kit/issues/7">#7</a></td><td>轻量、可自定义、全链路可溯源的执行内核</td></tr>
-            </tbody>
-          </table>
-        </div>
+        <p class="micro">
+          已交付 <a href="https://github.com/RyanBrainNew/sdd-kit/issues/1">#1 只读视图</a> ·
+          <a href="https://github.com/RyanBrainNew/sdd-kit/issues/2">#2 Runner 契约</a> ·
+          <a href="https://github.com/RyanBrainNew/sdd-kit/issues/8">#8 治理闭环</a>；
+          未开发 <a href="https://github.com/RyanBrainNew/sdd-kit/issues/3">#3 预设升级</a>；
+          总纲 <a href="https://github.com/RyanBrainNew/sdd-kit/issues/7">#7 执行内核</a>。
+        </p>
+        <a class="section-next" href="#fit">07 / 边界：适合谁，不适合谁 <span>→</span></a>
       </div>
     </section>
 
     <section class="section" id="fit" aria-labelledby="fit-title">
       <div class="container">
         <div class="section-head">
-          <h2 id="fit-title">适合的团队，不适合的场景</h2>
-          <p>它是一套仓库内工作流，不是通用的项目管理 SaaS。边界越清楚，接入越快。</p>
+          <p class="section-no">07 / 边界</p>
+          <h2 id="fit-title">适合多仓库、<span class="nowrap">异构</span> Agent 团队。</h2>
         </div>
         <div class="fit-grid">
-          <article class="fit-card is-yes">
+          <div class="fit-col is-yes">
             <h3>适合</h3>
             <ul>
-              <li>多个业务仓库，需要统一 L2 流程与审计证据</li>
+              <li>多个业务仓库，需要统一 L2 流程与证据</li>
               <li>团队混用 Claude Code、Cursor、Kiro 或自研 Agent</li>
-              <li>已有 <code>AGENTS.md</code>，希望增量接入而不是推倒重来</li>
-              <li>Git 与 CI 已是默认基础设施</li>
+              <li>已有 <code>AGENTS.md</code>，Git 与 CI 是默认设施</li>
             </ul>
-          </article>
-          <article class="fit-card is-no">
+          </div>
+          <div class="fit-col is-no">
             <h3>不适合</h3>
             <ul>
-              <li>单人一次性脚本，没有 Spec、Gate 或合并流程</li>
-              <li>没有 Git 或 CI，无法留下可校验证据</li>
-              <li>需要集中式 Web 审批台；当前只有 CLI 与 MCP</li>
-              <li>希望工具替代需求判断或代码评审</li>
+              <li>单人一次性脚本</li>
+              <li>没有 Git 或 CI</li>
+              <li>需要集中式 Web 审批台，或希望工具替代判断</li>
             </ul>
-          </article>
+          </div>
         </div>
+        <a class="section-next" href="#faq">08 / 问答：三个常见问题 <span>→</span></a>
       </div>
     </section>
 
     <section class="section" id="faq" aria-labelledby="faq-title">
-      <div class="container faq-wrap">
+      <div class="container">
         <div class="section-head">
-          <h2 id="faq-title">常见问题</h2>
-          <p>接入前最常被问到的六个问题。</p>
+          <p class="section-no">08 / 问答</p>
+          <h2 id="faq-title">三个常见问题。</h2>
         </div>
         <div class="faq">
           <details>
             <summary>没有 MCP 能跑吗？</summary>
-            <p>能。完整路径是 <code>AGENTS.md → python -m sdd → Git Hook / CI</code>。MCP 只是给 Agent 的结构化适配层。</p>
+            <p>能。<code>AGENTS.md → python -m sdd → Git Hook / CI</code> 是完整路径；MCP 只是可选适配。</p>
           </details>
           <details>
-            <summary>会覆盖我已有的 AGENTS.md 吗？</summary>
-            <p>不会。bootstrap 只把 <code>SDD:MANAGED</code> 托管块合并进去，原有项目规则保留；升级时也只替换托管块。</p>
-          </details>
-          <details>
-            <summary>业务仓库要修改 sdd/ 核心吗？</summary>
-            <p>不要。核心由平台团队维护，业务团队只维护 <code>sdd/config.json</code>、<code>sdd/context/</code> 和 <code>docs/specs/</code>。</p>
+            <summary>会覆盖已有 AGENTS.md 吗？</summary>
+            <p>不会。bootstrap 只替换 <code>SDD:MANAGED</code> 块，原有规则保留。</p>
           </details>
           <details>
             <summary>为什么只有两个人工检查点？</summary>
-            <p>需求确认和最终合并是仅有的高价值人工决策。其余步骤由测试、工件校验和 Gate 报告提供证据，不靠人反复点确认。</p>
-          </details>
-          <details>
-            <summary>支持 GitLab 吗？</summary>
-            <p>支持。仓库同时提供 GitHub Actions 与 GitLab CI 模板，校验命令一致。</p>
-          </details>
-          <details>
-            <summary>核心怎么升级？</summary>
-            <p>平台仓库打 tag，同步 bot 向业务仓库开 PR，只更新 <code>sdd/</code> 核心；CI 跑 verify-core、verify-agent 和全量检查后由 CODEOWNERS 合并。</p>
+            <p>Spec 确认和交付确认是仅有的高价值判断；其余由测试、Gate 和证据保证。</p>
           </details>
         </div>
       </div>
@@ -437,11 +306,11 @@ python -m sdd check --all --stage ci</code></pre>
   </main>
 
   <footer class="footer">
-    <div class="container footer-grid">
+    <div class="container footer-inner">
       <div class="footer-brand">
         <a class="brand" href="#top" aria-label="回到顶部">
           <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
-            <rect x="1" y="1" width="30" height="30" rx="8" fill="none" stroke="currentColor" stroke-opacity=".22"/>
+            <rect x="1" y="1" width="30" height="30" rx="9" fill="none" stroke="currentColor" stroke-opacity=".24"/>
             <path d="M10 10h8.5a3.5 3.5 0 0 1 0 7H13a3.5 3.5 0 0 0 0 7h9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
             <circle cx="10" cy="10" r="2" fill="currentColor"/>
             <circle cx="22" cy="24" r="2" fill="currentColor"/>
@@ -449,26 +318,16 @@ python -m sdd check --all --stage ci</code></pre>
           <span class="brand-name">SDD Kit</span>
         </a>
         <p>把 SDD 装进仓库，让 Agent 按同一套规则交付。</p>
-        <p class="footer-fine">0.9.8 · Apache-2.0 许可 · 公开仓库</p>
+        <p class="footer-fine">0.9.8 · Apache-2.0 · © 2026 SDD Kit</p>
       </div>
-      <div class="footer-col">
-        <h2>文档</h2>
+      <nav class="footer-links" aria-label="文档链接">
         <a href="https://github.com/RyanBrainNew/sdd-kit/blob/main/README.md">README</a>
         <a href="https://github.com/RyanBrainNew/sdd-kit/blob/main/docs/GUIDE.md">完整指南</a>
-        <a href="https://github.com/RyanBrainNew/sdd-kit/blob/main/ARCHITECTURE.md">架构说明</a>
+        <a href="https://github.com/RyanBrainNew/sdd-kit/blob/main/ARCHITECTURE.md">架构</a>
         <a href="https://github.com/RyanBrainNew/sdd-kit/blob/main/sdd/agent-contract.md">Agent 协议</a>
-      </div>
-      <div class="footer-col">
-        <h2>仓库</h2>
-        <a href="https://github.com/RyanBrainNew/sdd-kit">GitHub</a>
-        <a href="https://github.com/RyanBrainNew/sdd-kit/blob/main/ADOPTION.md">推广步骤</a>
-        <a href="https://github.com/RyanBrainNew/sdd-kit/blob/main/deploy/README.md">MCP 部署</a>
-        <a href="https://github.com/RyanBrainNew/sdd-kit/issues">Issues / 路线图</a>
-      </div>
-    </div>
-    <div class="container footer-bottom">
-      <span>Built with Python standard library and static HTML.</span>
-      <span>© 2026 SDD Kit</span>
+        <a href="https://github.com/RyanBrainNew/sdd-kit/blob/main/deploy/runner/CONTRACT.md">Runner 契约</a>
+        <a href="https://github.com/RyanBrainNew/sdd-kit/issues">Issues</a>
+      </nav>
     </div>
   </footer>
 </body>
