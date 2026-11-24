@@ -20,6 +20,7 @@
 | 仓库接入（平台团队，一次） | 执行 bootstrap、补项目事实、配 CODEOWNERS | `python bootstrap.py ...` |
 | 每个需求 | 审 `spec.md` 并确认 | `python -m sdd approve --spec <spec> --human --evidence "需求已确认"` |
 | 审批后范围变化 | 审 change-set 并重新确认 Spec | `python -m sdd reapprove --spec <spec> --human --reason "..." --evidence "需求重新确认"` |
+| 预设升级 | 确认版本与影响后升级工作流 | `python -m sdd upgrade-workflow --spec <spec> --to <name>@<version> --reason "..." --human` |
 | 每个需求 | 审 PR、合并并登记 | `python -m sdd merge --spec <spec> --human --evidence "PR merged"` |
 
 `approve`、`reapprove`、`merge`、`unblock` 都强制 `--human`；Agent 不得代替。
@@ -126,6 +127,7 @@ python -m sdd trace --commit abc1234 --json
 # 人类动作
 python -m sdd approve --spec SPEC-ORDER-001 --human --evidence "需求已确认"
 python -m sdd reapprove --spec SPEC-ORDER-001 --human --reason "AC 调整" --evidence "需求重新确认"
+python -m sdd upgrade-workflow --spec SPEC-ORDER-001 --to l2-standard@2 --reason "统一到新门禁" --human
 python -m sdd merge --spec SPEC-ORDER-001 --human --evidence "PR merged"
 python -m sdd unblock --spec SPEC-ORDER-001 --human --evidence "产品已确认"
 python -m sdd rewind --spec SPEC-ORDER-001 --to SPEC_READY --reason "设计遗漏" --human
@@ -148,7 +150,7 @@ python -m sdd check --all --stage ci --check-git
 工作流预设包括 `l2-standard`、`l2-hotfix`、`l2-strict` 三个 schema 1 预设，
 以及 schema 2 的 `l2-refactor`。Spec 创建时会把
 `sdd/workflows/<name>.json` 快照到 `docs/specs/<Spec>/workflow.json`；之后仓库
-预设升级不会改变旧 Spec。`l2-strict` 的 G0–G5 全部需要人工，且验证报告必须有
+预设升级不会改变旧 Spec，需要切换时由人执行 `upgrade-workflow`。`l2-strict` 的 G0–G5 全部需要人工，且验证报告必须有
 独立审查；`l2-hotfix` 使用轻量设计并拒绝高风险；`l2-refactor` 只通过声明式
 JSON 增加行为保持、回归证据和回滚要求，不复制状态机规则。
 

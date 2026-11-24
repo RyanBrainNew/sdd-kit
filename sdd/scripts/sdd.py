@@ -69,7 +69,7 @@ except ImportError:  # pragma: no cover - package import fallback
         validate_review_findings,
     )
 
-VERSION = "0.9.8"
+VERSION = "0.9.9"
 EVENT_SCHEMA = 2
 
 SPEC_SECTIONS = (

@@ -24,6 +24,14 @@
 
 - Evidence recorded: Task T-001
 
+- Evidence recorded: Task T-002
+
+### Task T-002
+
+- At: 2026-11-24T17:54:48+08:00
+
+python -m unittest tests.test_upgrade_workflow.UpgradeGateTests -v: 3 passed; pending gates recorded, surfaced in inbox and disappear after PASS
+
 ### Task T-001
 
 - At: 2026-11-24T17:53:30+08:00

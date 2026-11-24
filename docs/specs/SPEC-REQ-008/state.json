@@ -16,7 +16,7 @@
   },
   "state": "IMPLEMENTING",
   "created_at": "2026-11-24T17:37:36+08:00",
-  "updated_at": "2026-11-24T17:53:30+08:00",
+  "updated_at": "2026-11-24T17:54:48+08:00",
   "pr_url": null,
   "history": [
     {
@@ -115,6 +115,31 @@
       "action": "task_done",
       "task": "T-001",
       "commit": "bf00660",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-24T17:54:48+08:00",
+      "evidence": "task started",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_start",
+      "task": "T-002",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-24T17:54:48+08:00",
+      "evidence": "python -m unittest tests.test_upgrade_workflow.UpgradeGateTests -v: 3 passed; pending gates recorded, surfaced in inbox and disappear after PASS",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_done",
+      "task": "T-002",
+      "commit": "c0db4ed",
       "role": "implementer"
     }
   ],
