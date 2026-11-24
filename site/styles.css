@@ -724,6 +724,48 @@ code {
   box-shadow: 0 0 0 5px var(--warn-soft);
 }
 
+.workflow-band {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 18px;
+  margin-top: 24px;
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--white-wash);
+}
+
+.band-label {
+  color: var(--muted-2);
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pill {
+  padding: 4px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+}
+
+.workflow-note {
+  flex: 1 1 100%;
+  color: var(--muted-2);
+  font-size: 0.8rem;
+}
+
 .role-split {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -759,6 +801,64 @@ code {
 
 .role-card:last-child .role-command {
   color: var(--accent-strong);
+}
+
+.evidence-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 30px;
+  border-top: 1px solid var(--line-strong);
+  border-bottom: 1px solid var(--line-strong);
+}
+
+.evidence-item {
+  padding: 22px 0;
+}
+
+.evidence-item + .evidence-item {
+  padding-left: 30px;
+  border-left: 1px solid var(--line-strong);
+}
+
+.evidence-label {
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.evidence-item p {
+  margin-top: 9px;
+  color: var(--ink-soft);
+  font-size: 0.92rem;
+  line-height: 1.6;
+}
+
+.evidence-item p code {
+  font-size: 0.78em;
+}
+
+.observe-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 7px 10px;
+  margin-top: 22px;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.observe-line span {
+  color: var(--muted-2);
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.observe-line code {
+  font-size: 0.76rem;
 }
 
 .quick-grid {
@@ -1190,6 +1290,16 @@ code {
   .role-card + .role-card {
     padding-left: 0;
     border-top: 1px solid var(--line-strong);
+    border-left: 0;
+  }
+
+  .evidence-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .evidence-item + .evidence-item {
+    padding-left: 0;
+    border-top: 1px solid var(--line);
     border-left: 0;
   }
 

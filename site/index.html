@@ -155,6 +155,16 @@
           <li class="flow-item is-gate"><span class="flow-name">MERGED</span><span class="flow-note">人确认交付</span></li>
         </ol>
         <p class="micro"><code>merge</code> 是交付确认，不执行 Git 合并；之后 Agent 创建 PR，由管理员合并。</p>
+        <div class="workflow-band">
+          <span class="band-label">按风险选工作流</span>
+          <div class="pills">
+            <span class="pill">l2-standard</span>
+            <span class="pill">l2-hotfix</span>
+            <span class="pill">l2-strict</span>
+            <span class="pill">l2-refactor</span>
+          </div>
+          <p class="workflow-note">Spec 创建时固定；required 检查不可移除。</p>
+        </div>
         <a class="section-next" href="#commands">04 / 结果：人只做两个决定 <span>→</span></a>
       </div>
     </section>
@@ -176,6 +186,24 @@
             <p class="role-command">sdd approve --human · sdd merge --human</p>
           </div>
         </div>
+        <div class="evidence-strip">
+          <div class="evidence-item">
+            <span class="evidence-label">合规</span>
+            <p>P0–P5 / G0–G5 映射</p>
+          </div>
+          <div class="evidence-item">
+            <span class="evidence-label">审批</span>
+            <p>绑定 <code>spec.md</code> 摘要</p>
+          </div>
+          <div class="evidence-item">
+            <span class="evidence-label">证据</span>
+            <p><code>verification-evidence.jsonl</code> 记录命令、退出码与输出哈希</p>
+          </div>
+        </div>
+        <p class="observe-line">
+          <span>可观测</span>
+          <code>sdd board</code> · <code>sdd inbox</code> · <code>sdd metrics</code> · <code>sdd events</code> · <code>sdd trace</code> · <code>sdd view</code>
+        </p>
         <p class="micro">PR 审核与合并仍按仓库原有规则执行。reapprove、rewind、unblock、waive 是人工例外动作。</p>
         <a class="section-next" href="#quickstart">05 / 开始：接入一次，clone 即用 <span>→</span></a>
       </div>
