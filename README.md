@@ -151,7 +151,7 @@ bootstrap.py               # 业务仓库一次性接入
 docs/
   GUIDE.md
   prd-index.md             # 工作项 → FEAT → Spec 追溯
-  specs/<Spec ID>/         # spec/design/tasks/verification、workflow.json、state.json、events.jsonl
+  specs/<Spec ID>/         # 需求工件；阅读顺序见下一节
 sdd/
   scripts/sdd.py           # 唯一状态机
   core.py                  # 会话指针与 CLI 编排
@@ -166,9 +166,37 @@ site/                      # GitHub Pages 官网
 tests/                     # 单元、CLI、站点与集成测试
 ```
 
-每个需求在 `docs/specs/<Spec ID>/` 下保存 `spec.md`、`design.md`、`tasks.md`、`verification.md` 和 `gates.md`。`workflow.json` 是创建 Spec 时的工作流快照；`state.json` 和 `events.jsonl` 只能由 CLI 写。Gate 报告单独写入 `sdd/reports/<Spec ID>/`；`docs/prd-index.md` 维护工作项到 FEAT、Spec 的追溯。`.sdd/runtime/` 只存本地会话指针，已 gitignore。
+## 怎么看 docs/ 产物
 
-`docs/` 是随代码提交的审计面，`site/` 是可公开发的官网。Pages 工作流只上传 `site/`，不会发布 Spec、Gate 报告或业务上下文。
+`docs/` 是随代码提交的审计面，不是官网，也不是临时输出。入口是 `docs/prd-index.md`：先按工作项或 FEAT 找到 Spec ID，再进入 `docs/specs/<Spec ID>/`。
+
+`docs/` 顶层：`GUIDE.md` 是完整指南，`prd-index.md` 是追溯入口，`STANDARD-CONFORMANCE.md` 是 P0–P5 / G0–G5 基线，`specs/` 是每个需求的审计工件。
+
+如果只看三份：`spec.md` 看范围，`gates.md` 看结论，`verification.md` 看证据。
+
+| 顺序 | 文件 | 回答什么问题 | 谁维护 |
+|---|---|---|---|
+| 1 | `spec.md` | 做什么、不做什么、FR/AC 是否闭合 | Agent 写，`sdd submit` 校验 |
+| 2 | `design.md` | 怎么做、模块边界、接口契约、风险与回滚 | Agent 写，CLI 校验 |
+| 3 | `tasks.md` | 怎么拆、依赖顺序、每条 AC 由哪个 Task/测试覆盖 | Agent 写，CLI 校验 |
+| 4 | `verification.md` | 每条 AC 怎么验、跑了什么命令、结果如何 | Agent 写，`sdd verify` 追加证据 |
+| 5 | `gates.md` | G0–G5 是否通过、人工还是自动、证据和时间 | CLI 追加 |
+| 6 | `context.md` / `unknowns.md` / `decisions.md` | 调研事实、未决问题、关键取舍 | Agent 维护 |
+| 7 | `workflow.json` | 本次 Spec 固定了哪套工作流 | 创建 Spec 时快照 |
+| 8 | `state.json` / `events.jsonl` | 当前状态、审批、产物哈希、审计事件链 | 只能由 CLI 写 |
+| 9 | `verification-evidence.jsonl` / `PR_BODY.md` | 原始测试证据 / 生成的 PR 正文 | `sdd verify` / `sdd report` |
+
+按角色看：
+
+- **产品 / 负责人**：`spec.md` → `gates.md` → `verification.md`，重点看范围、AC、未决问题和 Gate 结论。
+- **开发**：`design.md` → `tasks.md` → `context.md` / `decisions.md`，重点看边界、依赖和取舍。
+- **审计 / 复盘**：`verification-evidence.jsonl` → `gates.md` → `events.jsonl` → `state.json`，重点看命令、退出码、产物哈希和审批链。
+
+不想直接读 JSON 时，用 `python -m sdd view --spec <spec>` 看只读 HTML；`python -m sdd board` 看整体进度；`python -m sdd events --spec <spec>` 看审计链；`python -m sdd trace --test/--ac/--commit ...` 反查 test、AC、commit 到 Spec 的链路。
+
+`gates.md` 是摘要；详细检查在 `sdd/reports/<Spec ID>/gateN-report.md`。`change-set.md`、`review-findings.json`、`history/` 只在变更审批、独立审查或回退时出现。
+
+不要手改 `state.json`、`events.jsonl`、`gates.md`、`workflow.json` 或 `verification-evidence.jsonl`；它们由 CLI 写入，手改会破坏哈希链或 Gate 证据。`docs/` 只随代码提交，`site/` 才是公开发布的官网；Pages 工作流只上传 `site/`。
 
 ## 适合与不适合
 
