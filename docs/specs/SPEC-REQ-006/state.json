@@ -14,9 +14,9 @@
     "digest": "ae89c532988018c3f6d3c222c4a66da2a44981f33c8401d62a632bef66a8e910",
     "snapshot": "workflow.json"
   },
-  "state": "IMPLEMENTING",
+  "state": "PR_READY",
   "created_at": "2026-11-24T10:30:05+08:00",
-  "updated_at": "2026-11-24T11:35:39+08:00",
+  "updated_at": "2026-11-24T12:10:22+08:00",
   "pr_url": null,
   "history": [
     {
@@ -141,6 +141,69 @@
       "task": "T-002",
       "commit": "13d69ed",
       "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-24T11:36:11+08:00",
+      "evidence": "task started",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_start",
+      "task": "T-003",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-24T11:36:11+08:00",
+      "evidence": "python -m unittest tests.test_runner_contract.ReleaseBoundaryTests tests.test_sdd.GateBoundaryTests -v: 3 passed; verify-core passed; MCP exposes no human actions and manifest matches VERSION",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_done",
+      "task": "T-003",
+      "commit": "HEAD",
+      "role": "implementer"
+    },
+    {
+      "state": "VERIFYING",
+      "at": "2026-11-24T11:36:11+08:00",
+      "evidence": "all tasks completed",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "gate": "G4",
+      "role": "implementer",
+      "approver": null,
+      "artifacts": [
+        {
+          "path": "docs/specs/SPEC-REQ-006/tasks.md#plan",
+          "sha256": "1161b63d17aae3856a19ea97ca19614603f431b4651b1ba4307bb02ac82158a6",
+          "bytes": 5510
+        }
+      ]
+    },
+    {
+      "state": "PR_READY",
+      "at": "2026-11-24T12:10:22+08:00",
+      "evidence": "verification.md submitted via CLI and checked",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "gate": "G5",
+      "role": "verifier",
+      "approver": null,
+      "artifacts": [
+        {
+          "path": "docs/specs/SPEC-REQ-006/verification.md",
+          "sha256": "1bc319252b35a41ac2a72a325b18ccd324192c7f3afc40c19d91f06997af939f",
+          "bytes": 24942
+        }
+      ]
     }
   ],
   "artifact_hashes": {
@@ -155,6 +218,12 @@
     },
     "G3": {
       "docs/specs/SPEC-REQ-006/tasks.md#plan": "1161b63d17aae3856a19ea97ca19614603f431b4651b1ba4307bb02ac82158a6"
+    },
+    "G4": {
+      "docs/specs/SPEC-REQ-006/tasks.md#plan": "1161b63d17aae3856a19ea97ca19614603f431b4651b1ba4307bb02ac82158a6"
+    },
+    "G5": {
+      "docs/specs/SPEC-REQ-006/verification.md": "1bc319252b35a41ac2a72a325b18ccd324192c7f3afc40c19d91f06997af939f"
     }
   },
   "approved_spec_digest": "64ebb7976f83684ca7ee57e5138c7e6dd52f68753ae2fe305a4afaa9d9546954",
@@ -171,5 +240,5 @@
     }
   ],
   "last_approver": "linjinlong <fflinjinlong@chinatelecom.cn>",
-  "previous_state": "TASKS_READY"
+  "previous_state": "VERIFYING"
 }
