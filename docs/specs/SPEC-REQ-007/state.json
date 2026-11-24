@@ -14,9 +14,9 @@
     "digest": "ae89c532988018c3f6d3c222c4a66da2a44981f33c8401d62a632bef66a8e910",
     "snapshot": "workflow.json"
   },
-  "state": "VERIFYING",
+  "state": "PR_READY",
   "created_at": "2026-11-24T14:33:43+08:00",
-  "updated_at": "2026-11-24T14:47:49+08:00",
+  "updated_at": "2026-11-24T15:24:09+08:00",
   "pr_url": null,
   "history": [
     {
@@ -185,6 +185,25 @@
           "bytes": 5344
         }
       ]
+    },
+    {
+      "state": "PR_READY",
+      "at": "2026-11-24T15:24:09+08:00",
+      "evidence": "verification.md submitted via CLI and checked",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "gate": "G5",
+      "role": "verifier",
+      "approver": null,
+      "artifacts": [
+        {
+          "path": "docs/specs/SPEC-REQ-007/verification.md",
+          "sha256": "778f3d29378b4d5b7b7b4cf7c7c28e1d178f8cfe5377b8a8fd7163b122a0bc68",
+          "bytes": 24926
+        }
+      ]
     }
   ],
   "artifact_hashes": {
@@ -202,6 +221,9 @@
     },
     "G4": {
       "docs/specs/SPEC-REQ-007/tasks.md#plan": "76a6db359321d749117e0e39be25dc7719f738bc4f8aefd0413903a838a183c9"
+    },
+    "G5": {
+      "docs/specs/SPEC-REQ-007/verification.md": "778f3d29378b4d5b7b7b4cf7c7c28e1d178f8cfe5377b8a8fd7163b122a0bc68"
     }
   },
   "approved_spec_digest": "04a621f745cd3f646ea3bef72e85e94de6a8d74925dc5e6d62fae2b1a0e3224f",
@@ -218,5 +240,5 @@
     }
   ],
   "last_approver": "linjinlong <fflinjinlong@chinatelecom.cn>",
-  "previous_state": "IMPLEMENTING"
+  "previous_state": "VERIFYING"
 }

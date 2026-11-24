@@ -7,28 +7,30 @@
 | Spec ID | SPEC-REQ-007 |
 | 工作项 ID | SDD-VIEW-001 |
 | 作者 | SDD Agent |
-| 创建日期 | 2026-11-24T14:33:43+08:00 |
-| 验证时间 | 2026-11-24T14:33:43+08:00 |
+| 创建日期 | 2026-11-24 |
+| 验证时间 | 2026-11-24T15:13:03+08:00 |
+| 验证范围 | 视图渲染、只读性、时间线、边界安全、发布元数据 |
 
 ## 2. 命令
 
-<!-- TODO: 记录实际执行的命令、目录和退出码；sdd verify 会自动追加命令证据。 -->
-
-- 待填写
+- 全量测试命令：`python -m unittest discover -s tests -v`
+- 视图定向测试：`python -m unittest tests.test_view -v`
+- 核心与 Agent 校验：`python -m sdd verify-core`、`python -m sdd verify-agent`
+- 结构化证据：`docs/specs/SPEC-REQ-007/verification-evidence.jsonl`
 
 - Evidence recorded: Command: python -m unittest discover -s tests -v
 
 ### Command: python -m unittest discover -s tests -v
 
-- At: 2026-11-24T14:59:01+08:00
+- At: 2026-11-24T15:24:06+08:00
 
 - Command: `python -m unittest discover -s tests -v`
 - CWD: `C:\Users\Administrator.SC-202402081735\orca\workspaces\sdd-kit\epic-sdd-l2`
-- Exit: `1`
+- Exit: `0`
 
-- Head: `731d8bbac632`
+- Head: `48d2e8c0d2c4`
 - Plan-Hash: `sha256:76a6db359321d749117e0e39be25dc7719f738bc4f8aefd0413903a838a183c9`
-- At: `2026-11-24T14:59:01+08:00`
+- At: `2026-11-24T15:24:06+08:00`
 
 - Timed out: `false`
 
@@ -57,7 +59,7 @@
 [sdd] next: python -m sdd start-work --work-item srdcloud-123 --title "..." --json
 [sdd] init done
 [sdd] next: python -m sdd start-work --work-item srdcloud-123 --title "..." --json
-[master (root-commit) 65f63e1] init
+[master (root-commit) 0aa99ef] init
  1 file changed, 1 insertion(+)
  create mode 100644 README.md
 [sdd] created AGENTS.md with the SDD managed block
@@ -153,7 +155,7 @@ test_context_patterns (test_evolution.ContextBundleTests.test_context_patterns)
 test_context_scope_guard (test_evolution.ContextBundleTests.test_context_scope_guard)
 [AC-003-5] 超出允许范围时必须停止并扩大范围。 ... ok
 test_agent_loop_and_version (test_evolution.DocsReleaseTests.test_agent_loop_and_version)
-[AC-010-4] [AC-010-5] [AC-010-6] 版本、manifest、全量验收与单动作协议。 ... FAIL
+[AC-010-4] [AC-010-5] [AC-010-6] 版本、manifest、全量验收与单动作协议。 ... ok
 test_standard_and_core_advantage_docs (test_evolution.DocsReleaseTests.test_standard_and_core_advantage_docs) ... ok
 test_append_to_section_preserves_existing_content (test_evolution.EvidenceTests.test_append_to_section_preserves_existing_content) ... ok
 test_context_bundle_schema (test_evolution.EvidenceTests.test_context_bundle_schema) ... ok
@@ -283,54 +285,66 @@ test_examples_use_public_cli_only (test_runner_contract.ContractDocumentTests.te
 test_readme_links_runner_contract (test_runner_contract.EntryPointTests.test_readme_links_runner_contract) ... ok
 test_mcp_exposes_no_human_actions (test_runner_contract.ReleaseBoundaryTests.test_mcp_exposes_no_human_actions) ... ok
 test_check_accepts_legacy_crlf_hash (test_sdd.ArtifactHashTests.test_check_accepts_legacy_crlf_hash) ... ok
-test_check_ignores_line_end
+test_check_ignores_line_endin
 ... (truncated)
 ```
 
+### Command: python -m unittest discover -s tests -v
+
+- Command: `python -m unittest discover -s tests -v`
+- CWD: `C:\Users\Administrator.SC-202402081735\orca\workspaces\sdd-kit\epic-sdd-l2`
+- Exit: `0`
+- Head: `48d2e8c0d2c4`
+- Plan-Hash: `sha256:76a6db359321d749117e0e39be25dc7719f738bc4f8aefd0413903a838a183c9`
+- At: `2026-11-24T15:13:03+08:00`
+- Timed out: `false`
+
+```text
+[sdd] run: python -m unittest discover -s tests -v
+[sdd] SPEC-REQ-007 verify passed
+```
+
+完整 stdout/stderr、退出码和耗时记录在
+`docs/specs/SPEC-REQ-007/verification-evidence.jsonl`。
+
 ## 3. 结果
 
-<!-- TODO: 逐条写实际结果，不要写“应该通过”。 -->
+本轮验证覆盖视图五区块、只读性、时间线、边界安全与发布元数据。
 
-待填写。
+### Task 证据
 
-- Evidence recorded: Task T-001
+- T-001：`ViewRenderTests` 3 passed、`ViewTimelineTests` 1 passed；五区块、默认路径、空态与 rewind 时间线通过。
+- T-002：`ViewReadOnlyTests` 1 passed、`ViewBoundaryTests` 4 passed；只读、转义、错误路径与损坏事件告警通过。
+- T-003：`ReleaseMetadataTests` 1 passed；`verify-core`、`verify-agent` 通过，版本 0.9.8，manifest 50 文件。
 
-- Evidence recorded: Task T-002
+### 全量结果
 
-- Evidence recorded: Task T-003
-
-### Task T-003
-
-- At: 2026-11-24T14:47:49+08:00
-
-python -m unittest tests.test_view.ReleaseMetadataTests -v: 1 passed; verify-core and verify-agent passed; version 0.9.8, manifest 50 files, README/manual/agent contract synced
-
-### Task T-002
-
-- At: 2026-11-24T14:46:08+08:00
-
-python -m unittest tests.test_view.ViewReadOnlyTests tests.test_view.ViewBoundaryTests -v: 5 passed; audit files unchanged, HTML escaped, error paths and corrupt-event warning covered
-
-### Task T-001
-
-- At: 2026-11-24T14:45:20+08:00
-
-python -m unittest tests.test_view.ViewRenderTests tests.test_view.ViewTimelineTests -v: 4 passed; view renders five sections, default path, empty states and rewind timeline
+- `python -m unittest tests.test_view -v`：10 passed。
+- `python -m unittest discover -s tests -v`：通过（exit 0），2 个 MCP SDK 用例按既有约定跳过。
+- `python -m sdd verify-core`：passed。
+- `python -m sdd verify-agent`：passed。
+- README 保持 318 行，站点版本与 `sdd/VERSION` 均为 0.9.8。
 
 ## 4. 未运行
 
-None。
+None。未执行浏览器人工评审、容器化 runner 或外部 CI 厂商接入，均不在本 Spec 范围。
 
 ## 5. AC 覆盖
 
-<!-- TODO: 每个 AC 一行，写 AC -> 测试/证据映射。 -->
-
 | AC | 测试/证据 | 结果 |
 |---|---|---|
-| AC-001-1 | 待填写 | 待填写 |
+| AC-001-1 | `ViewRenderTests#test_view_contains_all_sections` | PASS |
+| AC-001-2 | `ViewRenderTests#test_view_default_output_path` | PASS |
+| AC-001-3 | `ViewRenderTests#test_view_empty_spec_renders_empty_states` | PASS |
+| AC-002-1 | `ViewReadOnlyTests#test_view_does_not_change_audit_files` | PASS |
+| AC-002-2 | `ViewTimelineTests#test_view_shows_rewind_event` | PASS |
+| AC-002-3 | `ViewBoundaryTests#test_view_does_not_import_state_machine_rules` | PASS |
+| AC-003-1 | `ViewBoundaryTests#test_view_rejects_missing_spec_and_bad_out` | PASS |
+| AC-003-2 | `ViewBoundaryTests#test_view_escapes_html_and_has_no_script` | PASS |
+| AC-003-3 | `ReleaseMetadataTests#test_view_release_metadata` + `verify-core` | PASS |
 
 ## 6. Gate 5 结论
 
-<!-- TODO: 填 PASS 或 FAILED，并说明残余风险。 -->
-
-待填写。
+PASS。`sdd view` 已生成只读单文件 HTML，覆盖头部、事件时间线、Gate 表、
+Task 表和工件列表；生成前后审计文件不变，页面无脚本/外链且对特殊字符转义。
+残余风险是视图只做展示，不替代浏览器人工评审或前端可访问性认证。
