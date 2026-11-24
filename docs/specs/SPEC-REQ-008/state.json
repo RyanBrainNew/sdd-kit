@@ -14,9 +14,9 @@
     "digest": "ae89c532988018c3f6d3c222c4a66da2a44981f33c8401d62a632bef66a8e910",
     "snapshot": "workflow.json"
   },
-  "state": "DRAFT",
+  "state": "IMPLEMENTING",
   "created_at": "2026-11-24T17:37:36+08:00",
-  "updated_at": "2026-11-24T17:37:36+08:00",
+  "updated_at": "2026-11-24T17:50:02+08:00",
   "pr_url": null,
   "history": [
     {
@@ -24,6 +24,102 @@
       "at": "2026-11-24T17:37:36+08:00",
       "evidence": "created",
       "role": "planner"
+    },
+    {
+      "state": "SPEC_READY",
+      "at": "2026-11-24T17:45:22+08:00",
+      "evidence": "需求已确认",
+      "actor": "human",
+      "session": "43521a906ffe",
+      "session_source": "repo-fallback",
+      "source": "cli",
+      "gate": "G0/G1",
+      "role": "approver",
+      "approver": "linjinlong <fflinjinlong@chinatelecom.cn>",
+      "artifacts": [
+        {
+          "path": "docs/specs/SPEC-REQ-008/spec.md",
+          "sha256": "a6e40705b8ada68230aa63aa283b4ed5191d1f62b8decd44577fb8a1444a278b",
+          "bytes": 12266
+        }
+      ]
+    },
+    {
+      "state": "DESIGN_READY",
+      "at": "2026-11-24T17:48:12+08:00",
+      "evidence": "design.md submitted via CLI and checked",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "gate": "G2",
+      "role": "designer",
+      "approver": null,
+      "artifacts": [
+        {
+          "path": "docs/specs/SPEC-REQ-008/design.md",
+          "sha256": "1c80008ea5b2d05e2614c521b0651554dabdd57bf48a7ddd7a2c25490edc39d1",
+          "bytes": 9296
+        }
+      ]
+    },
+    {
+      "state": "TASKS_READY",
+      "at": "2026-11-24T17:50:01+08:00",
+      "evidence": "tasks.md submitted via CLI and checked",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "gate": "G3",
+      "role": "planner",
+      "approver": null,
+      "artifacts": [
+        {
+          "path": "docs/specs/SPEC-REQ-008/tasks.md#plan",
+          "sha256": "1e7cd6272657e08a72ac9c017404bacfac9308a816a43218f7ea04fe0ca7f586",
+          "bytes": 6628
+        }
+      ]
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-24T17:50:02+08:00",
+      "evidence": "implementation started automatically by CLI",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "role": "implementer"
     }
-  ]
+  ],
+  "artifact_hashes": {
+    "G0": {
+      "docs/specs/SPEC-REQ-008/spec.md": "a6e40705b8ada68230aa63aa283b4ed5191d1f62b8decd44577fb8a1444a278b"
+    },
+    "G1": {
+      "docs/specs/SPEC-REQ-008/spec.md": "a6e40705b8ada68230aa63aa283b4ed5191d1f62b8decd44577fb8a1444a278b"
+    },
+    "G2": {
+      "docs/specs/SPEC-REQ-008/design.md": "1c80008ea5b2d05e2614c521b0651554dabdd57bf48a7ddd7a2c25490edc39d1"
+    },
+    "G3": {
+      "docs/specs/SPEC-REQ-008/tasks.md#plan": "1e7cd6272657e08a72ac9c017404bacfac9308a816a43218f7ea04fe0ca7f586"
+    }
+  },
+  "approved_spec_digest": "a6e40705b8ada68230aa63aa283b4ed5191d1f62b8decd44577fb8a1444a278b",
+  "approved_at": "2026-11-24T17:45:22+08:00",
+  "approved_by": "linjinlong <fflinjinlong@chinatelecom.cn>",
+  "approval_evidence": "需求已确认",
+  "approvals": [
+    {
+      "action": "approve_spec",
+      "approver": "linjinlong <fflinjinlong@chinatelecom.cn>",
+      "at": "2026-11-24T17:45:22+08:00",
+      "artifact": "docs/specs/SPEC-REQ-008/spec.md",
+      "sha256": "a6e40705b8ada68230aa63aa283b4ed5191d1f62b8decd44577fb8a1444a278b"
+    }
+  ],
+  "last_approver": "linjinlong <fflinjinlong@chinatelecom.cn>",
+  "previous_state": "TASKS_READY"
 }
