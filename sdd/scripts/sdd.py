@@ -6290,6 +6290,8 @@ def command_board(args: argparse.Namespace, root: Path, config: dict[str, Any]) 
                         "description": task["description"],
                         "status": task.get("status", "Todo"),
                         "acs": task.get("acs", []),
+                        "commit": task.get("commit", ""),
+                        "test": task.get("test", ""),
                         "depends": task.get("depends", []),
                     }
                     for task in tasks

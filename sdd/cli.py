@@ -16,6 +16,7 @@ from .core import (
     write_manifest,
 )
 from .scripts import sdd as engine
+from .view import render_view
 
 
 def _print_json(payload: Any) -> None:
@@ -69,6 +70,10 @@ def _print_human(payload: dict[str, Any]) -> None:
                 f"{event.get('from_state')} -> {event.get('to_state')}  "
                 f"{event.get('evidence', '')}"
             )
+        return
+    if payload.get("kind") == "view":
+        print(f"[sdd] view written: {payload.get('out')}")
+        print(f"[sdd] bytes: {payload.get('bytes')}")
         return
     if payload.get("kind") == "inbox":
         items = payload.get("items", [])
@@ -443,6 +448,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--spec")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=lambda a, w: w.events(a.spec))
+
+    p = sub.add_parser("view", help="render a read-only single-file HTML view")
+    p.add_argument("--spec", required=True)
+    p.add_argument("--out", help="output HTML path; default .sdd/runtime/view/<spec>.html")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=lambda a, w: render_view(w.root, a.spec, a.out))
 
     p = sub.add_parser("check", help="validate artifacts")
     p.add_argument("--spec")
