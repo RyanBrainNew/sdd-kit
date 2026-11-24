@@ -15,6 +15,7 @@
 | SDD-GOV-001 | https://github.com/RyanBrainNew/sdd-kit/issues/20 | current | FEAT-006 | SPEC-REQ-004 | 审批版本绑定、change-set 与 impact | 0 |
 | SDD-GOV-002 | https://github.com/RyanBrainNew/sdd-kit/issues/21 | current | FEAT-007 | SPEC-REQ-005 | 全量 commit 审计与 sdd trace | 0 |
 | SDD-RUNNER-001 | https://github.com/RyanBrainNew/sdd-kit/issues/2 | current | FEAT-008 | SPEC-REQ-006 | 外部 runner 接入契约 | 0 |
+| SDD-VIEW-001 | https://github.com/RyanBrainNew/sdd-kit/issues/1 | current | FEAT-009 | SPEC-REQ-007 | 只读 sdd view HTML 运行视图 | 0 |
 
 ## FEAT 映射
 
@@ -54,3 +55,6 @@
 | FEAT-008 | SDD-RUNNER-001 | SPEC-REQ-006 | FR-001 | AC-001-1, AC-001-2, AC-001-3 |
 | FEAT-008 | SDD-RUNNER-001 | SPEC-REQ-006 | FR-002 | AC-002-1, AC-002-2, AC-002-3 |
 | FEAT-008 | SDD-RUNNER-001 | SPEC-REQ-006 | FR-003 | AC-003-1, AC-003-2, AC-003-3 |
+| FEAT-009 | SDD-VIEW-001 | SPEC-REQ-007 | FR-001 | AC-001-1, AC-001-2, AC-001-3 |
+| FEAT-009 | SDD-VIEW-001 | SPEC-REQ-007 | FR-002 | AC-002-1, AC-002-2, AC-002-3 |
+| FEAT-009 | SDD-VIEW-001 | SPEC-REQ-007 | FR-003 | AC-003-1, AC-003-2, AC-003-3 |

@@ -73,6 +73,11 @@ pre-commit 与 CI 都会用 `G1-09` 阻断代码提交。纯文档/配置变更�
 `python -m sdd trace --test/--ac/--commit ... --json`；trace 不修改
 state、events、change-set 或任何文件。
 
+需要离线查看同一个 Spec 的状态时，可运行只读
+`python -m sdd view --spec <spec>`，默认写入
+`.sdd/runtime/view/<spec>.html`；它只消费 status/events/board 与 Gate 记录，
+不写审计文件，也不提供任何交互动作。
+
 当当前阶段的自动检查通过、但 Gate 要求人工时，`submit` / `submit-task` 会返回
 `awaiting_human_approval=true` 和 `human_checkpoint`。Agent 必须停止，
 不要继续调用 `complete`。人可以运行 `python -m sdd inbox --json` 查看所有待办。

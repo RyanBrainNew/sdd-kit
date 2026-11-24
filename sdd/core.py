@@ -1450,6 +1450,7 @@ PROTECTED_FILES = (
     "sdd/agents.py",
     "sdd/cli.py",
     "sdd/core.py",
+    "sdd/view.py",
     "sdd/agent-block.md",
     "sdd/agent-contract.md",
 )

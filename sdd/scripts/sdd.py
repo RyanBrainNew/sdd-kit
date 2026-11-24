@@ -69,7 +69,7 @@ except ImportError:  # pragma: no cover - package import fallback
         validate_review_findings,
     )
 
-VERSION = "0.9.7"
+VERSION = "0.9.8"
 EVENT_SCHEMA = 2
 
 SPEC_SECTIONS = (
@@ -6290,6 +6290,8 @@ def command_board(args: argparse.Namespace, root: Path, config: dict[str, Any]) 
                         "description": task["description"],
                         "status": task.get("status", "Todo"),
                         "acs": task.get("acs", []),
+                        "commit": task.get("commit", ""),
+                        "test": task.get("test", ""),
                         "depends": task.get("depends", []),
                     }
                     for task in tasks

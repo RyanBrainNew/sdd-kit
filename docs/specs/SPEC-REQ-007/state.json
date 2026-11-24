@@ -1,0 +1,265 @@
+{
+  "spec_id": "SPEC-REQ-007",
+  "title": "只读 sdd view HTML 运行视图",
+  "work_item": "SDD-VIEW-001",
+  "feat_id": "FEAT-009",
+  "schema": 2,
+  "issue": "https://github.com/RyanBrainNew/sdd-kit/issues/1",
+  "product_type": "传统产品",
+  "risk": "low",
+  "risk_labels": [],
+  "workflow": {
+    "name": "l2-standard",
+    "version": 1,
+    "digest": "ae89c532988018c3f6d3c222c4a66da2a44981f33c8401d62a632bef66a8e910",
+    "snapshot": "workflow.json"
+  },
+  "state": "MERGED",
+  "created_at": "2026-11-24T14:33:43+08:00",
+  "updated_at": "2026-11-24T17:29:52+08:00",
+  "pr_url": null,
+  "history": [
+    {
+      "state": "DRAFT",
+      "at": "2026-11-24T14:33:43+08:00",
+      "evidence": "created",
+      "role": "planner"
+    },
+    {
+      "state": "SPEC_READY",
+      "at": "2026-11-24T14:36:35+08:00",
+      "evidence": "需求已确认",
+      "actor": "human",
+      "session": "43521a906ffe",
+      "session_source": "repo-fallback",
+      "source": "cli",
+      "gate": "G0/G1",
+      "role": "approver",
+      "approver": "linjinlong <fflinjinlong@chinatelecom.cn>",
+      "artifacts": [
+        {
+          "path": "docs/specs/SPEC-REQ-007/spec.md",
+          "sha256": "04a621f745cd3f646ea3bef72e85e94de6a8d74925dc5e6d62fae2b1a0e3224f",
+          "bytes": 10283
+        }
+      ]
+    },
+    {
+      "state": "DESIGN_READY",
+      "at": "2026-11-24T14:39:30+08:00",
+      "evidence": "design.md submitted via CLI and checked",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "gate": "G2",
+      "role": "designer",
+      "approver": null,
+      "artifacts": [
+        {
+          "path": "docs/specs/SPEC-REQ-007/design.md",
+          "sha256": "4275b6dae5b501a1af3cf80c0fd4d10bcbbbf92300742c23382691f6d7c60c76",
+          "bytes": 8924
+        }
+      ]
+    },
+    {
+      "state": "TASKS_READY",
+      "at": "2026-11-24T14:41:16+08:00",
+      "evidence": "tasks.md submitted via CLI and checked",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "gate": "G3",
+      "role": "planner",
+      "approver": null,
+      "artifacts": [
+        {
+          "path": "docs/specs/SPEC-REQ-007/tasks.md#plan",
+          "sha256": "76a6db359321d749117e0e39be25dc7719f738bc4f8aefd0413903a838a183c9",
+          "bytes": 5403
+        }
+      ]
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-24T14:41:17+08:00",
+      "evidence": "implementation started automatically by CLI",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-24T14:45:20+08:00",
+      "evidence": "task started",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_start",
+      "task": "T-001",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-24T14:45:20+08:00",
+      "evidence": "python -m unittest tests.test_view.ViewRenderTests tests.test_view.ViewTimelineTests -v: 4 passed; view renders five sections, default path, empty states and rewind timeline",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_done",
+      "task": "T-001",
+      "commit": "309ff56",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-24T14:46:08+08:00",
+      "evidence": "task started",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_start",
+      "task": "T-002",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-24T14:46:08+08:00",
+      "evidence": "python -m unittest tests.test_view.ViewReadOnlyTests tests.test_view.ViewBoundaryTests -v: 5 passed; audit files unchanged, HTML escaped, error paths and corrupt-event warning covered",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_done",
+      "task": "T-002",
+      "commit": "c8bae9f",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-24T14:47:48+08:00",
+      "evidence": "task started",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_start",
+      "task": "T-003",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-24T14:47:49+08:00",
+      "evidence": "python -m unittest tests.test_view.ReleaseMetadataTests -v: 1 passed; verify-core and verify-agent passed; version 0.9.8, manifest 50 files, README/manual/agent contract synced",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_done",
+      "task": "T-003",
+      "commit": "731d8bb",
+      "role": "implementer"
+    },
+    {
+      "state": "VERIFYING",
+      "at": "2026-11-24T14:47:49+08:00",
+      "evidence": "all tasks completed",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "gate": "G4",
+      "role": "implementer",
+      "approver": null,
+      "artifacts": [
+        {
+          "path": "docs/specs/SPEC-REQ-007/tasks.md#plan",
+          "sha256": "76a6db359321d749117e0e39be25dc7719f738bc4f8aefd0413903a838a183c9",
+          "bytes": 5344
+        }
+      ]
+    },
+    {
+      "state": "PR_READY",
+      "at": "2026-11-24T15:24:09+08:00",
+      "evidence": "verification.md submitted via CLI and checked",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "gate": "G5",
+      "role": "verifier",
+      "approver": null,
+      "artifacts": [
+        {
+          "path": "docs/specs/SPEC-REQ-007/verification.md",
+          "sha256": "778f3d29378b4d5b7b7b4cf7c7c28e1d178f8cfe5377b8a8fd7163b122a0bc68",
+          "bytes": 24926
+        }
+      ]
+    },
+    {
+      "state": "MERGED",
+      "at": "2026-11-24T17:29:52+08:00",
+      "evidence": "交付已确认",
+      "actor": "human",
+      "session": "43521a906ffe",
+      "session_source": "repo-fallback",
+      "source": "cli",
+      "role": "approver",
+      "approver": "linjinlong <fflinjinlong@chinatelecom.cn>"
+    }
+  ],
+  "artifact_hashes": {
+    "G0": {
+      "docs/specs/SPEC-REQ-007/spec.md": "04a621f745cd3f646ea3bef72e85e94de6a8d74925dc5e6d62fae2b1a0e3224f"
+    },
+    "G1": {
+      "docs/specs/SPEC-REQ-007/spec.md": "04a621f745cd3f646ea3bef72e85e94de6a8d74925dc5e6d62fae2b1a0e3224f"
+    },
+    "G2": {
+      "docs/specs/SPEC-REQ-007/design.md": "4275b6dae5b501a1af3cf80c0fd4d10bcbbbf92300742c23382691f6d7c60c76"
+    },
+    "G3": {
+      "docs/specs/SPEC-REQ-007/tasks.md#plan": "76a6db359321d749117e0e39be25dc7719f738bc4f8aefd0413903a838a183c9"
+    },
+    "G4": {
+      "docs/specs/SPEC-REQ-007/tasks.md#plan": "76a6db359321d749117e0e39be25dc7719f738bc4f8aefd0413903a838a183c9"
+    },
+    "G5": {
+      "docs/specs/SPEC-REQ-007/verification.md": "778f3d29378b4d5b7b7b4cf7c7c28e1d178f8cfe5377b8a8fd7163b122a0bc68"
+    }
+  },
+  "approved_spec_digest": "04a621f745cd3f646ea3bef72e85e94de6a8d74925dc5e6d62fae2b1a0e3224f",
+  "approved_at": "2026-11-24T14:36:35+08:00",
+  "approved_by": "linjinlong <fflinjinlong@chinatelecom.cn>",
+  "approval_evidence": "需求已确认",
+  "approvals": [
+    {
+      "action": "approve_spec",
+      "approver": "linjinlong <fflinjinlong@chinatelecom.cn>",
+      "at": "2026-11-24T14:36:35+08:00",
+      "artifact": "docs/specs/SPEC-REQ-007/spec.md",
+      "sha256": "04a621f745cd3f646ea3bef72e85e94de6a8d74925dc5e6d62fae2b1a0e3224f"
+    },
+    {
+      "action": "confirm_delivery",
+      "approver": "linjinlong <fflinjinlong@chinatelecom.cn>",
+      "at": "2026-11-24T17:29:52+08:00",
+      "artifact": "docs/specs/SPEC-REQ-007/PR_BODY.md",
+      "sha256": "9e09f41688eff3ffb33bdfc3c24a0853a7fbd60bde57d46ad72b0009da4fca0d",
+      "head_sha": "f788a0d77c29a6259168b91f3acbf45a47751e15"
+    }
+  ],
+  "last_approver": "linjinlong <fflinjinlong@chinatelecom.cn>",
+  "previous_state": "PR_READY",
+  "delivery_confirmed_at": "2026-11-24T17:29:52+08:00",
+  "merged_at": "2026-11-24T17:29:52+08:00"
+}
