@@ -24,6 +24,14 @@
 
 - Evidence recorded: Task T-001
 
+- Evidence recorded: Task T-002
+
+### Task T-002
+
+- At: 2026-11-24T11:35:39+08:00
+
+python -m unittest tests.test_runner_contract.EntryPointTests -v: 1 passed; README and sdd/README link to deploy/runner/CONTRACT.md
+
 ### Task T-001
 
 - At: 2026-11-24T11:34:35+08:00
