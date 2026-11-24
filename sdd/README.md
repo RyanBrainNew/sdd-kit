@@ -1,6 +1,8 @@
 # SDD 执行手册（CLI-first）
 
 本文件是业务仓库内的 SDD 操作说明。完整的接入、架构和模式说明见根目录 `README.md`。
+外部 runner（自研 harness、CI job、调度器）的接入顺序、失败语义和人工边界见
+[deploy/runner/CONTRACT.md](../deploy/runner/CONTRACT.md)。
 
 一句话：
 

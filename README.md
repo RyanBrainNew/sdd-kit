@@ -12,7 +12,7 @@
 ![license](https://img.shields.io/badge/license-Apache--2.0-5ee7a8)
 [![site](https://img.shields.io/badge/site-GitHub%20Pages-5ee7a8)](https://ryanbrainnew.github.io/sdd-kit/)
 
-[官网](https://ryanbrainnew.github.io/sdd-kit/) | [完整指南](docs/GUIDE.md) | [架构](ARCHITECTURE.md) | [Agent 协议](sdd/agent-contract.md) | [路线图](https://github.com/RyanBrainNew/sdd-kit/issues)
+[官网](https://ryanbrainnew.github.io/sdd-kit/) | [完整指南](docs/GUIDE.md) | [架构](ARCHITECTURE.md) | [Agent 协议](sdd/agent-contract.md) | [Runner 契约](deploy/runner/CONTRACT.md) | [路线图](https://github.com/RyanBrainNew/sdd-kit/issues)
 
 </div>
 
@@ -234,9 +234,9 @@ Gate 报告单独写入 `sdd/reports/<Spec ID>/`，与 `docs/` 下的 Spec 工�
 | 已交付 | 0.9.4 | schema 2 工作流 Profile、`workflow validate`、`l2-refactor` 示范预设 |
 | 已交付 | 0.9.5–0.9.7 | G0–G5 分级/豁免；审批绑定与 `change-set`；全量 commit 审计与 `trace` |
 | 未开发（0.9.0） | [#1](https://github.com/RyanBrainNew/sdd-kit/issues/1) | 只读单文件 HTML 运行视图 `sdd view` |
-| 未开发（0.9.0） | [#2](https://github.com/RyanBrainNew/sdd-kit/issues/2) | 外部 runner 接入契约 `deploy/runner/CONTRACT.md` |
+| 已交付 | [#2](https://github.com/RyanBrainNew/sdd-kit/issues/2) | 外部 runner 接入契约 `deploy/runner/CONTRACT.md` |
 | 未开发（后续） | [#3](https://github.com/RyanBrainNew/sdd-kit/issues/3) | 固定预设升级 `upgrade-workflow` |
-| 设计阶段（P0） | [#8](https://github.com/RyanBrainNew/sdd-kit/issues/8) | 治理闭环：P0 全部子项已拆分并交付，剩余跟踪 #21 |
+| 已交付 | [#8](https://github.com/RyanBrainNew/sdd-kit/issues/8) | 治理闭环：审批绑定、`change-set`、全量 commit 审计与 `trace` |
 | 总纲（epic） | [#7](https://github.com/RyanBrainNew/sdd-kit/issues/7) | 轻量、可自定义、全链路可溯源的 SDD-L2 执行内核 |
 
 路线图以 GitHub Issues 为准；未开发项不会出现在命令表中，也不会在站点的“当前形态”里冒充已交付。
