@@ -1,0 +1,29 @@
+{
+  "spec_id": "SPEC-REQ-006",
+  "title": "外部 runner 接入契约",
+  "work_item": "SDD-RUNNER-001",
+  "feat_id": "FEAT-007",
+  "schema": 2,
+  "issue": "https://github.com/RyanBrainNew/sdd-kit/issues/2",
+  "product_type": "传统产品",
+  "risk": "low",
+  "risk_labels": [],
+  "workflow": {
+    "name": "l2-standard",
+    "version": 1,
+    "digest": "ae89c532988018c3f6d3c222c4a66da2a44981f33c8401d62a632bef66a8e910",
+    "snapshot": "workflow.json"
+  },
+  "state": "DRAFT",
+  "created_at": "2026-11-24T10:30:05+08:00",
+  "updated_at": "2026-11-24T10:30:05+08:00",
+  "pr_url": null,
+  "history": [
+    {
+      "state": "DRAFT",
+      "at": "2026-11-24T10:30:05+08:00",
+      "evidence": "created",
+      "role": "planner"
+    }
+  ]
+}
