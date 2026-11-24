@@ -16,6 +16,7 @@
 | SDD-GOV-002 | https://github.com/RyanBrainNew/sdd-kit/issues/21 | current | FEAT-007 | SPEC-REQ-005 | 全量 commit 审计与 sdd trace | 0 |
 | SDD-RUNNER-001 | https://github.com/RyanBrainNew/sdd-kit/issues/2 | current | FEAT-008 | SPEC-REQ-006 | 外部 runner 接入契约 | 0 |
 | SDD-VIEW-001 | https://github.com/RyanBrainNew/sdd-kit/issues/1 | current | FEAT-009 | SPEC-REQ-007 | 只读 sdd view HTML 运行视图 | 0 |
+| SDD-WORKFLOW-001 | https://github.com/RyanBrainNew/sdd-kit/issues/3 | current | FEAT-010 | SPEC-REQ-008 | 固定预设升级 upgrade-workflow | 0 |
 
 ## FEAT 映射
 
@@ -58,3 +59,7 @@
 | FEAT-009 | SDD-VIEW-001 | SPEC-REQ-007 | FR-001 | AC-001-1, AC-001-2, AC-001-3 |
 | FEAT-009 | SDD-VIEW-001 | SPEC-REQ-007 | FR-002 | AC-002-1, AC-002-2, AC-002-3 |
 | FEAT-009 | SDD-VIEW-001 | SPEC-REQ-007 | FR-003 | AC-003-1, AC-003-2, AC-003-3 |
+| FEAT-010 | SDD-WORKFLOW-001 | SPEC-REQ-008 | FR-001 | AC-001-1, AC-001-2, AC-001-3, AC-001-4, AC-001-5 |
+| FEAT-010 | SDD-WORKFLOW-001 | SPEC-REQ-008 | FR-002 | AC-002-1, AC-002-2, AC-002-3 |
+| FEAT-010 | SDD-WORKFLOW-001 | SPEC-REQ-008 | FR-003 | AC-003-1, AC-003-2, AC-003-3 |
+| FEAT-010 | SDD-WORKFLOW-001 | SPEC-REQ-008 | FR-004 | AC-004-1, AC-004-2, AC-004-3 |

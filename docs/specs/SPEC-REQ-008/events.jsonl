@@ -1,0 +1,1 @@
+{"schema": 2, "seq": 1, "at": "2026-11-24T17:37:36+08:00", "event": "spec_created", "from_state": null, "to_state": "DRAFT", "evidence": "created", "next": "write_spec", "history_index": 0, "role": "planner", "prev_sha256": "", "event_sha256": "4b4b8413db10ddc6f320e263617ebef8cfec1ca5ae972312f69d7e66e464794e"}
