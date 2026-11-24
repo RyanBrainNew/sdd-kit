@@ -22,6 +22,14 @@
 
 待填写。
 
+- Evidence recorded: Task T-001
+
+### Task T-001
+
+- At: 2026-11-24T14:45:20+08:00
+
+python -m unittest tests.test_view.ViewRenderTests tests.test_view.ViewTimelineTests -v: 4 passed; view renders five sections, default path, empty states and rewind timeline
+
 ## 4. 未运行
 
 None。

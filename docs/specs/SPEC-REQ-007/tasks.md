@@ -15,7 +15,7 @@
 
 | Task ID | 任务描述 | 关联FR/AC | 依赖Task | 并行标识 | 验收标准 | 单元测试类/方法 | 单Task测试命令 | 状态 | Commit SHA |
 |---|---|---|---|---|---|---|---|---|---|
-| T-001 | 新增 `sdd/view.py` 渲染器、`sdd view` CLI 与 board 的 commit/test 字段 | FR-001；FR-002；AC-001-1；AC-001-2；AC-001-3；AC-002-2 | None | S | 生成五区块 HTML；默认路径可写；空态与 rewind 时间线正确 | `ViewRenderTests#test_view_contains_all_sections` | `python -m unittest tests.test_view.ViewRenderTests tests.test_view.ViewTimelineTests -v` | Todo | - |
+| T-001 | 新增 `sdd/view.py` 渲染器、`sdd view` CLI 与 board 的 commit/test 字段 | FR-001；FR-002；AC-001-1；AC-001-2；AC-001-3；AC-002-2 | None | S | 生成五区块 HTML；默认路径可写；空态与 rewind 时间线正确 | `ViewRenderTests#test_view_contains_all_sections` | `python -m unittest tests.test_view.ViewRenderTests tests.test_view.ViewTimelineTests -v` | Done | 309ff56 |
 | T-002 | 加固只读性、HTML 转义、错误路径与数据来源边界 | FR-002；FR-003；AC-002-1；AC-002-3；AC-003-1；AC-003-2 | T-001 | S | 审计文件不变；脚本被转义；缺失 Spec/非法路径失败且不落盘 | `ViewReadOnlyTests#test_view_does_not_change_audit_files` | `python -m unittest tests.test_view.ViewReadOnlyTests tests.test_view.ViewBoundaryTests -v` | Todo | - |
 | T-003 | 同步 README、执行手册、Agent 契约、版本与 manifest | FR-003；AC-003-3 | T-001 | S | 版本 0.9.8；manifest 含 sdd/view.py；文档有三处入口 | `ReleaseMetadataTests#test_view_release_metadata` | `python -m unittest tests.test_view.ReleaseMetadataTests -v` | Todo | - |
 

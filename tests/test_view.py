@@ -183,6 +183,9 @@ class ViewReadOnlyTests(ViewTestBase):
             self.root / "docs" / "specs" / SPEC_ID / "state.json",
             self.root / "docs" / "specs" / SPEC_ID / "events.jsonl",
         ]
+        targets.extend(
+            sorted((self.root / "sdd" / "reports" / SPEC_ID).glob("*.md"))
+        )
         before = {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in targets}
         self.run_cli("view", "--spec", SPEC_ID)
         after = {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in targets}
@@ -252,6 +255,15 @@ class ViewBoundaryTests(ViewTestBase):
         self.assertNotIn("parse_tasks", source)
         mcp = (KIT_ROOT / "sdd" / "mcp" / "server.py").read_text(encoding="utf-8")
         self.assertNotIn("sdd_view", mcp)
+
+    def test_view_warns_on_corrupt_event_line(self):
+        self.new_spec()
+        events = self.root / "docs" / "specs" / SPEC_ID / "events.jsonl"
+        with events.open("a", encoding="utf-8") as handle:
+            handle.write("{not-json}\n")
+        payload, _ = self.run_cli("view", "--spec", SPEC_ID)
+        html = (self.root / payload["out"]).read_text(encoding="utf-8")
+        self.assertIn("无法解析", html)
 
 
 class ReleaseMetadataTests(unittest.TestCase):

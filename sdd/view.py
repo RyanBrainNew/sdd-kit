@@ -46,6 +46,15 @@ def list_artifacts(spec_dir: Path) -> list[Path]:
     return sorted(path for path in spec_dir.rglob("*") if path.is_file())
 
 
+def count_event_lines(spec_dir: Path) -> int:
+    path = spec_dir / "events.jsonl"
+    if not path.is_file():
+        return 0
+    return len(
+        [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    )
+
+
 def relative_link(out_path: Path, target: Path) -> str:
     relative = os.path.relpath(target, start=out_path.parent)
     return Path(relative).as_posix()
@@ -158,6 +167,7 @@ def render_html(
     artifacts: list[Path],
     spec_dir: Path,
     out_path: Path,
+    warnings: list[str] | None = None,
 ) -> str:
     workflow = state.get("workflow") or {}
     workflow_label = "-"
@@ -174,6 +184,13 @@ def render_html(
         header_links.append(f'<a href="{escape(pr_url)}">PR</a>')
     generated = datetime.now().astimezone().isoformat(timespec="seconds")
     title = str(state.get("title") or spec)
+    warning_html = ""
+    if warnings:
+        warning_html = (
+            '<div class="warnings">'
+            + "".join(f"<p>{escape(item)}</p>" for item in warnings)
+            + "</div>"
+        )
 
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
@@ -204,6 +221,8 @@ code {{ font-family:ui-monospace,SFMono-Regular,Consolas,monospace; font-size:13
 .transition {{ color:var(--muted); }}
 .evidence, .reason {{ color:var(--muted); font-size:13px; word-break:break-word; }}
 .empty {{ color:var(--muted); font-style:italic; }}
+.warnings {{ border:1px solid #bf8700; background:#fff8c5; color:#3d2c00; padding:10px 14px; border-radius:6px; }}
+.warnings p {{ margin:0; }}
 .artifacts {{ margin:0; padding-left:22px; }}
 a {{ color:var(--accent); }}
 footer {{ margin-top:32px; color:var(--muted); font-size:12px; }}
@@ -220,6 +239,7 @@ footer {{ margin-top:32px; color:var(--muted); font-size:12px; }}
     <span>{' '.join(header_links)}</span>
   </div>
 </header>
+{warning_html}
 <main>
   <section id="timeline"><h2>事件时间线</h2>{render_event_rows(events)}</section>
   <section id="gates"><h2>Gate 记录</h2>{render_gate_rows(gate_rows, state)}</section>
@@ -272,15 +292,23 @@ def render_view(
         else []
     )
     artifacts = list_artifacts(spec_dir)
+    events = list(events_payload.get("events") or [])
+    warnings: list[str] = []
+    raw_event_lines = count_event_lines(spec_dir)
+    if raw_event_lines > len(events):
+        warnings.append(
+            f"events.jsonl 有 {raw_event_lines - len(events)} 行无法解析，已在时间线中跳过。"
+        )
     html_text = render_html(
         spec=spec,
         state=state,
-        events=list(events_payload.get("events") or []),
+        events=events,
         tasks=list(board_item.get("tasks") or []),
         gate_rows=gate_rows,
         artifacts=artifacts,
         spec_dir=spec_dir,
         out_path=out_path,
+        warnings=warnings,
     )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(html_text, encoding="utf-8")
