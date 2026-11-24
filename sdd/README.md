@@ -106,6 +106,7 @@ python -m sdd board
 python -m sdd inbox --stale-days 7
 python -m sdd metrics --json
 python -m sdd events --spec SPEC-ORDER-001 --json
+python -m sdd view --spec SPEC-ORDER-001
 python -m sdd current --json
 python -m sdd status --json
 python -m sdd next --json

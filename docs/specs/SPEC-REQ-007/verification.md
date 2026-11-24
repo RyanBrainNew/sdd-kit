@@ -24,6 +24,14 @@
 
 - Evidence recorded: Task T-001
 
+- Evidence recorded: Task T-002
+
+### Task T-002
+
+- At: 2026-11-24T14:46:08+08:00
+
+python -m unittest tests.test_view.ViewReadOnlyTests tests.test_view.ViewBoundaryTests -v: 5 passed; audit files unchanged, HTML escaped, error paths and corrupt-event warning covered
+
 ### Task T-001
 
 - At: 2026-11-24T14:45:20+08:00

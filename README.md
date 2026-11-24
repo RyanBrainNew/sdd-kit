@@ -30,7 +30,7 @@ SDD Kit 把公司 SDD-L2 的流程做成**仓库自带的默认开发路径**，
 
 <img src="docs/assets/site-preview.png" alt="SDD Kit 官网首屏" width="100%">
 
-## 当前形态（0.9.7）
+## 当前形态（0.9.8）
 
 | 维度 | 当前实现 |
 |---|---|
@@ -39,12 +39,11 @@ SDD Kit 把公司 SDD-L2 的流程做成**仓库自带的默认开发路径**，
 | 工作流 | `l2-standard` 默认；`l2-hotfix` 用轻量设计并拒绝高风险；`l2-strict` 的 G0–G5 全部人工；`l2-refactor` 使用 schema 2 声明检查组合与上下文 |
 | 人工边界 | 正常流程只有 Spec 确认、交付确认两个计划内检查点；交付确认后才创建 PR；`unblock`、`rewind`、`waive` 是人工例外动作 |
 | 证据链 | G0–G5 稳定检查 ID、`pass/warn/block`、产物 SHA-256、`state.json`、`events.jsonl`、测试证据都随 Git 提交 |
-| 可运维 | `board`、`inbox`、`metrics`、`events` 已可用；告警可按 Spec/Gate/检查 ID 追溯 |
+| 可运维 | `board`、`inbox`、`metrics`、`events` 与离线 `view` 已可用；告警可按 Spec/Gate/检查 ID 追溯 |
 | 集成 | MCP 是可选薄适配；同时提供 GitHub Actions 与 GitLab CI 模板 |
 | 官方门面 | `site/` 由 GitHub Pages 发布；本 README 只保留首页和导航 |
 
-尚未实现的能力不在本文里冒充“已有”：`sdd view`、`upgrade-workflow`、外部 runner 契约、
-全量 commit 审计与 `trace` 都在下面的路线图中。
+尚未实现的能力不在本文里冒充“已有”：`upgrade-workflow` 仍在下面的路线图中。
 
 ## 为什么需要它
 
@@ -160,7 +159,7 @@ LF 规范化，历史 CRLF 哈希仍可验证，Windows 与 Linux 工作区不�
 | `python -m sdd waive --spec <id> --check G5-09 ... --human` | 人 | 创建限范围、可到期的人工豁免 |
 | `python -m sdd workflow validate --file sdd/workflows/<name>.json --json` | 工作流设计者 | 校验声明式 Profile |
 | `python -m sdd report` | Agent | 生成 PR 正文与 Gate 摘要 |
-| `python -m sdd board` / `inbox` / `metrics` / `events` | 人 / Agent | 查看看板、待办、指标和审计事件 |
+| `python -m sdd board` / `inbox` / `metrics` / `events` / `view` | 人 / Agent | 查看看板、待办、指标、审计事件和离线 HTML 视图 |
 | `python -m sdd approve --spec <id> --human --evidence "..."` | 人 | 确认 Spec |
 | `python -m sdd reapprove --spec <id> --human --reason "..." --evidence "..."` | 人 | 审批后范围变化时重新确认 Spec 版本 |
 | `python -m sdd merge --spec <id> --human --evidence "..."` | 人 | 确认交付（之后才开 PR） |
@@ -232,8 +231,8 @@ Gate 报告单独写入 `sdd/reports/<Spec ID>/`，与 `docs/` 下的 Spec 工�
 | 已交付 | 0.7.0 | `rewind`、`inbox`、`metrics`、事件 v2、产物哈希、审批身份 |
 | 已交付 | 0.8.0 | 三套命名工作流、Spec 快照、`l2-strict` 独立审查、Apache-2.0 与官网 |
 | 已交付 | 0.9.4 | schema 2 工作流 Profile、`workflow validate`、`l2-refactor` 示范预设 |
-| 已交付 | 0.9.5–0.9.7 | G0–G5 分级/豁免；审批绑定与 `change-set`；全量 commit 审计与 `trace` |
-| 未开发（0.9.0） | [#1](https://github.com/RyanBrainNew/sdd-kit/issues/1) | 只读单文件 HTML 运行视图 `sdd view` |
+| 已交付 | 0.9.5–0.9.8 | G0–G5 分级/豁免；审批绑定与 `change-set`；全量 commit 审计与 `trace`；只读 `view` |
+| 已交付 | [#1](https://github.com/RyanBrainNew/sdd-kit/issues/1) | 只读单文件 HTML 运行视图 `sdd view` |
 | 已交付 | [#2](https://github.com/RyanBrainNew/sdd-kit/issues/2) | 外部 runner 接入契约 `deploy/runner/CONTRACT.md` |
 | 未开发（后续） | [#3](https://github.com/RyanBrainNew/sdd-kit/issues/3) | 固定预设升级 `upgrade-workflow` |
 | 已交付 | [#8](https://github.com/RyanBrainNew/sdd-kit/issues/8) | 治理闭环：审批绑定、`change-set`、全量 commit 审计与 `trace` |
