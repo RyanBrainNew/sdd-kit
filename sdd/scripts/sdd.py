@@ -500,6 +500,17 @@ def write_text(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8", newline="\n")
 
 
+def atomic_write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_name(f".{path.name}.tmp")
+    temp.write_text(text, encoding="utf-8", newline="\n")
+    os.replace(temp, path)
+
+
+def atomic_write_json(path: Path, data: dict[str, Any]) -> None:
+    atomic_write_text(path, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+
+
 def load_json(path: Path) -> dict[str, Any]:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
@@ -510,7 +521,7 @@ def load_json(path: Path) -> dict[str, Any]:
 
 
 def write_json(path: Path, data: dict[str, Any]) -> None:
-    write_text(path, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+    atomic_write_text(path, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
 
 
 def sha256_bytes(data: bytes) -> str:
@@ -9524,6 +9535,198 @@ def command_rewind(
     return 0
 
 
+def parse_workflow_target(value: str) -> tuple[str, int]:
+    match = re.fullmatch(r"([a-z][a-z0-9-]*)@(\d+)", str(value).strip())
+    if not match:
+        raise SddError("--to 必须是 <name>@<version>，例如 l2-standard@2")
+    return match.group(1), int(match.group(2))
+
+
+def pending_required_gates(
+    root: Path,
+    config: dict[str, Any],
+    directory: Path,
+    state: dict[str, Any],
+    preset: dict[str, Any],
+) -> list[str]:
+    state_name = str(state.get("state") or "")
+    required = preset.get("required_gates", {}).get(state_name, [])
+    spec_id = str(state.get("spec_id") or directory.name)
+    return [
+        str(gate)
+        for gate in required
+        if gate_report_status(gate_report_path(root, config, spec_id, str(gate)))
+        != "PASS"
+    ]
+
+
+def workflow_preset_version(
+    root: Path,
+    state: dict[str, Any],
+    name: str,
+    version: int,
+) -> Optional[dict[str, Any]]:
+    path = workflow_root(root) / f"{name}.json"
+    candidates: list[dict[str, Any]] = []
+    if path.is_file():
+        candidates.append(load_json(path))
+    for record in reversed(state.get("workflow_history") or []):
+        if not isinstance(record, dict):
+            continue
+        for key in ("to_preset", "from_preset"):
+            preset = record.get(key)
+            if (
+                isinstance(preset, dict)
+                and preset.get("name") == name
+                and int(preset.get("version") or 0) == version
+            ):
+                candidates.append(preset)
+    for preset in candidates:
+        if validate_workflow_preset(preset, f"{name}.json"):
+            continue
+        if int(preset.get("version") or 0) == version:
+            return preset
+    return None
+
+
+def command_upgrade_workflow(
+    args: argparse.Namespace, root: Path, config: dict[str, Any]
+) -> int:
+    spec_id, directory, state = resolve_spec(root, config, args.spec)
+    if not args.human:
+        raise SddError("upgrade-workflow 需要 --human；agent 不允许切换工作流")
+    reason = str(args.reason or "").strip()
+    if not reason:
+        raise SddError("upgrade-workflow 需要 --reason，记录升级原因")
+    current_state = str(state.get("state") or "UNKNOWN")
+    if current_state == "MERGED":
+        raise SddError("MERGED Spec 不能升级工作流")
+    if current_state == "BLOCKED":
+        raise SddError("BLOCKED 状态先 unblock，再升级工作流")
+
+    current = state.get("workflow") or {}
+    if not isinstance(current, dict) or not current.get("name"):
+        raise SddError("当前 Spec 缺少 workflow 引用，无法升级")
+    current_name = str(current.get("name"))
+    current_version = int(current.get("version") or 0)
+    target_name, target_version = parse_workflow_target(args.to)
+    if target_name == current_name and target_version == current_version:
+        raise SddError(
+            f"{spec_id} 已经固定在 {current_name}@{current_version}，无需升级"
+        )
+
+    preset = workflow_preset_version(
+        root, state, target_name, target_version
+    )
+    if preset is None:
+        path = workflow_root(root) / f"{target_name}.json"
+        available = "无"
+        if path.is_file():
+            available = f"@{load_json(path).get('version')}"
+        raise SddError(
+            f"找不到 {target_name}@{target_version}；仓库当前版本：{available}。"
+            "降级只能使用 workflow_history 中保留过的版本"
+        )
+
+    downgrade = target_version < current_version
+    if downgrade and not args.allow_downgrade:
+        raise SddError(
+            f"拒绝降级 {current_version} -> {target_version}；"
+            "如确需降级，请加 --allow-downgrade --design-change <引用>"
+        )
+    if args.allow_downgrade and not downgrade:
+        raise SddError("--allow-downgrade 只能用于版本降低的升级")
+    design_change = str(args.design_change or "").strip()
+    if downgrade and not design_change:
+        raise SddError("降级必须用 --design-change 提供设计变更引用")
+
+    approver = resolve_approver(root, getattr(args, "approver", None))
+    if config.get("require_approver") and approver == "unknown":
+        raise SddError("require_approver=true；请用 --approver 提供审批人")
+
+    new_reference = workflow_reference(preset)
+    old_reference = {
+        "name": current_name,
+        "version": current_version,
+        "digest": str(current.get("digest") or ""),
+    }
+    pending_gates = pending_required_gates(
+        root, config, directory, state, preset
+    )
+    gate_errors = check_gates(root, config, directory, current_state)
+    entry: dict[str, Any] = {
+        "from": old_reference,
+        "to": {
+            "name": new_reference["name"],
+            "version": new_reference["version"],
+            "digest": new_reference["digest"],
+        },
+        "approver": approver,
+        "reason": reason,
+        "at": now(),
+        "pending_gates": pending_gates,
+    }
+    snapshot_path = directory / "workflow.json"
+    if snapshot_path.is_file():
+        entry["from_preset"] = load_json(snapshot_path)
+    entry["to_preset"] = preset
+    if design_change:
+        entry["design_change"] = design_change
+
+    old_snapshot = snapshot_path.read_bytes() if snapshot_path.is_file() else None
+    old_state = json.loads(json.dumps(state))
+    try:
+        atomic_write_json(snapshot_path, preset)
+        state["workflow"] = new_reference
+        state.setdefault("workflow_history", []).append(entry)
+        state["last_approver"] = approver
+        add_history(
+            state,
+            current_state,
+            f"workflow upgraded: {current_name}@{current_version} "
+            f"-> {target_name}@{target_version}",
+            action="workflow_upgraded",
+            actor="human",
+            role="approver",
+            approver=approver,
+            reason=reason,
+            workflow=entry,
+        )
+        save_state(directory, state)
+    except Exception:
+        if old_snapshot is None:
+            snapshot_path.unlink(missing_ok=True)
+        else:
+            snapshot_path.write_bytes(old_snapshot)
+        write_json(directory / "state.json", old_state)
+        raise
+
+    payload = {
+        "ok": True,
+        "kind": "workflow_upgrade",
+        "spec": spec_id,
+        "from": old_reference,
+        "to": entry["to"],
+        "approver": approver,
+        "reason": reason,
+        "pending_gates": pending_gates,
+        "gate_errors": gate_errors,
+        "history": entry,
+        "next": build_next_action(root, directory, state),
+    }
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0
+    print(
+        f"[sdd] {spec_id} workflow "
+        f"{current_name}@{current_version} -> {target_name}@{target_version}"
+    )
+    if pending_gates:
+        print("[sdd] pending gates: " + ", ".join(pending_gates))
+    print(f"[sdd] next: {payload['next'].get('action')}")
+    return 0
+
+
 def command_merge(
     args: argparse.Namespace, root: Path, config: dict[str, Any]
 ) -> int:
@@ -10132,6 +10335,20 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--human", action="store_true")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=command_rewind)
+
+    p = sub.add_parser(
+        "upgrade-workflow",
+        help="human upgrade to a fixed workflow preset version",
+    )
+    add_spec_option(p)
+    p.add_argument("--to", required=True, help="target preset, e.g. l2-standard@2")
+    p.add_argument("--reason", required=True)
+    p.add_argument("--approver", help="approver identity, default: git config user")
+    p.add_argument("--allow-downgrade", action="store_true")
+    p.add_argument("--design-change", default=None)
+    p.add_argument("--human", action="store_true")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=command_upgrade_workflow)
 
     p = sub.add_parser(
         "merge",

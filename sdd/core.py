@@ -1122,6 +1122,39 @@ class Workspace:
             raise FileNotFoundError(f"artifact not found: {path.relative_to(self.root)}")
         return path.read_text(encoding="utf-8")
 
+    def upgrade_workflow(
+        self,
+        spec: str,
+        target: str,
+        reason: str,
+        approver: str | None = None,
+        allow_downgrade: bool = False,
+        design_change: str | None = None,
+    ) -> dict[str, Any]:
+        """Human-only fixed-preset upgrade; delegates to sdd.py."""
+        args = [
+            "upgrade-workflow",
+            "--spec",
+            spec,
+            "--to",
+            target,
+            "--reason",
+            reason,
+            "--human",
+            "--json",
+        ]
+        if approver:
+            args.extend(["--approver", approver])
+        if allow_downgrade:
+            args.append("--allow-downgrade")
+        if design_change:
+            args.extend(["--design-change", design_change])
+        result = self._run(args)
+        payload = self._json(result)
+        payload["project"] = self.project_id
+        payload["session"] = self.session_info()
+        return payload
+
     def context(self, spec: str | None = None, max_chars: int = 40000) -> dict[str, Any]:
         files: list[dict[str, Any]] = []
         candidates: list[Path] = []
