@@ -118,6 +118,10 @@ python -m sdd submit --spec SPEC-ORDER-001 --artifact spec.md --file docs/specs/
 # 提交实现任务（自动 start + complete）
 python -m sdd submit-task --spec SPEC-ORDER-001 --task T-001 --commit abc1234 --evidence "pytest: 3 passed" --json
 
+# 只读追溯：test / AC / commit -> Spec -> 审批 -> change-set -> 证据
+python -m sdd trace --ac AC-001-1 --json
+python -m sdd trace --commit abc1234 --json
+
 # 人类动作
 python -m sdd approve --spec SPEC-ORDER-001 --human --evidence "需求已确认"
 python -m sdd reapprove --spec SPEC-ORDER-001 --human --reason "AC 调整" --evidence "需求重新确认"

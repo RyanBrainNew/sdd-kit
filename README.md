@@ -7,7 +7,7 @@
 **开发者只说一次需求，Agent 按仓库里的 `next.action` 自动推进。你只在两个地方出现：确认 Spec，确认交付。**
 
 [![tests](https://github.com/RyanBrainNew/sdd-kit/actions/workflows/tests.yml/badge.svg)](https://github.com/RyanBrainNew/sdd-kit/actions/workflows/tests.yml)
-![version](https://img.shields.io/badge/version-0.9.6-5ee7a8)
+![version](https://img.shields.io/badge/version-0.9.7-5ee7a8)
 ![python](https://img.shields.io/badge/python-3.11%2B-3776AB)
 ![license](https://img.shields.io/badge/license-Apache--2.0-5ee7a8)
 [![site](https://img.shields.io/badge/site-GitHub%20Pages-5ee7a8)](https://ryanbrainnew.github.io/sdd-kit/)
@@ -30,7 +30,7 @@ SDD Kit 把公司 SDD-L2 的流程做成**仓库自带的默认开发路径**，
 
 <img src="docs/assets/site-preview.png" alt="SDD Kit 官网首屏" width="100%">
 
-## 当前形态（0.9.6）
+## 当前形态（0.9.7）
 
 | 维度 | 当前实现 |
 |---|---|
@@ -154,6 +154,7 @@ LF 规范化，历史 CRLF 哈希仍可验证，Windows 与 Linux 工作区不�
 | `python -m sdd submit-task --task T-xxx --evidence "..." --json` | Agent | 完成一个任务并记录测试证据 |
 | `python -m sdd impact --spec <id> --json` | Agent | 只读查看 FEAT/FR/AC/Task/测试/代码影响面 |
 | `python -m sdd change --spec <id> --reason "..."` | Agent | 审批后变更先登记 change-set |
+| `python -m sdd trace --test/--ac/--commit ... --json` | Agent / 审计人员 | 只读追溯 test/AC/commit 到 Spec、审批、change-set、提交与证据 |
 | `python -m sdd metrics --json` | Agent / 质量人员 | 查看检查统计、豁免率、逃逸缺陷、重开率和 Gate 一次通过率 |
 | `python -m sdd events --spec <id> --json` | Agent / 审计人员 | 查看带哈希链和下一步的审计事件 |
 | `python -m sdd waive --spec <id> --check G5-09 ... --human` | 人 | 创建限范围、可到期的人工豁免 |
@@ -231,12 +232,11 @@ Gate 报告单独写入 `sdd/reports/<Spec ID>/`，与 `docs/` 下的 Spec 工�
 | 已交付 | 0.7.0 | `rewind`、`inbox`、`metrics`、事件 v2、产物哈希、审批身份 |
 | 已交付 | 0.8.0 | 三套命名工作流、Spec 快照、`l2-strict` 独立审查、Apache-2.0 与官网 |
 | 已交付 | 0.9.4 | schema 2 工作流 Profile、`workflow validate`、`l2-refactor` 示范预设 |
-| 已交付 | 0.9.5 | G0–G5 稳定检查 ID、`pass/warn/block`、范围化人工豁免、告警与按 ID 指标 |
-| 已交付 | 0.9.6 | 审批版本绑定、人工 `reapprove`、`change-set` / `impact` 与提交阻断 |
+| 已交付 | 0.9.5–0.9.7 | G0–G5 分级/豁免；审批绑定与 `change-set`；全量 commit 审计与 `trace` |
 | 未开发（0.9.0） | [#1](https://github.com/RyanBrainNew/sdd-kit/issues/1) | 只读单文件 HTML 运行视图 `sdd view` |
 | 已交付 | [#2](https://github.com/RyanBrainNew/sdd-kit/issues/2) | 外部 runner 接入契约 `deploy/runner/CONTRACT.md` |
 | 未开发（后续） | [#3](https://github.com/RyanBrainNew/sdd-kit/issues/3) | 固定预设升级 `upgrade-workflow` |
-| 设计阶段（P0） | [#8](https://github.com/RyanBrainNew/sdd-kit/issues/8) | 治理闭环剩余项：全量 commit 审计与 `trace`（#21） |
+| 已交付 | [#8](https://github.com/RyanBrainNew/sdd-kit/issues/8) | 治理闭环：审批绑定、`change-set`、全量 commit 审计与 `trace` |
 | 总纲（epic） | [#7](https://github.com/RyanBrainNew/sdd-kit/issues/7) | 轻量、可自定义、全链路可溯源的 SDD-L2 执行内核 |
 
 路线图以 GitHub Issues 为准；未开发项不会出现在命令表中，也不会在站点的“当前形态”里冒充已交付。
@@ -314,6 +314,6 @@ Copyright 2026 RyanBrainNew
 
 <div align="center">
 
-**SDD Kit 0.9.6** · 把 SDD 装进仓库
+**SDD Kit 0.9.7** · 把 SDD 装进仓库
 
 </div>

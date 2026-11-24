@@ -1,0 +1,326 @@
+{
+  "spec_id": "SPEC-REQ-005",
+  "title": "全量 commit 审计与 sdd trace",
+  "work_item": "SDD-GOV-002",
+  "feat_id": "FEAT-007",
+  "schema": 2,
+  "issue": "https://github.com/RyanBrainNew/sdd-kit/issues/21",
+  "product_type": "传统产品",
+  "risk": "medium",
+  "risk_labels": [],
+  "workflow": {
+    "name": "l2-standard",
+    "version": 1,
+    "digest": "ae89c532988018c3f6d3c222c4a66da2a44981f33c8401d62a632bef66a8e910",
+    "snapshot": "workflow.json"
+  },
+  "state": "MERGED",
+  "created_at": "2026-11-23T22:37:30+08:00",
+  "updated_at": "2026-11-24T10:22:46+08:00",
+  "pr_url": "https://github.com/RyanBrainNew/sdd-kit/pull/23",
+  "history": [
+    {
+      "state": "DRAFT",
+      "at": "2026-11-23T22:37:30+08:00",
+      "evidence": "created",
+      "role": "planner"
+    },
+    {
+      "state": "SPEC_READY",
+      "at": "2026-11-23T22:41:42+08:00",
+      "evidence": "需求已确认",
+      "actor": "human",
+      "session": "43521a906ffe",
+      "session_source": "repo-fallback",
+      "source": "cli",
+      "gate": "G0/G1",
+      "role": "approver",
+      "approver": "linjinlong <fflinjinlong@chinatelecom.cn>",
+      "artifacts": [
+        {
+          "path": "docs/specs/SPEC-REQ-005/spec.md",
+          "sha256": "3ff4086d1d3de44d8d06073b6e2806ba271371c92e317b0c8c6d89a89e7aee5f",
+          "bytes": 10897
+        }
+      ]
+    },
+    {
+      "state": "DESIGN_READY",
+      "at": "2026-11-23T22:42:57+08:00",
+      "evidence": "design.md submitted via CLI and checked",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "gate": "G2",
+      "role": "designer",
+      "approver": null,
+      "artifacts": [
+        {
+          "path": "docs/specs/SPEC-REQ-005/design.md",
+          "sha256": "2e5053acdd9ccb1bbf82df706479994636589390a5d535a0cac703d1b778bcc7",
+          "bytes": 7222
+        }
+      ]
+    },
+    {
+      "state": "TASKS_READY",
+      "at": "2026-11-23T22:46:15+08:00",
+      "evidence": "tasks.md submitted via CLI and checked",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "gate": "G3",
+      "role": "planner",
+      "approver": null,
+      "artifacts": [
+        {
+          "path": "docs/specs/SPEC-REQ-005/tasks.md#plan",
+          "sha256": "9ba84a7fcfb284b138366450a08beecb8fa083e9788cf9f0d0b0c1031f0df927",
+          "bytes": 6715
+        }
+      ]
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-23T22:46:16+08:00",
+      "evidence": "implementation started automatically by CLI",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-23T22:52:46+08:00",
+      "evidence": "task started",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_start",
+      "task": "T-001",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-23T22:52:46+08:00",
+      "evidence": "python -m unittest tests.test_trace.CommitAuditTests -v: 3 passed; full-range audit and commit trailer validation implemented",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_done",
+      "task": "T-001",
+      "commit": "cd5c7ff",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-23T22:54:03+08:00",
+      "evidence": "task started",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_start",
+      "task": "T-002",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-23T22:54:03+08:00",
+      "evidence": "python -m unittest tests.test_trace.CommitAuditTests -v: 4 passed; merge commit skip, docs trailer and merge-base errors covered",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_done",
+      "task": "T-002",
+      "commit": "4645ef6",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-23T22:55:07+08:00",
+      "evidence": "task started",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_start",
+      "task": "T-003",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-23T22:55:07+08:00",
+      "evidence": "python -m unittest tests.test_trace.TraceTests -v: 3 passed; trace test/AC/commit entries and chain complete",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_done",
+      "task": "T-003",
+      "commit": "c4b282c",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-23T22:57:20+08:00",
+      "evidence": "task started",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_start",
+      "task": "T-004",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-23T22:57:20+08:00",
+      "evidence": "python -m unittest tests.test_trace.TraceTests -v: 4 passed; missing links and read-only behavior covered",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_done",
+      "task": "T-004",
+      "commit": "46310ed",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-23T22:58:50+08:00",
+      "evidence": "task started",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_start",
+      "task": "T-005",
+      "role": "implementer"
+    },
+    {
+      "state": "IMPLEMENTING",
+      "at": "2026-11-23T22:58:51+08:00",
+      "evidence": "python -m unittest tests.test_trace -v: 8 passed; version 0.9.7, manifest, docs and PRD placement synced",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "action": "task_done",
+      "task": "T-005",
+      "commit": "28f1389",
+      "role": "implementer"
+    },
+    {
+      "state": "VERIFYING",
+      "at": "2026-11-23T22:58:51+08:00",
+      "evidence": "all tasks completed",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "gate": "G4",
+      "role": "implementer",
+      "approver": null,
+      "artifacts": [
+        {
+          "path": "docs/specs/SPEC-REQ-005/tasks.md#plan",
+          "sha256": "9ba84a7fcfb284b138366450a08beecb8fa083e9788cf9f0d0b0c1031f0df927",
+          "bytes": 6644
+        }
+      ]
+    },
+    {
+      "state": "PR_READY",
+      "at": "2026-11-24T00:05:56+08:00",
+      "evidence": "verification.md submitted via CLI and checked",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "gate": "G5",
+      "role": "verifier",
+      "approver": null,
+      "artifacts": [
+        {
+          "path": "docs/specs/SPEC-REQ-005/verification.md",
+          "sha256": "016d296d4b559bd8d64712ec965d213181285864e5054ae380a4c6081f24c617",
+          "bytes": 91160
+        }
+      ]
+    },
+    {
+      "state": "MERGED",
+      "at": "2026-11-24T10:18:02+08:00",
+      "evidence": "交付已确认",
+      "actor": "human",
+      "session": "43521a906ffe",
+      "session_source": "repo-fallback",
+      "source": "cli",
+      "role": "approver",
+      "approver": "linjinlong <fflinjinlong@chinatelecom.cn>"
+    },
+    {
+      "state": "MERGED",
+      "at": "2026-11-24T10:22:46+08:00",
+      "evidence": "PR recorded",
+      "actor": "agent",
+      "session": "c24c5cea67db",
+      "session_source": "CODEX_THREAD_ID",
+      "source": "cli",
+      "pr_url": "https://github.com/RyanBrainNew/sdd-kit/pull/23",
+      "role": "orchestrator"
+    }
+  ],
+  "artifact_hashes": {
+    "G0": {
+      "docs/specs/SPEC-REQ-005/spec.md": "3ff4086d1d3de44d8d06073b6e2806ba271371c92e317b0c8c6d89a89e7aee5f"
+    },
+    "G1": {
+      "docs/specs/SPEC-REQ-005/spec.md": "3ff4086d1d3de44d8d06073b6e2806ba271371c92e317b0c8c6d89a89e7aee5f"
+    },
+    "G2": {
+      "docs/specs/SPEC-REQ-005/design.md": "2e5053acdd9ccb1bbf82df706479994636589390a5d535a0cac703d1b778bcc7"
+    },
+    "G3": {
+      "docs/specs/SPEC-REQ-005/tasks.md#plan": "9ba84a7fcfb284b138366450a08beecb8fa083e9788cf9f0d0b0c1031f0df927"
+    },
+    "G4": {
+      "docs/specs/SPEC-REQ-005/tasks.md#plan": "9ba84a7fcfb284b138366450a08beecb8fa083e9788cf9f0d0b0c1031f0df927"
+    },
+    "G5": {
+      "docs/specs/SPEC-REQ-005/verification.md": "016d296d4b559bd8d64712ec965d213181285864e5054ae380a4c6081f24c617"
+    }
+  },
+  "approved_spec_digest": "3ff4086d1d3de44d8d06073b6e2806ba271371c92e317b0c8c6d89a89e7aee5f",
+  "approved_at": "2026-11-23T22:41:42+08:00",
+  "approved_by": "linjinlong <fflinjinlong@chinatelecom.cn>",
+  "approval_evidence": "需求已确认",
+  "approvals": [
+    {
+      "action": "approve_spec",
+      "approver": "linjinlong <fflinjinlong@chinatelecom.cn>",
+      "at": "2026-11-23T22:41:42+08:00",
+      "artifact": "docs/specs/SPEC-REQ-005/spec.md",
+      "sha256": "3ff4086d1d3de44d8d06073b6e2806ba271371c92e317b0c8c6d89a89e7aee5f"
+    },
+    {
+      "action": "confirm_delivery",
+      "approver": "linjinlong <fflinjinlong@chinatelecom.cn>",
+      "at": "2026-11-24T10:18:02+08:00",
+      "artifact": "docs/specs/SPEC-REQ-005/PR_BODY.md",
+      "sha256": "e44d593318d62e8f7c39be34c0cb51e65b416420e61093866ccf955859eb3f76",
+      "head_sha": "5a1e1d4e808ff6d2b2a6dc6a834180eda32fee2f"
+    }
+  ],
+  "last_approver": "linjinlong <fflinjinlong@chinatelecom.cn>",
+  "previous_state": "PR_READY",
+  "delivery_confirmed_at": "2026-11-24T10:18:02+08:00",
+  "merged_at": "2026-11-24T10:18:02+08:00"
+}
