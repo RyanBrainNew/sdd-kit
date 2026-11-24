@@ -1,6 +1,6 @@
 # 标准符合性与核心优势基线
 
-> 适用版本：`sdd-kit 0.9.6`  
+> 适用版本：`sdd-kit 0.9.7`  
 > 对齐依据：集团《SDD 开发规范 v1.0.3》培训口径、P0–P5 / G0–G5 六阶段门禁，
 > 以及面向全国专业公司培训中的 SDD In Action v7 实践。  
 > 结论边界：本文证明 `sdd-kit` 已覆盖 SDD-L2 执行内核的强制路径与证据链；
@@ -77,7 +77,7 @@
 
 ## 4. 三项核心优势基线
 
-| 核心优势 | 指标 | 目标值 | 采集方式 | 当前结果（0.9.6） |
+| 核心优势 | 指标 | 目标值 | 采集方式 | 当前结果（0.9.7） |
 |---|---|---|---|---|
 | 轻量、使用简单 | 核心第三方依赖数 | 0 | 检查 `sdd/scripts/*.py` 只导入标准库；MCP 依赖只在可选目录 | 0 |
 | 轻量、使用简单 | 核心常驻服务/数据库 | 0 | 架构检查：CLI 直接读写仓库内文件 | 0 |
@@ -93,7 +93,7 @@
 | 合规可溯源 | 验证证据字段 | 命令、目录、时间、退出码、耗时、输出哈希、产物哈希 | `verification-evidence.jsonl` | 全部字段已记录 |
 | 合规可溯源 | 质量回流指标 | 豁免率、逃逸缺陷、重开率、Gate 一次通过率 | `python -m sdd metrics --json` | 4 项均有口径与来源 |
 
-“当前结果”由 0.9.6 的自动测试与 CLI 输出得出；人员能力、业务判断和
+“当前结果”由 0.9.7 的自动测试与 CLI 输出得出；人员能力、业务判断和
 组织审批效率不在工具可承诺的范围内。
 
 ## 5. 可复核证据索引
@@ -107,6 +107,7 @@
 | 声明式工作流 | `sdd/workflows/` | `python -m unittest tests.test_evolution.ProfileTests -v` |
 | 检查分级与人工豁免 | `state.json.waivers`、`events.jsonl` | `python -m unittest tests.test_evolution.WaiverTests -v` |
 | 审批版本绑定与 change-set | `state.json.approved_spec_digest`、`change-set.md` | `python -m unittest tests.test_governance.ApprovalBindingTests tests.test_governance.ChangeSetTests -v` |
+| 全量 commit 审计与 trace | `check --check-git`、`sdd trace --json` | `python -m unittest tests.test_trace.CommitAuditTests tests.test_trace.TraceTests -v` |
 | Review overlay | `sdd/prompts/review/` | `python -m unittest tests.test_evolution.ReviewTests -v` |
 | 知识基线与 Fix Pattern | `docs/knowledge/` | `python -m unittest tests.test_evolution.KnowledgeTests -v` |
 | 指标与审计回放 | `metrics --json`、`events --json` | `python -m unittest tests.test_evolution.MetricsTests.test_metrics_and_audit -v` |

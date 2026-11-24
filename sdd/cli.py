@@ -163,6 +163,17 @@ def _print_human(payload: dict[str, Any]) -> None:
             f"changes={', '.join(payload.get('approved_change_ids') or []) or '-'}"
         )
         return
+    if payload.get("kind") == "trace":
+        entry = payload.get("entry") or {}
+        print(
+            f"[sdd] trace {entry.get('type')}={entry.get('value')} "
+            f"ok={str(payload.get('ok')).lower()}"
+        )
+        for item in payload.get("chain", []):
+            print(f"  {item.get('link')}: {item.get('value')}")
+        for item in payload.get("missing", []):
+            print(f"  missing {item.get('link')}: {item.get('detail')}")
+        return
     if payload.get("kind") == "verify":
         output = str(payload.get("stdout") or "").strip()
         if output:
@@ -531,6 +542,22 @@ def build_parser() -> argparse.ArgumentParser:
             docs_only=a.docs_only,
             risk=a.risk,
             rollback=a.rollback,
+        )
+    )
+
+    p = sub.add_parser(
+        "trace",
+        help="read-only trace by test, AC or commit",
+    )
+    trace_group = p.add_mutually_exclusive_group(required=True)
+    trace_group.add_argument("--test")
+    trace_group.add_argument("--ac")
+    trace_group.add_argument("--commit")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(
+        func=lambda a, w: w.trace(
+            "test" if a.test else "ac" if a.ac else "commit",
+            a.test or a.ac or a.commit,
         )
     )
 
