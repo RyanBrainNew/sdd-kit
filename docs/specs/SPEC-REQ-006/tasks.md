@@ -30,15 +30,15 @@
 
 | AC ID | 覆盖Task | 测试类/方法 | 测试命令/选择器 | 预期结果 | Gate 4实际结果 |
 |---|---|---|---|---|---|
-| AC-001-1 | T-001 | `ContractDocumentTests#test_contract_has_required_phases` | `python -m unittest tests.test_runner_contract.ContractDocumentTests.test_contract_has_required_phases -v` | 七个阶段标题齐全 | 未执行 |
-| AC-001-2 | T-001 | `ContractDocumentTests#test_contract_maps_each_phase_to_cli` | `python -m unittest tests.test_runner_contract.ContractDocumentTests.test_contract_maps_each_phase_to_cli -v` | 每阶段都有命令、输入、输出、失败处理 | 未执行 |
-| AC-001-3 | T-001 | `ContractDocumentTests#test_examples_use_public_cli_only` | `python -m unittest tests.test_runner_contract.ContractDocumentTests.test_examples_use_public_cli_only -v` | 示例只用公开 CLI | 未执行 |
-| AC-002-1 | T-001 | `ContractDocumentTests#test_contract_covers_result_states` | `python -m unittest tests.test_runner_contract.ContractDocumentTests.test_contract_covers_result_states -v` | 四类返回都有处理方式 | 未执行 |
-| AC-002-2 | T-001 | `ContractDocumentTests#test_contract_forbids_human_actions` | `python -m unittest tests.test_runner_contract.ContractDocumentTests.test_contract_forbids_human_actions -v` | 六个人工命令被禁止 | 未执行 |
-| AC-002-3 | T-001 | `ContractDocumentTests#test_contract_assigns_runtime_to_runner` | `python -m unittest tests.test_runner_contract.ContractDocumentTests.test_contract_assigns_runtime_to_runner -v` | 容器/沙箱/日志归 runner | 未执行 |
-| AC-003-1 | T-002 | `EntryPointTests#test_readme_links_runner_contract` | `python -m unittest tests.test_runner_contract.EntryPointTests.test_readme_links_runner_contract -v` | README 与执行手册均有链接 | 未执行 |
-| AC-003-2 | T-003 | `ReleaseBoundaryTests#test_mcp_exposes_no_human_actions` | `python -m unittest tests.test_runner_contract.ReleaseBoundaryTests.test_mcp_exposes_no_human_actions -v` | MCP 无人工动作 | 未执行 |
-| AC-003-3 | T-003 | `GateBoundaryTests#test_release_metadata_and_ci_contract` | `python -m unittest tests.test_sdd.GateBoundaryTests.test_release_metadata_and_ci_contract -v` | manifest 与 VERSION 一致 | 未执行 |
+| AC-001-1 | T-001 | `ContractDocumentTests#test_contract_has_required_phases` | `python -m unittest tests.test_runner_contract.ContractDocumentTests.test_contract_has_required_phases -v` | 七个阶段标题齐全 | PASS |
+| AC-001-2 | T-001 | `ContractDocumentTests#test_contract_maps_each_phase_to_cli` | `python -m unittest tests.test_runner_contract.ContractDocumentTests.test_contract_maps_each_phase_to_cli -v` | 每阶段都有命令、输入、输出、失败处理 | PASS |
+| AC-001-3 | T-001 | `ContractDocumentTests#test_examples_use_public_cli_only` | `python -m unittest tests.test_runner_contract.ContractDocumentTests.test_examples_use_public_cli_only -v` | 示例只用公开 CLI | PASS |
+| AC-002-1 | T-001 | `ContractDocumentTests#test_contract_covers_result_states` | `python -m unittest tests.test_runner_contract.ContractDocumentTests.test_contract_covers_result_states -v` | 四类返回都有处理方式 | PASS |
+| AC-002-2 | T-001 | `ContractDocumentTests#test_contract_forbids_human_actions` | `python -m unittest tests.test_runner_contract.ContractDocumentTests.test_contract_forbids_human_actions -v` | 六个人工命令被禁止 | PASS |
+| AC-002-3 | T-001 | `ContractDocumentTests#test_contract_assigns_runtime_to_runner` | `python -m unittest tests.test_runner_contract.ContractDocumentTests.test_contract_assigns_runtime_to_runner -v` | 容器/沙箱/日志归 runner | PASS |
+| AC-003-1 | T-002 | `EntryPointTests#test_readme_links_runner_contract` | `python -m unittest tests.test_runner_contract.EntryPointTests.test_readme_links_runner_contract -v` | README 与执行手册均有链接 | PASS |
+| AC-003-2 | T-003 | `ReleaseBoundaryTests#test_mcp_exposes_no_human_actions` | `python -m unittest tests.test_runner_contract.ReleaseBoundaryTests.test_mcp_exposes_no_human_actions -v` | MCP 无人工动作 | PASS |
+| AC-003-3 | T-003 | `GateBoundaryTests#test_release_metadata_and_ci_contract` | `python -m unittest tests.test_sdd.GateBoundaryTests.test_release_metadata_and_ci_contract -v` | manifest 与 VERSION 一致 | PASS |
 
 ## 4. 依赖图
 
@@ -59,8 +59,8 @@ flowchart LR
 
 | 命令 | 作用域 | 退出码 | 时间 | 备注 |
 |---|---|---|---|---|
-| `python -m unittest tests.test_runner_contract -v` | 契约测试 | 未执行 | - | G4 回填 |
-| `python -m unittest discover -s tests -v` | 全量测试 | 未执行 | - | G5 回填 |
+| `python -m unittest tests.test_runner_contract -v` | 契约测试 | 0 | 2026-11-24 | 8 passed |
+| `python -m unittest discover -s tests -v` | 全量测试 | 0 | 2026-11-24 | 237 passed, 2 skipped |
 
 ## 7. 自检清单
 
