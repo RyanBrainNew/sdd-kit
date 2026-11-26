@@ -2,10 +2,14 @@
   const root = document.documentElement;
   root.classList.add("js");
 
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  if (reduceMotion.matches) {
+    root.style.scrollBehavior = "auto";
+  }
+
   const nav = document.querySelector(".nav");
   const toggle = document.querySelector(".nav-toggle");
   const links = document.getElementById("nav-links");
-  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
   const onScroll = () => {
     if (nav) nav.classList.toggle("is-scrolled", window.scrollY > 8);
@@ -92,7 +96,7 @@
   let ticking = false;
   const markCurrent = () => {
     ticking = false;
-    const line = window.scrollY + 130;
+    const line = window.scrollY + 140;
     let current = null;
     for (const section of sections) {
       if (section.offsetTop <= line) current = section;
@@ -118,35 +122,5 @@
       },
       { passive: true }
     );
-  }
-
-  const revealTargets = document.querySelectorAll(
-    ".section-head, .card, .step, .layer, .quick-card, .fit-card, .faq details"
-  );
-
-  if (!reduceMotion.matches && "IntersectionObserver" in window) {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (!entry.isIntersecting) continue;
-          entry.target.classList.add("is-visible");
-          observer.unobserve(entry.target);
-        }
-      },
-      { threshold: 0.12, rootMargin: "0px 0px -6% 0px" }
-    );
-    const fold = window.innerHeight;
-    revealTargets.forEach((target) => {
-      if (target.getBoundingClientRect().top > fold + 40) {
-        target.classList.add("reveal");
-      }
-      observer.observe(target);
-    });
-    window.setTimeout(() => {
-      revealTargets.forEach((target) => {
-        target.classList.add("is-visible");
-        observer.unobserve(target);
-      });
-    }, 2600);
   }
 })();
