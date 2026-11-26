@@ -646,6 +646,32 @@ def build_parser() -> argparse.ArgumentParser:
         )[1]
     )
 
+    p = sub.add_parser(
+        "upgrade-workflow",
+        help="human upgrade to a fixed workflow preset version",
+    )
+    p.add_argument("--spec")
+    p.add_argument("--to", required=True, help="target preset, e.g. l2-standard@2")
+    p.add_argument("--reason", required=True)
+    p.add_argument("--approver", help="approver identity, default: git config user")
+    p.add_argument("--allow-downgrade", action="store_true")
+    p.add_argument("--design-change")
+    p.add_argument("--human", action="store_true")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(
+        func=lambda a, w: (
+            _require_human(a),
+            w.upgrade_workflow(
+                a.spec or w._resolve_current_spec(),
+                a.to,
+                a.reason,
+                approver=a.approver,
+                allow_downgrade=a.allow_downgrade,
+                design_change=a.design_change,
+            ),
+        )[1]
+    )
+
     p = sub.add_parser("complete", help="low-level completion compatibility")
     p.add_argument("--spec")
     p.add_argument("--task")

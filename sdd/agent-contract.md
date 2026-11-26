@@ -78,6 +78,11 @@ state、events、change-set 或任何文件。
 `.sdd/runtime/view/<spec>.html`；它只消费 status/events/board 与 Gate 记录，
 不写审计文件，也不提供任何交互动作。
 
+仓库预设发布新版本后，只有人类可以执行
+`python -m sdd upgrade-workflow --spec <spec> --to <name>@<version> --reason "..." --human`。
+升级会替换 `workflow.json`、更新 `state.workflow` 并在 `workflow_history`
+保留前后版本、审批人与原因；缺失 Gate 只进入 `inbox`，Agent 不得代执行。
+
 当当前阶段的自动检查通过、但 Gate 要求人工时，`submit` / `submit-task` 会返回
 `awaiting_human_approval=true` 和 `human_checkpoint`。Agent 必须停止，
 不要继续调用 `complete`。人可以运行 `python -m sdd inbox --json` 查看所有待办。

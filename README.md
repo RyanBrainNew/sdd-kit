@@ -8,7 +8,7 @@
 Agent 按 `next.action` 推进，CLI 在每次提交时校验，CI 做最终硬校验；人在 SDD 流程内只做两个决定：确认 Spec，确认交付。
 
 [![tests](https://github.com/RyanBrainNew/sdd-kit/actions/workflows/tests.yml/badge.svg)](https://github.com/RyanBrainNew/sdd-kit/actions/workflows/tests.yml)
-![version](https://img.shields.io/badge/version-0.9.8-5ee7a8)
+![version](https://img.shields.io/badge/version-0.9.9-5ee7a8)
 ![python](https://img.shields.io/badge/python-3.11%2B-3776AB)
 ![license](https://img.shields.io/badge/license-Apache--2.0-5ee7a8)
 [![site](https://img.shields.io/badge/site-GitHub%20Pages-5ee7a8)](https://ryanbrainnew.github.io/sdd-kit/)
@@ -113,18 +113,18 @@ CI 执行同一组命令。核心被改、托管块漂移、工件缺失或证�
 | 生成 PR 正文 | `sdd report` | Agent |
 | 确认 Spec | `sdd approve --human` | 人 |
 | 确认交付 | `sdd merge --human` | 人 |
+| 预设升级 | `sdd upgrade-workflow --to <name>@<version> --human` | 人 |
 | 范围变化 / 回退 / 解阻 / 豁免 | `sdd reapprove` · `sdd rewind` · `sdd unblock` · `sdd waive` | 人 |
 | 校验 | `sdd check --all --stage ci` | CI |
 | 观察与追溯 | `sdd board` · `sdd inbox` · `sdd metrics` · `sdd events` · `sdd trace` · `sdd view` | 人 / Agent |
 
-## 当前版本 0.9.8
+## 当前版本 0.9.9
 
-0.9.8 加入只读单文件 HTML 运行视图 `sdd view`。外部 runner 契约、按测试/AC/commit 追溯的 `trace`、人工豁免、审批后 `change-set` 与全量 commit 审计已在 0.9.x 交付。
+0.9.9 加入固定预设升级 `upgrade-workflow`。0.9.8 的只读 HTML 视图、外部 runner 契约、按测试/AC/commit 追溯的 `trace`、人工豁免、审批后 `change-set` 与全量 commit 审计均已在 0.9.x 交付。
 
 | 状态 | 内容 |
 |---|---|
-| 已交付 | [只读 HTML 视图 #1](https://github.com/RyanBrainNew/sdd-kit/issues/1) · [外部 Runner 契约 #2](https://github.com/RyanBrainNew/sdd-kit/issues/2) · [治理闭环 #8](https://github.com/RyanBrainNew/sdd-kit/issues/8) |
-| 未开发 | [固定预设升级 `upgrade-workflow` #3](https://github.com/RyanBrainNew/sdd-kit/issues/3) |
+| 已交付 | [只读 HTML 视图 #1](https://github.com/RyanBrainNew/sdd-kit/issues/1) · [外部 Runner 契约 #2](https://github.com/RyanBrainNew/sdd-kit/issues/2) · [固定预设升级 #3](https://github.com/RyanBrainNew/sdd-kit/issues/3) · [治理闭环 #8](https://github.com/RyanBrainNew/sdd-kit/issues/8) |
 | 总纲 | [轻量、可自定义、全链路可溯源的执行内核 #7](https://github.com/RyanBrainNew/sdd-kit/issues/7) |
 
 未开发能力不会出现在命令表里，也不会在站点上冒充已交付。
@@ -246,6 +246,6 @@ Copyright 2026 RyanBrainNew
 
 <div align="center">
 
-**SDD Kit 0.9.8** · 把 SDD 装进仓库
+**SDD Kit 0.9.9** · 把 SDD 装进仓库
 
 </div>
