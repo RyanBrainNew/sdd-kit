@@ -1,0 +1,11 @@
+#!/usr/bin/env sh
+# Lightweight wrapper for environments without pip.
+set -eu
+kit_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+if [ -n "${PYTHONPATH:-}" ]; then
+  PYTHONPATH="$kit_root:$PYTHONPATH"
+else
+  PYTHONPATH="$kit_root"
+fi
+export PYTHONPATH
+exec python3 -m sdd "$@"

@@ -26,7 +26,7 @@
           <circle cx="22" cy="24" r="2" fill="currentColor"/>
         </svg>
         <span class="brand-name">SDD Kit</span>
-        <span class="brand-version">0.9.9</span>
+        <span class="brand-version">0.10.0</span>
       </a>
 
       <nav class="nav-links" id="nav-links" aria-label="主导航">
@@ -214,15 +214,16 @@
         <div class="section-head">
           <p class="section-no">05 / 开始</p>
           <h2 id="quick-title">接入一次，之后 clone 即用。</h2>
-          <p class="section-lead">平台团队做一次 bootstrap；开发者不初始化、不装插件、不记阶段。</p>
+          <p class="section-lead">平台团队做一次 sdd init；开发者不初始化、不装插件、不记阶段。</p>
         </div>
         <div class="quick-grid">
           <article class="quick-card">
-            <span class="quick-step">平台团队 · 每仓库一次</span>
+            <span class="quick-step">平台团队 · 安装一次，每仓库 init 一次</span>
             <h3>接入</h3>
             <div class="code">
               <div class="code-bar"><span>powershell</span><button class="copy" type="button" data-copy>复制</button></div>
-              <pre><code>python bootstrap.py</code></pre>
+              <pre><code>irm https://raw.githubusercontent.com/RyanBrainNew/sdd-kit/main/install.ps1 | iex
+sdd init</code></pre>
             </div>
           </article>
           <article class="quick-card">
@@ -245,7 +246,7 @@ python -m sdd check --all --stage ci</code></pre>
           </article>
         </div>
         <p class="micro">完整命令与接入参数见 <a href="https://github.com/RyanBrainNew/sdd-kit/blob/main/sdd/README.md">sdd/README.md</a>。</p>
-        <a class="section-next" href="#roadmap">06 / 现状：0.9.9 已闭环 <span>→</span></a>
+        <a class="section-next" href="#roadmap">06 / 现状：0.10.0 已闭环 <span>→</span></a>
       </div>
     </section>
 
@@ -253,12 +254,12 @@ python -m sdd check --all --stage ci</code></pre>
       <div class="container">
         <div class="section-head">
           <p class="section-no">06 / 现状</p>
-          <h2 id="roadmap-title">0.9.9，闭环已经成形。</h2>
+          <h2 id="roadmap-title">0.10.0，闭环已经成形。</h2>
           <p class="section-lead">流程、证据、运行视图都已落地。下一项公开在 Issues。</p>
         </div>
         <div class="status-strip">
           <div class="status-item">
-            <span class="status-label">0.9.9 · 已交付</span>
+            <span class="status-label">0.10.0 · 已交付</span>
             <p class="status-text">只读视图 <code>sdd view</code></p>
           </div>
           <div class="status-item">
@@ -266,7 +267,7 @@ python -m sdd check --all --stage ci</code></pre>
             <p class="status-text">Runner 契约 · 全链路 trace · 人工豁免</p>
           </div>
           <div class="status-item">
-            <span class="status-label">0.9.9 · 已交付</span>
+            <span class="status-label">0.10.0 · 已交付</span>
             <p class="status-text">固定预设升级 <code>upgrade-workflow</code></p>
           </div>
         </div>
@@ -322,7 +323,7 @@ python -m sdd check --all --stage ci</code></pre>
           </details>
           <details>
             <summary>会覆盖已有 AGENTS.md 吗？</summary>
-            <p>不会。bootstrap 只替换 <code>SDD:MANAGED</code> 块，原有规则保留。</p>
+            <p>不会。sdd init 只替换 <code>SDD:MANAGED</code> 块，原有规则保留。</p>
           </details>
           <details>
             <summary>为什么只有两个人工检查点？</summary>
@@ -346,7 +347,7 @@ python -m sdd check --all --stage ci</code></pre>
           <span class="brand-name">SDD Kit</span>
         </a>
         <p>把 SDD 装进仓库，让 Agent 按同一套规则交付。</p>
-        <p class="footer-fine">0.9.9 · Apache-2.0 · © 2026 SDD Kit</p>
+        <p class="footer-fine">0.10.0 · Apache-2.0 · © 2026 SDD Kit</p>
       </div>
       <nav class="footer-links" aria-label="文档链接">
         <a href="https://github.com/RyanBrainNew/sdd-kit/blob/main/README.md">README</a>

@@ -9,6 +9,7 @@ from typing import Any
 
 from . import __version__
 from .agents import sync_agents, verify_agents
+from .bootstrap import add_init_arguments, run_init
 from .core import (
     SddCommandError,
     Workspace,
@@ -24,6 +25,37 @@ def _print_json(payload: Any) -> None:
 
 
 def _print_human(payload: dict[str, Any]) -> None:
+    if payload.get("kind") == "init":
+        if payload.get("ok"):
+            print(
+                f"[sdd] init {payload.get('mode')}: {payload.get('target')} "
+                f"(project {payload.get('project')})"
+            )
+            for action in payload.get("actions", []):
+                suffix = ""
+                if action.get("files"):
+                    suffix = f" ({action['files']} files)"
+                print(
+                    f"[sdd] {action.get('action')}: "
+                    f"{action.get('path')}{suffix}"
+                )
+            for item in payload.get("preserved", []):
+                print(f"[sdd] kept existing {item}")
+            for item in payload.get("warnings", []):
+                print(f"[sdd] warning: {item}")
+            for check in payload.get("checks", []):
+                if check.get("skipped"):
+                    print(f"[sdd] {check.get('name')}: skipped")
+                elif check.get("ok"):
+                    print(f"[sdd] {check.get('name')}: passed")
+                else:
+                    print(f"[sdd] {check.get('name')}: failed")
+            next_action = payload.get("next") or {}
+            if next_action.get("command"):
+                print(f"[sdd] next: {next_action['command']}")
+        for error in payload.get("errors", []):
+            print(f"[sdd] {error}", file=sys.stderr)
+        return
     if payload.get("ok") is False:
         for error in payload.get("errors", []):
             if isinstance(error, dict):
@@ -334,6 +366,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--version", action="version", version=__version__)
     sub = parser.add_subparsers(dest="command", required=True)
+
+    p = sub.add_parser("init", help="install or repair the SDD workspace")
+    add_init_arguments(p)
+    p.set_defaults(func=run_init)
 
     p = sub.add_parser("resume", help="resume the current session-bound work")
     p.add_argument("--spec", help="explicitly select a Spec")
@@ -766,6 +802,26 @@ def _verify_payload(
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.command == "init":
+        try:
+            payload = run_init(args)
+        except (ValueError, OSError) as exc:
+            payload = {
+                "ok": False,
+                "kind": "init",
+                "mode": None,
+                "target": str(Path(args.target).expanduser().resolve()),
+                "project": None,
+                "actions": [],
+                "warnings": [],
+                "preserved": [],
+                "checks": [],
+                "errors": [str(exc)],
+                "dry_run": bool(args.dry_run),
+                "next": None,
+            }
+        _emit(args, payload)
+        return 0 if payload.get("ok") else 1
     try:
         workspace = _workspace(args)
         payload = args.func(args, workspace)
