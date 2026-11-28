@@ -8,7 +8,7 @@
 Agent 按 `next.action` 推进，CLI 在每次提交时校验，CI 做最终硬校验；人在 SDD 流程内只做两个决定：确认 Spec，确认交付。
 
 [![tests](https://github.com/RyanBrainNew/sdd-kit/actions/workflows/tests.yml/badge.svg)](https://github.com/RyanBrainNew/sdd-kit/actions/workflows/tests.yml)
-![version](https://img.shields.io/badge/version-0.9.9-5ee7a8)
+![version](https://img.shields.io/badge/version-0.10.0-5ee7a8)
 ![python](https://img.shields.io/badge/python-3.11%2B-3776AB)
 ![license](https://img.shields.io/badge/license-Apache--2.0-5ee7a8)
 [![site](https://img.shields.io/badge/site-GitHub%20Pages-5ee7a8)](https://ryanbrainnew.github.io/sdd-kit/)
@@ -22,7 +22,7 @@ Agent 按 `next.action` 推进，CLI 在每次提交时校验，CI 做最终硬�
 SDD 的核心不是写出一份规范，而是让规范在每次提交时都能被验证。SDD Kit 把阶段、工件、Gate 和证据收进仓库：
 
 - **一个状态机。** 阶段、工件校验、Gate 和审计事件只在 `sdd/scripts/sdd.py` 定义；MCP、Hook、CI 都只是薄适配，没有 MCP 也能跑完整流程。
-- **一条命令。** 平台 bootstrap 一次，开发者 clone 即用；任何能执行 shell 的 Agent 都走 `python -m sdd`，不绑定 IDE。
+- **一条命令。** 每个仓库执行一次 `sdd init`，开发者 clone 即用；任何能执行 shell 的 Agent 都走 `python -m sdd`，不绑定 IDE。
 - **两个人工检查点。** SDD 流程内只有 Spec 确认和交付确认，其余由 `next.action` 推进；PR 审核与合并仍按仓库原有规则完成。
 - **证据随 Git。** Spec、Gate 报告、测试证据、审批记录和事件哈希链都随代码提交，可复查、可追溯。
 
@@ -68,17 +68,26 @@ Agent 每次会话先运行 `python -m sdd resume --json`，读取唯一的 `nex
 ### 1. 平台团队：每个仓库接入一次
 
 ```powershell
-cd D:\repos\order-api
-python D:\tools\sdd-kit\bootstrap.py
+# 安装 console script 后，在业务仓库直接执行
+sdd init --test-command "python -m pytest -q" --ci gitlab
+
+# 或从 sdd-kit 源码目录执行
+python -m sdd init --target "D:\repos\order-api" --project order-api `
+  --test-command "python -m pytest -q" --ci gitlab
 ```
 
-默认目标是当前目录，项目 ID 取目录名。它复制 `sdd/` 核心、合并 `AGENTS.md` 托管块、写入 manifest、安装 Git Hook 与 CI 模板；已有 `AGENTS.md` 不会被覆盖。
-也可以在 sdd-kit 目录内执行 `python bootstrap.py --target <repo>`。
+默认目标是当前目录，项目 ID 取目录名。`sdd init` 自动区分 install 与 repair：
+复制或补齐 `sdd/` 核心、合并 `AGENTS.md` 托管块、写入 manifest、安装 Git Hook 与
+CI 模板；已有 `AGENTS.md` 不会被覆盖，已接入仓库重复执行是幂等的。初始化结束会
+自动运行 `verify-core` / `verify-agent`，失败即以非零退出码报错。
 
 ```powershell
-# 项目使用 pytest 或需要 GitLab CI 时
-python D:\tools\sdd-kit\bootstrap.py --test-command "python -m pytest -q" --ci gitlab
+# 不经过 pip 时，可把 bin/ 加入 PATH 后使用同样的命令形态
+sdd init --test-command "python -m pytest -q"
 ```
+
+兼容旧入口：`python bootstrap.py --target <repo>` 仍然可用，但会打印弃用提示；
+它调用与 `sdd init` 相同的实现，不存在第二套初始化逻辑。
 
 ### 2. 开发者：每次会话恢复
 
@@ -107,6 +116,7 @@ CI 执行同一组命令。核心被改、托管块漂移、工件缺失或证�
 
 | 目的 | 命令 | 执行者 |
 |---|---|---|
+| 初始化 / 修复仓库 | `sdd init` | 平台团队 |
 | 恢复 / 开始 | `sdd resume` · `sdd start-work` | Agent |
 | 提交阶段工件 | `sdd submit --artifact <name> --file <path>` | Agent |
 | 完成一个任务 | `sdd submit-task --task T-xxx --evidence "..."` | Agent |
@@ -118,9 +128,12 @@ CI 执行同一组命令。核心被改、托管块漂移、工件缺失或证�
 | 校验 | `sdd check --all --stage ci` | CI |
 | 观察与追溯 | `sdd board` · `sdd inbox` · `sdd metrics` · `sdd events` · `sdd trace` · `sdd view` | 人 / Agent |
 
-## 当前版本 0.9.9
+## 当前版本 0.10.0
 
-0.9.9 加入固定预设升级 `upgrade-workflow`。0.9.8 的只读 HTML 视图、外部 runner 契约、按测试/AC/commit 追溯的 `trace`、人工豁免、审批后 `change-set` 与全量 commit 审计均已在 0.9.x 交付。
+0.10.0 统一仓库初始化入口为 `sdd init`，新增 install / repair 两种模式、幂等执行、
+`--dry-run` 与稳定 JSON 输出，并保留 `python bootstrap.py` 作为兼容 shim。
+0.9.9 的固定预设升级 `upgrade-workflow`、0.9.8 的只读 HTML 视图与 0.9.x 的追溯、
+豁免和审计能力保持不变。
 
 | 状态 | 内容 |
 |---|---|
@@ -147,13 +160,14 @@ CI 执行同一组命令。核心被改、托管块漂移、工件缺失或证�
 
 ```text
 AGENTS.md                  # 项目规则 + SDD 托管块
-bootstrap.py               # 业务仓库一次性接入
+bootstrap.py               # 兼容 shim；调用 sdd init 的同一实现
 docs/
   GUIDE.md
   prd-index.md             # 工作项 → FEAT → Spec 追溯
   specs/<Spec ID>/         # 需求工件；阅读顺序见下一节
 sdd/
   scripts/sdd.py           # 唯一状态机
+  bootstrap.py             # sdd init 的 install / repair 实现
   core.py                  # 会话指针与 CLI 编排
   cli.py                   # python -m sdd
   workflows/               # l2-standard / l2-hotfix / l2-strict / l2-refactor
@@ -246,6 +260,6 @@ Copyright 2026 RyanBrainNew
 
 <div align="center">
 
-**SDD Kit 0.9.9** · 把 SDD 装进仓库
+**SDD Kit 0.10.0** · 把 SDD 装进仓库
 
 </div>

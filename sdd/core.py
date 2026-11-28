@@ -1481,6 +1481,7 @@ PROTECTED_FILES = (
     "sdd/__init__.py",
     "sdd/__main__.py",
     "sdd/agents.py",
+    "sdd/bootstrap.py",
     "sdd/cli.py",
     "sdd/core.py",
     "sdd/view.py",
@@ -1518,14 +1519,19 @@ def protected_files(root: str | Path) -> list[Path]:
     return sorted(files)
 
 
-def write_manifest(root: str | Path) -> dict[str, Any]:
+def manifest_payload(root: str | Path) -> dict[str, Any]:
     base = Path(root).expanduser().resolve()
     version = (base / "sdd" / "VERSION").read_text(encoding="utf-8").strip()
     files = {
         path.relative_to(base).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
         for path in protected_files(base)
     }
-    payload = {"kind": "manifest", "version": version, "files": files}
+    return {"kind": "manifest", "version": version, "files": files}
+
+
+def write_manifest(root: str | Path) -> dict[str, Any]:
+    base = Path(root).expanduser().resolve()
+    payload = manifest_payload(base)
     path = base / "sdd" / "manifest.json"
     path.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",

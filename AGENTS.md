@@ -83,7 +83,7 @@ python -m sdd manifest --write
 - `l2-standard` 正常流程只有两个人工检查点：Spec 确认、交付确认；
   交付确认后才创建 PR，PR 的审核合并由管理员在 GitHub 完成；
   `l2-strict` 的 G0–G5 全部需要人工确认。
-- 首次接入由平台团队执行一次 `bootstrap.py`；开发者 clone 后不需要初始化。
+- 首次接入由平台团队执行一次 `sdd init`；旧入口 `bootstrap.py` 保留为兼容 shim。
 
 ## 1. 每次会话先恢复
 
