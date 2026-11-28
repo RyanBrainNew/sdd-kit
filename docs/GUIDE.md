@@ -704,9 +704,30 @@ Spec，并在没有其他人工事项时生成 `review_warning` 待办。`metric
 需要只读可视化时运行：
 
 ```powershell
+# 跨 Spec 总览：默认终端摘要，不写文件
+python -m sdd dashboard
+
+# 给 Agent / CI 消费的稳定 JSON
+python -m sdd dashboard --json
+python -m sdd dashboard --since 2026-11-01 --json
+
+# 离线 HTML 看板和每个 Spec 的详情页
+python -m sdd dashboard --html
+python -m sdd dashboard --html --out .sdd/runtime/share/board.html --open
+
+# 只生成看板，不生成详情页
+python -m sdd dashboard --html --no-detail
+
+# 单 Spec 深挖
 python -m sdd view --spec SPEC-ORDER-001 `
   --out .sdd/runtime/view/SPEC-ORDER-001.html
 ```
+
+`sdd dashboard` 只聚合 `board` / `metrics` / `inbox` / `events` 已有结果，不重新
+计算 Gate 或状态迁移；默认 HTML 位于 `.sdd/runtime/dashboard/index.html`，详情页
+位于 `.sdd/runtime/view/<spec>.html`。指定 `--out` 时，详情页写到输出文件同目录的
+`view/` 下。`--out` 只能落在 `.sdd/runtime/`，所有派生文件都不进入 `docs/specs`；
+`--no-color` 和重定向到非 TTY 时会关闭 ANSI，`--since` 原样传给 `metrics`。
 
 `sdd view` 生成单文件 HTML，只读展示状态、Gate、证据和下一步；它不写
 `state.json`，也不替代 `board` 的文本/JSON 输出。

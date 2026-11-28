@@ -78,6 +78,10 @@ state、events、change-set 或任何文件。
 `.sdd/runtime/view/<spec>.html`；它只消费 status/events/board 与 Gate 记录，
 不写审计文件，也不提供任何交互动作。
 
+需要跨 Spec 查看整体进度时，可运行只读 `python -m sdd dashboard`。它只聚合
+`board` / `metrics` / `inbox` / `events` 已有结果，可加 `--json` 或 `--html`；
+HTML 只写入 `.sdd/runtime/`，不重新计算 Gate 规则，也不提供任何写操作。
+
 仓库预设发布新版本后，只有人类可以执行
 `python -m sdd upgrade-workflow --spec <spec> --to <name>@<version> --reason "..." --human`。
 升级会替换 `workflow.json`、更新 `state.workflow` 并在 `workflow_history`

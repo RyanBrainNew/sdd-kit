@@ -141,18 +141,20 @@ CI 执行同一组命令。核心被改、托管块漂移、工件缺失或证�
 | 预设升级 | `sdd upgrade-workflow --to <name>@<version> --human` | 人 |
 | 范围变化 / 回退 / 解阻 / 豁免 | `sdd reapprove` · `sdd rewind` · `sdd unblock` · `sdd waive` | 人 |
 | 校验 | `sdd check --all --stage ci` | CI |
-| 观察与追溯 | `sdd board` · `sdd inbox` · `sdd metrics` · `sdd events` · `sdd trace` · `sdd view` | 人 / Agent |
+| 观察与追溯 | `sdd dashboard` · `sdd board` · `sdd inbox` · `sdd metrics` · `sdd events` · `sdd trace` · `sdd view` | 人 / Agent |
 
 ## 当前版本 0.10.0
 
 0.10.0 统一仓库初始化入口为 `sdd init`，新增 install / repair 两种模式、幂等执行、
 `--dry-run` 与稳定 JSON 输出，并保留 `python bootstrap.py` 作为兼容 shim。
+同时加入跨 Spec 的只读总览看板 `dashboard`：默认终端摘要，`--json` 提供结构化
+输出，`--html` 生成可离线打开的单文件看板与详情页。
 0.9.9 的固定预设升级 `upgrade-workflow`、0.9.8 的只读 HTML 视图与 0.9.x 的追溯、
 豁免和审计能力保持不变。
 
 | 状态 | 内容 |
 |---|---|
-| 已交付 | [只读 HTML 视图 #1](https://github.com/RyanBrainNew/sdd-kit/issues/1) · [外部 Runner 契约 #2](https://github.com/RyanBrainNew/sdd-kit/issues/2) · [固定预设升级 #3](https://github.com/RyanBrainNew/sdd-kit/issues/3) · [治理闭环 #8](https://github.com/RyanBrainNew/sdd-kit/issues/8) |
+| 已交付 | [只读 HTML 视图 #1](https://github.com/RyanBrainNew/sdd-kit/issues/1) · [外部 Runner 契约 #2](https://github.com/RyanBrainNew/sdd-kit/issues/2) · [固定预设升级 #3](https://github.com/RyanBrainNew/sdd-kit/issues/3) · [治理闭环 #8](https://github.com/RyanBrainNew/sdd-kit/issues/8) · [总览看板 #31](https://github.com/RyanBrainNew/sdd-kit/issues/31) |
 | 总纲 | [轻量、可自定义、全链路可溯源的执行内核 #7](https://github.com/RyanBrainNew/sdd-kit/issues/7) |
 
 未开发能力不会出现在命令表里，也不会在站点上冒充已交付。
@@ -185,6 +187,7 @@ sdd/
   bootstrap.py             # sdd init 的 install / repair 实现
   core.py                  # 会话指针与 CLI 编排
   cli.py                   # python -m sdd
+  dashboard.py             # 跨 Spec 只读总览
   workflows/               # l2-standard / l2-hotfix / l2-strict / l2-refactor
   templates/               # 六个阶段骨架
   prompts/                 # Agent 方法层
@@ -221,7 +224,7 @@ tests/                     # 单元、CLI、站点与集成测试
 - **开发**：`design.md` → `tasks.md` → `context.md` / `decisions.md`，重点看边界、依赖和取舍。
 - **审计 / 复盘**：`verification-evidence.jsonl` → `gates.md` → `events.jsonl` → `state.json`，重点看命令、退出码、产物哈希和审批链。
 
-不想直接读 JSON 时，用 `python -m sdd view --spec <spec>` 看只读 HTML；`python -m sdd board` 看整体进度；`python -m sdd events --spec <spec>` 看审计链；`python -m sdd trace --test/--ac/--commit ...` 反查 test、AC、commit 到 Spec 的链路。
+不想直接读 JSON 时，用 `python -m sdd dashboard` 看跨 Spec 总览，用 `python -m sdd view --spec <spec>` 看单 Spec 详情；`python -m sdd board` 看整体进度；`python -m sdd events --spec <spec>` 看审计链；`python -m sdd trace --test/--ac/--commit ...` 反查 test、AC、commit 到 Spec 的链路。
 
 `gates.md` 是摘要；详细检查在 `sdd/reports/<Spec ID>/gateN-report.md`。`change-set.md`、`review-findings.json`、`history/` 只在变更审批、独立审查或回退时出现。
 

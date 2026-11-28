@@ -115,6 +115,9 @@ python -m sdd start-work --work-item srdcloud-553377 --title "紧急修复" --wo
 python -m sdd start-work --work-item srdcloud-553377 --title "存量重构" --workflow l2-refactor --risk medium --json
 
 # 查看
+python -m sdd dashboard
+python -m sdd dashboard --json
+python -m sdd dashboard --html --no-detail
 python -m sdd board
 python -m sdd inbox --stale-days 7
 python -m sdd metrics --json
@@ -158,6 +161,12 @@ python -m sdd check --all --stage ci --check-git
 文本工件按 LF 规范化后计算哈希；校验兼容历史 CRLF 哈希，正文变化仍会阻断。
 `--check-git` 只要求未合并 Spec 的最近提交带 `Spec-Id` trailer；已 `MERGED`
 的历史 Spec 以 `state.json` 审计记录为准，不受 20 个提交窗口限制。
+
+`dashboard` 是跨 Spec 的只读总览，默认输出终端摘要；`--json` 输出稳定结构，
+`--html` 生成离线单文件看板并默认附带每个 Spec 的 `sdd view` 详情页。
+`--out` 只能指向 `.sdd/runtime/` 下，`--no-detail` 可关闭详情页，`--since`
+透传给 `metrics`，`--open` 使用标准库 `webbrowser` 打开。看板不计算 Gate 规则，
+也不提供审批或写操作。
 
 工作流预设包括 `l2-standard`、`l2-hotfix`、`l2-strict` 三个 schema 1 预设，
 以及 schema 2 的 `l2-refactor`。Spec 创建时会把
