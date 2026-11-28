@@ -711,6 +711,55 @@ python -m sdd view --spec SPEC-ORDER-001 `
 `sdd view` 生成单文件 HTML，只读展示状态、Gate、证据和下一步；它不写
 `state.json`，也不替代 `board` 的文本/JSON 输出。
 
+### 6.11 进陌生仓库：只读事实地图
+
+第一次进入一个仓库、还没有 Spec，或者要同时看一组微服务时，先运行：
+
+```powershell
+# 当前目录；默认只做文件清单和 manifest 解析
+python -m sdd explorer --json
+
+# 指定多个仓库；--repo 可重复
+python -m sdd explorer --repo ..\order-api --repo ..\order-web --json
+
+# 显式多仓清单：id、path、role、depends_on
+python -m sdd explorer --workspace ..\workspace.json --json
+
+# 需要读取入口/契约文件时加 --deep；需要留存报告时加 --out
+python -m sdd explorer --workspace ..\workspace.json --deep --out explorer.md
+```
+
+多仓清单使用 JSON，相对路径按清单文件所在目录解析：
+
+```json
+{
+  "version": 1,
+  "repos": [
+    {"id": "order-api", "path": "../order-api", "role": "service"},
+    {
+      "id": "order-web",
+      "path": "../order-web",
+      "role": "frontend",
+      "depends_on": ["order-api"]
+    }
+  ]
+}
+```
+
+`explorer` 是只读观察，不是 SDD 阶段，也不会出现在 `next.action` 里：
+
+- 不要求目标仓库已接入 SDD，可在 `bootstrap.py` / `sdd init` 之前运行；
+- 不写 `state.json`、`events.jsonl`、`docs/specs`，默认不写任何文件；
+- 唯一的写操作是显式 `--out`；扩展名 `.json` 写 JSON，其他写 Markdown；
+- 只访问显式给出的目录，不访问网络、不 clone、不执行 build/test/install；
+- 不读 `.env`、`*.pem`、`*.key`、`credentials*`、`secrets*` 的内容，只记录存在性；
+- 默认不跟随符号链接；单文件读取受 `--max-file-bytes` 限制，文件总数受 `--max-files` 限制；
+- 每条技术栈、入口、测试、契约和关系事实都带 `evidence`（仓库相对路径），多仓时前缀 `repo_id/`；
+- 输出按稳定规则排序，除 `generated_at` 外同一输入可复现。
+
+`explorer` 的结果是候选事实，不替代 `sdd context` 或 `context_bundle`。把确认过的事实
+手工写进 `sdd/context/` 或当前 Spec 的 `context.md`，未决问题写进 `unknowns.md`。
+
 ---
 
 ## 7. `AGENTS.md` 托管块与冲突规则
@@ -838,6 +887,8 @@ docs/specs/<id>/unknowns.md  # 未决问题
 ```
 
 Agent 在写 Spec/Design 前先读这些内容，把调研事实写进当前 Spec 的 `context.md`。
+仓库还没有维护这些内容时，先跑 `python -m sdd explorer --json` 得到带证据的
+候选事实和缺口；explorer 不会自动写入 `sdd/context/`。
 
 最小启动顺序：
 
@@ -1011,6 +1062,7 @@ sdd/
   agent-contract.md           # SDD 详细契约
   core.py                     # Workspace 编排 + 会话指针
   cli.py                      # python -m sdd 入口
+  explorer.py                 # 只读单仓/多仓事实地图
   scripts/sdd.py              # 唯一状态机
   templates/                  # Spec/Design/Tasks/Verification/Gates
   prompts/                    # Agent 各阶段提示词

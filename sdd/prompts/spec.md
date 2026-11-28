@@ -2,7 +2,8 @@
 
 目标：把工作项需求变成一份可验收、可拆任务、可测试的 `spec.md`，并满足公司 Gate 0/G1 的工件要求。
 
-1. 读工作项/原始需求、仓库 `AGENTS.md`、`docs/prd-index.md`、相关领域文档和代码。
+1. 读工作项/原始需求、仓库 `AGENTS.md`、`docs/prd-index.md`、相关领域文档和代码；
+   陌生仓库可先运行 `python -m sdd explorer --json` 获取带 `evidence` 的候选事实。
 2. 使用项目术语，不要发明同义词；需求有歧义时不要猜，标记 `[NEEDS CLARIFICATION]` 并停下问一个阻塞问题。
 3. 元数据中的 Spec ID 必须与目录名一致，工作项 ID 不带前导 `%`；FEAT ID 必须与
    `docs/prd-index.md` 中该 Spec 行一致。

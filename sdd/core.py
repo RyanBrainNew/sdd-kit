@@ -1484,6 +1484,7 @@ PROTECTED_FILES = (
     "sdd/bootstrap.py",
     "sdd/cli.py",
     "sdd/core.py",
+    "sdd/explorer.py",
     "sdd/view.py",
     "sdd/agent-block.md",
     "sdd/agent-contract.md",

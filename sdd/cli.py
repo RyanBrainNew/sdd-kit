@@ -16,6 +16,7 @@ from .core import (
     verify_core,
     write_manifest,
 )
+from .explorer import render_markdown, run_explorer, write_report
 from .scripts import sdd as engine
 from .view import render_view
 
@@ -491,6 +492,64 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=lambda a, w: render_view(w.root, a.spec, a.out))
 
+    p = sub.add_parser(
+        "explorer",
+        aliases=["explore"],
+        help="read-only scan one or more repositories",
+    )
+    explorer_source = p.add_mutually_exclusive_group()
+    explorer_source.add_argument(
+        "--repo",
+        action="append",
+        default=[],
+        metavar="PATH",
+        help="repository path; repeat for multiple repositories",
+    )
+    explorer_source.add_argument(
+        "--workspace",
+        metavar="FILE",
+        help="JSON workspace manifest with explicit repository ids",
+    )
+    p.add_argument("--depth", type=int, help="maximum path depth; 1 is root files")
+    p.add_argument(
+        "--max-files",
+        type=int,
+        default=20000,
+        help="maximum files to inspect; default: 20000",
+    )
+    p.add_argument(
+        "--max-file-bytes",
+        type=int,
+        default=262144,
+        help="maximum bytes read from one file; default: 262144",
+    )
+    p.add_argument(
+        "--include",
+        action="append",
+        default=[],
+        metavar="GLOB",
+        help="only include matching repository-relative paths; repeatable",
+    )
+    p.add_argument(
+        "--exclude",
+        action="append",
+        default=[],
+        metavar="GLOB",
+        help="exclude matching repository-relative paths; repeatable",
+    )
+    p.add_argument(
+        "--deep",
+        action="store_true",
+        help="also read bounded entry, config and contract files",
+    )
+    p.add_argument(
+        "--out",
+        metavar="PATH",
+        help="write a Markdown or .json report; default: no file",
+    )
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(_explorer=True)
+
     p = sub.add_parser("check", help="validate artifacts")
     p.add_argument("--spec")
     p.add_argument("--all", action="store_true")
@@ -800,6 +859,39 @@ def _verify_payload(
     return payload
 
 
+def _run_explorer(args: argparse.Namespace) -> dict[str, Any]:
+    payload = run_explorer(
+        repos=args.repo,
+        workspace=args.workspace,
+        root=Path(args.root) if args.root else Path.cwd(),
+        depth=args.depth,
+        max_files=args.max_files,
+        max_file_bytes=args.max_file_bytes,
+        includes=args.include,
+        excludes=args.exclude,
+        deep=args.deep,
+    )
+    if args.out:
+        out = Path(args.out).expanduser()
+        report_format = write_report(payload, out)
+        if args.json:
+            _print_json(payload)
+        else:
+            summary = payload["summary"]
+            print(
+                f"[sdd] explorer scanned {summary['repos']} repo(s), "
+                f"{summary['files']} file(s), "
+                f"{summary['contracts']} contract(s), "
+                f"{summary['risks']} risk(s)"
+            )
+            print(f"[sdd] explorer report written: {out} ({report_format})")
+    elif args.json:
+        _print_json(payload)
+    else:
+        print(render_markdown(payload), end="")
+    return payload
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "init":
@@ -823,6 +915,9 @@ def main(argv: list[str] | None = None) -> int:
         _emit(args, payload)
         return 0 if payload.get("ok") else 1
     try:
+        if getattr(args, "_explorer", False):
+            payload = _run_explorer(args)
+            return 0 if payload.get("ok", True) else 1
         workspace = _workspace(args)
         payload = args.func(args, workspace)
         if payload is None:
@@ -835,6 +930,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     except (SddCommandError, ValueError, FileNotFoundError, OSError) as exc:
         payload = {"ok": False, "errors": [str(exc)]}
+        if getattr(args, "_explorer", False):
+            payload["kind"] = "explorer"
+            payload["schema_version"] = 1
         if getattr(args, "json", False):
             _print_json(payload)
         else:
