@@ -110,6 +110,9 @@ python -m sdd inbox --stale-days 7
 python -m sdd metrics --json
 python -m sdd events --spec SPEC-ORDER-001 --json
 python -m sdd view --spec SPEC-ORDER-001
+python -m sdd explorer --json
+python -m sdd explorer --repo ..\order-api --repo ..\order-web --json
+python -m sdd explorer --workspace ..\workspace.json --deep --out explorer.md
 python -m sdd current --json
 python -m sdd status --json
 python -m sdd next --json
@@ -144,6 +147,12 @@ python -m sdd verify-core
 python -m sdd verify-agent
 python -m sdd check --all --stage ci --check-git
 ```
+
+`explorer`（别名 `explore`）是只读观察，不参与阶段和 Gate：默认扫描当前目录，
+`--repo` 可重复或 `--workspace` 读取 JSON 多仓清单；不写 `state.json` /
+`events.jsonl`，默认不写文件，只有 `--out` 写报告。每条技术栈、入口、测试、
+契约和关系事实都带仓库相对 `evidence`；`--deep` 才会额外读取入口和契约文件。
+它不替代 `sdd context` 或 `context_bundle`。
 
 文本工件按 LF 规范化后计算哈希；校验兼容历史 CRLF 哈希，正文变化仍会阻断。
 `--check-git` 只要求未合并 Spec 的最近提交带 `Spec-Id` trailer；已 `MERGED`
@@ -222,6 +231,12 @@ PR 审核时看：
 - 高风险变更是否有对应 Gate 记录。
 
 ## 8. 多微服务上下文
+
+进入陌生仓库或一组微服务时，先跑只读事实地图，再读人工维护的上下文：
+
+```powershell
+python -m sdd explorer --workspace ..\workspace.json --json
+```
 
 Agent 在写 Spec/Design 前先读：
 

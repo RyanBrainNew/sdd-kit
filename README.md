@@ -8,7 +8,7 @@
 Agent 按 `next.action` 推进，CLI 在每次提交时校验，CI 做最终硬校验；人在 SDD 流程内只做两个决定：确认 Spec，确认交付。
 
 [![tests](https://github.com/RyanBrainNew/sdd-kit/actions/workflows/tests.yml/badge.svg)](https://github.com/RyanBrainNew/sdd-kit/actions/workflows/tests.yml)
-![version](https://img.shields.io/badge/version-0.9.9-5ee7a8)
+![version](https://img.shields.io/badge/version-0.10.0-5ee7a8)
 ![python](https://img.shields.io/badge/python-3.11%2B-3776AB)
 ![license](https://img.shields.io/badge/license-Apache--2.0-5ee7a8)
 [![site](https://img.shields.io/badge/site-GitHub%20Pages-5ee7a8)](https://ryanbrainnew.github.io/sdd-kit/)
@@ -116,15 +116,15 @@ CI 执行同一组命令。核心被改、托管块漂移、工件缺失或证�
 | 预设升级 | `sdd upgrade-workflow --to <name>@<version> --human` | 人 |
 | 范围变化 / 回退 / 解阻 / 豁免 | `sdd reapprove` · `sdd rewind` · `sdd unblock` · `sdd waive` | 人 |
 | 校验 | `sdd check --all --stage ci` | CI |
-| 观察与追溯 | `sdd board` · `sdd inbox` · `sdd metrics` · `sdd events` · `sdd trace` · `sdd view` | 人 / Agent |
+| 观察与追溯 | `sdd board` · `sdd inbox` · `sdd metrics` · `sdd events` · `sdd trace` · `sdd view` · `sdd explorer` | 人 / Agent |
 
-## 当前版本 0.9.9
+## 当前版本 0.10.0
 
-0.9.9 加入固定预设升级 `upgrade-workflow`。0.9.8 的只读 HTML 视图、外部 runner 契约、按测试/AC/commit 追溯的 `trace`、人工豁免、审批后 `change-set` 与全量 commit 审计均已在 0.9.x 交付。
+0.10.0 加入只读仓库事实地图 `sdd explorer`（别名 `sdd explore`），可在 `sdd init` 之前扫描单仓或多仓，输出带 `evidence` 的 JSON/Markdown。0.9.9 的固定预设升级、0.9.8 的只读 HTML 视图、外部 runner 契约、按测试/AC/commit 追溯的 `trace`、人工豁免、审批后 `change-set` 与全量 commit 审计均已交付。
 
 | 状态 | 内容 |
 |---|---|
-| 已交付 | [只读 HTML 视图 #1](https://github.com/RyanBrainNew/sdd-kit/issues/1) · [外部 Runner 契约 #2](https://github.com/RyanBrainNew/sdd-kit/issues/2) · [固定预设升级 #3](https://github.com/RyanBrainNew/sdd-kit/issues/3) · [治理闭环 #8](https://github.com/RyanBrainNew/sdd-kit/issues/8) |
+| 已交付 | [只读 HTML 视图 #1](https://github.com/RyanBrainNew/sdd-kit/issues/1) · [外部 Runner 契约 #2](https://github.com/RyanBrainNew/sdd-kit/issues/2) · [固定预设升级 #3](https://github.com/RyanBrainNew/sdd-kit/issues/3) · [治理闭环 #8](https://github.com/RyanBrainNew/sdd-kit/issues/8) · [只读仓库事实地图 #30](https://github.com/RyanBrainNew/sdd-kit/issues/30) |
 | 总纲 | [轻量、可自定义、全链路可溯源的执行内核 #7](https://github.com/RyanBrainNew/sdd-kit/issues/7) |
 
 未开发能力不会出现在命令表里，也不会在站点上冒充已交付。
@@ -156,6 +156,7 @@ sdd/
   scripts/sdd.py           # 唯一状态机
   core.py                  # 会话指针与 CLI 编排
   cli.py                   # python -m sdd
+  explorer.py              # 只读单仓/多仓事实地图
   workflows/               # l2-standard / l2-hotfix / l2-strict / l2-refactor
   templates/               # 六个阶段骨架
   prompts/                 # Agent 方法层
@@ -246,6 +247,6 @@ Copyright 2026 RyanBrainNew
 
 <div align="center">
 
-**SDD Kit 0.9.9** · 把 SDD 装进仓库
+**SDD Kit 0.10.0** · 把 SDD 装进仓库
 
 </div>

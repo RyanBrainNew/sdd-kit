@@ -28,6 +28,8 @@ sdd_session(project)
    `next.artifact` 和 `next.done_when`。`decision_required=true` 时不要继续编码，
    先把 `question` 和 `options` 交给人类。
 2. 如果是调研阶段，先调用 `sdd_context`，再读相关代码、测试、接口契约和 ADR；
+   首次进入仓库或缺少上下文时，可先运行 `python -m sdd explorer --json`
+   获取带 `evidence` 的候选事实；explorer 不是阶段，不写状态；
    把事实、调用链、风险写进 `context.md`，把未决问题写进 `unknowns.md`。
    这两个文件用 `sdd_submit_artifact` 提交，它们不会推进状态。
 3. 生成 `next.artifact` 要求的内容，严格使用仓库模板和真实代码事实。

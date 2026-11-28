@@ -24,6 +24,19 @@ python -m sdd resume --json
 `resume` 优先读取 `.sdd/runtime/sessions/` 中当前会话的任务指针。  
 一个仓库可以同时有多个活跃 Spec；不同会话各自绑定自己的 Spec。
 
+进入陌生仓库、还没有 Spec，或需要同时看多个仓库时，可以先运行只读事实地图：
+
+```powershell
+python -m sdd explorer --json
+python -m sdd explorer --repo ..\order-api --repo ..\order-web --json
+python -m sdd explorer --workspace ..\workspace.json --json
+```
+
+`explorer` 不是 SDD 阶段，不进入 `next.action`，不写 `state.json` /
+`events.jsonl` / `docs/specs`，默认不写文件。它只给 `context.md`、
+`unknowns.md` 和 `sdd/context/` 提供带 `evidence` 的候选事实，不替代
+`sdd context` 或 `context_bundle`。
+
 ## 2. 自动循环
 
 1. 读取 `next.action`、`next.step_id`、`next.kind`、`next.prompt_file`、
