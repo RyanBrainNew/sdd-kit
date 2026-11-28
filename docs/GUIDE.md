@@ -372,6 +372,21 @@ Agent 只消费 `next.action`，产出后用 `next.submit_with` 提交；CLI 重
 
 ### 5.1 一条命令
 
+Windows 上其他人可以先用 `irm` 安装 `sdd` 命令（需要 Python 3.11+，不需要 pip 或 Node）：
+
+```powershell
+irm https://raw.githubusercontent.com/RyanBrainNew/sdd-kit/main/install.ps1 | iex
+
+cd D:\repos\order-api
+sdd init --project order-api --test-command "python -m pytest -q" --ci gitlab
+```
+
+安装脚本优先下载最新 GitHub Release 的 `sdd-kit.zip`，没有 Release 时回退到
+`main` 源码包；默认安装到 `%LOCALAPPDATA%\sdd-kit`，并把 `bin\` 加入用户
+`PATH`。离线环境用 `-SourcePath <kit>`。
+
+在 sdd-kit 源码目录内也可以直接初始化：
+
 ```powershell
 python -m sdd init --target "D:\repos\order-api" --project order-api `
   --test-command "python -m pytest -q" --ci gitlab

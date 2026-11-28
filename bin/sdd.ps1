@@ -5,5 +5,10 @@ if ($env:PYTHONPATH) {
 } else {
     $env:PYTHONPATH = $kitRoot
 }
-python -m sdd @args
+$python = Get-Command python -ErrorAction SilentlyContinue
+if ($python) {
+    & $python.Source -m sdd @args
+} else {
+    & py -3 -m sdd @args
+}
 exit $LASTEXITCODE

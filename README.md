@@ -65,6 +65,21 @@ Agent 每次会话先运行 `python -m sdd resume --json`，读取唯一的 `nex
 
 ## 快速开始
 
+### 0. Windows：其他人一行安装
+
+需要 Python 3.11+；不需要 pip、Node 或手动 clone。
+
+```powershell
+irm https://raw.githubusercontent.com/RyanBrainNew/sdd-kit/main/install.ps1 | iex
+
+cd D:\repos\order-api
+sdd init --test-command "python -m pytest -q" --ci gitlab
+```
+
+安装脚本优先使用最新 GitHub Release 的 `sdd-kit.zip`，没有 Release 时回退到
+`main` 源码包；它把 kit 安装到 `%LOCALAPPDATA%\sdd-kit` 并把 `bin\` 加入用户
+`PATH`。离线环境可用 `-SourcePath <kit>` 本地安装。
+
 ### 1. 平台团队：每个仓库接入一次
 
 ```powershell

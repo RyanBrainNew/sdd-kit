@@ -24,11 +24,14 @@
 接入：
 
 ```powershell
+irm https://raw.githubusercontent.com/RyanBrainNew/sdd-kit/main/install.ps1 | iex
+
 cd D:\repos\order-api
 sdd init --test-command "python -m pytest -q" --ci gitlab
 ```
 
-没有 console script 时，从 sdd-kit 源码执行
+安装脚本优先使用最新 GitHub Release，缺少 Release 时回退到 `main`；需要
+Python 3.11+，不需要 pip 或 Node。没有 console script 时，从 sdd-kit 源码执行
 `python -m sdd init --target D:\repos\order-api --test-command "python -m pytest -q" --ci gitlab`。
 `--project` 默认取目录名，不写即可；已接入仓库重复执行是幂等的。
 

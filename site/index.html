@@ -218,11 +218,12 @@
         </div>
         <div class="quick-grid">
           <article class="quick-card">
-            <span class="quick-step">平台团队 · 每仓库一次</span>
+            <span class="quick-step">平台团队 · 安装一次，每仓库 init 一次</span>
             <h3>接入</h3>
             <div class="code">
               <div class="code-bar"><span>powershell</span><button class="copy" type="button" data-copy>复制</button></div>
-              <pre><code>sdd init</code></pre>
+              <pre><code>irm https://raw.githubusercontent.com/RyanBrainNew/sdd-kit/main/install.ps1 | iex
+sdd init</code></pre>
             </div>
           </article>
           <article class="quick-card">

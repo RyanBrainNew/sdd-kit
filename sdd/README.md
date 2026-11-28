@@ -28,6 +28,15 @@
 `approve`、`reapprove`、`merge`、`unblock` 都强制 `--human`；Agent 不得代替。
 旧入口 `python bootstrap.py ...` 仍可用，但会打印弃用提示并调用同一实现。
 
+Windows 一行安装（需要 Python 3.11+）：
+
+```powershell
+irm https://raw.githubusercontent.com/RyanBrainNew/sdd-kit/main/install.ps1 | iex
+```
+
+安装后直接在业务仓库执行 `sdd init`；安装脚本默认写入
+`%LOCALAPPDATA%\sdd-kit` 并把 `bin\` 加入用户 `PATH`。
+
 ## 2. Agent 会话开始
 
 所有命令在仓库根目录执行。
