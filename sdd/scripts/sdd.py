@@ -9848,7 +9848,29 @@ def command_start(
 def command_init(
     args: argparse.Namespace, root: Path, config: dict[str, Any]
 ) -> int:
+    json_mode = bool(getattr(args, "json", False))
+    actions: list[dict[str, Any]] = []
+    warnings: list[str] = []
+    preserved: list[str] = []
+
+    def say(message: str) -> None:
+        if not json_mode:
+            print(message)
+
+    layout_paths = (
+        spec_root(root, config),
+        report_root(root, config),
+        prd_index_path(root, config).parent,
+    )
+    missing_layout = [path for path in layout_paths if not path.exists()]
     ensure_layout(root, config)
+    for path in missing_layout:
+        actions.append(
+            {
+                "action": "create-layout",
+                "path": path.relative_to(root).as_posix(),
+            }
+        )
     index = prd_index_path(root, config)
     if not index.exists():
         write_text(
@@ -9861,11 +9883,24 @@ def command_init(
             "| 工作项 ID | PRD 链接/路径 | PRD 版本 | FEAT | Spec ID | 摘要 | 澄清标记 |\n"
             "| --- | --- | --- | --- | --- | --- | --- |\n",
         )
-        print(f"[sdd] created {index.relative_to(root)}")
+        actions.append(
+            {
+                "action": "create-prd-index",
+                "path": index.relative_to(root).as_posix(),
+            }
+        )
+        say(f"[sdd] created {index.relative_to(root)}")
     if args.prd_mode:
         config["prd_mode"] = args.prd_mode
         write_json(root / "sdd" / "config.json", config)
-        print(f"[sdd] prd_mode -> {args.prd_mode}")
+        actions.append(
+            {
+                "action": "update-config",
+                "path": "sdd/config.json",
+                "key": "prd_mode",
+            }
+        )
+        say(f"[sdd] prd_mode -> {args.prd_mode}")
 
     if args.hooks:
         hooks_dir = root / ".githooks"
@@ -9873,61 +9908,114 @@ def command_init(
         for name in ("pre-commit", "commit-msg"):
             source = root / "sdd" / "hooks" / name
             target = hooks_dir / name
+            relative = target.relative_to(root).as_posix()
             if not source.is_file():
                 raise SddError(f"缺少 hook 模板：{source.relative_to(root)}")
             if target.exists() and not args.force:
-                print(f"[sdd] keep existing {target.relative_to(root)}")
+                preserved.append(relative)
+                say(f"[sdd] keep existing {target.relative_to(root)}")
             else:
                 write_text(target, read_text(source))
                 try:
                     target.chmod(0o755)
                 except OSError:
                     pass
-                print(f"[sdd] wrote {target.relative_to(root)}")
+                actions.append({"action": "install-hook", "path": relative})
+                say(f"[sdd] wrote {target.relative_to(root)}")
         if (root / ".git").exists():
-            result = subprocess.run(
-                ["git", "config", "core.hooksPath", ".githooks"],
+            current = subprocess.run(
+                ["git", "config", "--get", "core.hooksPath"],
                 cwd=root,
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
                 errors="replace",
             )
-            if result.returncode == 0:
-                print("[sdd] git core.hooksPath = .githooks")
+            if (
+                current.returncode == 0
+                and current.stdout.strip() == ".githooks"
+            ):
+                say("[sdd] git core.hooksPath already .githooks")
             else:
-                print("[sdd] 未能自动设置 core.hooksPath，请手动执行：")
-                print("       git config core.hooksPath .githooks")
+                result = subprocess.run(
+                    ["git", "config", "core.hooksPath", ".githooks"],
+                    cwd=root,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                )
+                if result.returncode == 0:
+                    actions.append(
+                        {"action": "set-git-hooks", "path": ".githooks"}
+                    )
+                    say("[sdd] git core.hooksPath = .githooks")
+                else:
+                    warnings.append(
+                        "未能自动设置 core.hooksPath；请手动执行 "
+                        "git config core.hooksPath .githooks"
+                    )
+                    say("[sdd] 未能自动设置 core.hooksPath，请手动执行：")
+                    say("       git config core.hooksPath .githooks")
         else:
-            print("[sdd] 当前不是 Git 仓库；提交前请配置 .githooks")
+            warnings.append("当前不是 Git 仓库；提交前请配置 .githooks")
+            say("[sdd] 当前不是 Git 仓库；提交前请配置 .githooks")
 
     if args.ci in {"github", "both"}:
         target = root / ".github" / "workflows" / "sdd.yml"
         source = root / "sdd" / "ci" / "github-actions.yml"
+        relative = target.relative_to(root).as_posix()
         if not source.is_file():
             raise SddError(f"缺少 CI 模板：{source.relative_to(root)}")
         if target.exists() and not args.force:
-            print(f"[sdd] keep existing {target.relative_to(root)}")
+            preserved.append(relative)
+            say(f"[sdd] keep existing {target.relative_to(root)}")
         else:
             write_text(target, read_text(source))
-            print(f"[sdd] wrote {target.relative_to(root)}")
+            actions.append({"action": "install-ci", "path": relative})
+            say(f"[sdd] wrote {target.relative_to(root)}")
     if args.ci in {"gitlab", "both"}:
         target = root / ".gitlab-ci.yml"
         source = root / "sdd" / "ci" / "gitlab-ci.yml"
+        relative = target.relative_to(root).as_posix()
         if not source.is_file():
             raise SddError(f"缺少 CI 模板：{source.relative_to(root)}")
         if target.exists() and not args.force:
-            print(f"[sdd] keep existing {target.relative_to(root)}")
-            print("[sdd] 请把 sdd/ci/gitlab-ci.yml 的 job 合并进现有 .gitlab-ci.yml")
+            preserved.append(relative)
+            say(f"[sdd] keep existing {target.relative_to(root)}")
+            say(
+                "[sdd] 请把 sdd/ci/gitlab-ci.yml 的 job "
+                "合并进现有 .gitlab-ci.yml"
+            )
+            warnings.append(
+                "保留现有 .gitlab-ci.yml；请手动合并 "
+                "sdd/ci/gitlab-ci.yml 的 job"
+            )
         else:
             write_text(target, read_text(source))
-            print(f"[sdd] wrote {target.relative_to(root)}")
+            actions.append({"action": "install-ci", "path": relative})
+            say(f"[sdd] wrote {target.relative_to(root)}")
 
-    print("[sdd] init done")
-    print(
-        "[sdd] next: python -m sdd start-work "
-        "--work-item srdcloud-123 --title \"...\" --json"
-    )
+    if json_mode:
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "kind": "init_engine",
+                    "actions": actions,
+                    "warnings": warnings,
+                    "preserved": preserved,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+    else:
+        print("[sdd] init done")
+        print(
+            "[sdd] next: python -m sdd start-work "
+            "--work-item srdcloud-123 --title \"...\" --json"
+        )
     return 0
 
 
@@ -10186,6 +10274,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="PRD authority mode",
     )
     p.add_argument("--force", action="store_true", help="overwrite generated hook/CI files")
+    p.add_argument("--json", action="store_true")
     p.set_defaults(func=command_init)
 
     p = sub.add_parser("new", help="create a new spec")
@@ -10430,7 +10519,23 @@ def main(argv: Optional[list[str]] = None) -> int:
         config = load_config(root)
         return int(args.func(args, root, config))
     except SddError as exc:
-        eprint(f"[sdd] {exc}")
+        if args.command == "init" and getattr(args, "json", False):
+            print(
+                json.dumps(
+                    {
+                        "ok": False,
+                        "kind": "init_engine",
+                        "actions": [],
+                        "warnings": [],
+                        "preserved": [],
+                        "errors": [str(exc)],
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+        else:
+            eprint(f"[sdd] {exc}")
         return 2
 
 

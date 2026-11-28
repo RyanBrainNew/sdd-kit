@@ -27,7 +27,7 @@
 | 约束 | 做法 |
 |---|---|
 | **所有 Agent/IDE 都能接入** | 规则和状态都在仓库里，统一走 `python -m sdd`，不依赖 IDE 插件 |
-| **开发者零初始化** | 平台团队一次性 bootstrap；开发者只 clone，不注册 workflow、不装个人插件 |
+| **开发者零初始化** | 平台团队一次性 `sdd init`；开发者只 clone，不注册 workflow、不装个人插件 |
 | **流程必须能被强制** | Git Hook + CI 校验，不靠 Agent 自觉；人保留 `approve` / `merge` 两个开关 |
 
 对应到公司 SDD 要求，真正要保证的只有五件事：
@@ -51,18 +51,23 @@
 接入时由平台团队执行一次：
 
 ```powershell
-python bootstrap.py --target "D:\repos\order-api" --project order-api `
+python -m sdd init --target "D:\repos\order-api" --project order-api `
   --test-command "python -m pytest -q" --ci gitlab
 ```
 
-`bootstrap.py` 会做这些事：
+安装 console script 后，也可以在业务仓库直接执行 `sdd init`。`sdd init` 会做这些事：
 
-1. 把 `sdd/` 核心复制到业务仓库；
+1. 新仓库复制 `sdd/` 核心；已接入仓库默认只补齐缺失文件；
 2. 保留业务仓库已有的 `sdd/config.json` 项目配置；
 3. 把 SDD 托管块合并进 `AGENTS.md`，**不覆盖**原有规则；
 4. 写入 `sdd/manifest.json`（核心文件哈希）；
 5. 更新 `.gitignore`，忽略 `.sdd/runtime/` 和 Spec ID 分配锁；
-6. 安装 `.githooks/` 和 CI 模板。
+6. 安装 `.githooks/` 和 CI 模板；
+7. 自动运行 `verify-core` / `verify-agent`，失败时非零退出。
+
+重复执行 `sdd init` 是幂等的。`--force` 只刷新核心，保留 `docs/specs/`、
+`sdd/context/`、`sdd/config.json` 以及已有 hooks/CI。旧入口
+`python bootstrap.py --target <repo>` 仍然可用，但会打印弃用提示。
 
 之后开发者只需要：
 
@@ -324,7 +329,7 @@ DRAFT
 | 步骤 | 人做什么 | 命令/产物 |
 |---|---|---|
 | 1 | 选一个试点仓库 | 建议先选一个小型微服务或前端项目 |
-| 2 | 执行 bootstrap | `python bootstrap.py --target ... --project ... --test-command ... --ci ...` |
+| 2 | 执行初始化 | `sdd init --project ... --test-command ... --ci ...`（源码目录用 `python -m sdd init --target ...`） |
 | 3 | 补项目事实 | 在 `AGENTS.md` 写技术栈、构建、测试命令；在 `sdd/config.json` 配 `test_commands` |
 | 4 | 配 CODEOWNERS | `sdd/` 归平台团队 review |
 | 5 | 开接入 PR | CI 通过后合并 |
@@ -367,10 +372,33 @@ Agent 只消费 `next.action`，产出后用 `next.submit_with` 提交；CLI 重
 
 ### 5.1 一条命令
 
+Windows 上其他人可以先用 `irm` 安装 `sdd` 命令（需要 Python 3.11+，不需要 pip 或 Node）：
+
 ```powershell
-python bootstrap.py --target "D:\repos\order-api" --project order-api `
+irm https://raw.githubusercontent.com/RyanBrainNew/sdd-kit/main/install.ps1 | iex
+
+cd D:\repos\order-api
+sdd init --project order-api --test-command "python -m pytest -q" --ci gitlab
+```
+
+安装脚本优先下载最新 GitHub Release 的 `sdd-kit.zip`，没有 Release 时回退到
+`main` 源码包；默认安装到 `%LOCALAPPDATA%\sdd-kit`，并把 `bin\` 加入用户
+`PATH`。离线环境用 `-SourcePath <kit>`。
+
+在 sdd-kit 源码目录内也可以直接初始化：
+
+```powershell
+python -m sdd init --target "D:\repos\order-api" --project order-api `
   --test-command "python -m pytest -q" --ci gitlab
 ```
+
+安装后也可在目标仓库直接执行：
+
+```powershell
+sdd init --test-command "python -m pytest -q" --ci gitlab
+```
+
+兼容入口 `python bootstrap.py --target <repo>` 调用同一实现并打印弃用提示。
 
 参数：
 
@@ -381,7 +409,10 @@ python bootstrap.py --target "D:\repos\order-api" --project order-api `
 | `--test-command` | `sdd verify` 执行的测试命令，可重复 |
 | `--ci` | `none` / `github` / `gitlab` / `both` |
 | `--no-hooks` | 不安装 `.githooks` |
+| `--no-agent` | 不合并 `AGENTS.md` 托管块 |
 | `--force` | 刷新核心，保留 `config.json`、`context/`、`docs/specs/` |
+| `--dry-run` | 只输出计划动作，不写文件 |
+| `--json` | 输出稳定 JSON，包含 mode/actions/warnings/checks |
 
 ### 5.2 接入后检查
 
@@ -403,7 +434,7 @@ python -m sdd check --all --stage ci --check-git
 | 服务卡、契约、ADR、术语 | `sdd/context/` |
 | 当前需求范围、AC、设计 | `docs/specs/<Spec ID>/` |
 
-0.7.0 新增两个默认关闭、`bootstrap.py` 对新仓库默认开启的配置：
+0.7.0 新增两个默认关闭、`sdd init` 对新仓库默认开启的配置：
 
 | 配置 | 作用 |
 |---|---|
@@ -411,7 +442,7 @@ python -m sdd check --all --stage ci --check-git
 | `require_artifact_hash` | Gate 报告必须包含产物哈希；旧报告在升级期只告警 |
 
 0.8.0 起支持 `workflow` 配置和命名预设；0.9.0 增加 Profile v2 与
-`l2-refactor`。`bootstrap.py` 对新仓库写入
+`l2-refactor`。`sdd init` 对新仓库写入
 `l2-standard`。需要项目级覆盖单个 Gate 时使用 `gate_overrides`，不要改预设文件。
 
 不要编造项目事实。Agent 无法从仓库确认时，应先检查代码和配置；仍无法确认，再问一个具体问题。
@@ -735,7 +766,7 @@ python -m sdd explorer --workspace ..\workspace.json --deep --out explorer.md
 
 ### 7.1 托管块
 
-`bootstrap.py` 和 `python -m sdd sync-agent` 只维护：
+`sdd init` 和 `python -m sdd sync-agent` 只维护：
 
 ```text
 <!-- SDD:MANAGED:START -->
@@ -1127,7 +1158,7 @@ python -m sdd check --all --stage ci --check-git
 只跑 CLI 和 AGENTS 相关：
 
 ```powershell
-python -m unittest -v tests.test_cli tests.test_agents tests.test_bootstrap
+python -m unittest -v tests.test_cli tests.test_agents tests.test_bootstrap tests.test_init
 ```
 
 HTTP MCP 冒烟测试：

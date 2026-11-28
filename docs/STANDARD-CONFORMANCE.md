@@ -81,7 +81,7 @@
 |---|---|---|---|---|
 | 轻量、使用简单 | 核心第三方依赖数 | 0 | 检查 `sdd/scripts/*.py` 只导入标准库；MCP 依赖只在可选目录 | 0 |
 | 轻量、使用简单 | 核心常驻服务/数据库 | 0 | 架构检查：CLI 直接读写仓库内文件 | 0 |
-| 轻量、使用简单 | 每仓库 bootstrap 次数 | 1 次 | 平台团队执行一次 `bootstrap.py` 后，开发者 clone 即用 | 1 次 |
+| 轻量、使用简单 | 每仓库 bootstrap 次数 | 1 次 | 平台团队执行一次 `sdd init` 后，开发者 clone 即用 | 1 次 |
 | 轻量、使用简单 | 开发者必记命令数 | 2 个 | Spec 确认 `approve`、PR 合并 `merge`；其余由 Agent 执行 | 2 个 |
 | 可轻松自定义 | 声明式工作流数量 | ≥ 4 | 统计 `sdd/workflows/*.json` | 4 个：`l2-standard`、`l2-hotfix`、`l2-strict`、`l2-refactor` |
 | 可轻松自定义 | 新增工作流所需核心代码改动 | 0 行 | 只用 Profile JSON + `workflow validate` | 0 行；`l2-refactor` 已验证 |

@@ -18,7 +18,7 @@
 
 | 时机 | 人做什么 | 命令 |
 |---|---|---|
-| 仓库接入（平台团队，一次） | 执行 bootstrap、补项目事实、配 CODEOWNERS | `python bootstrap.py ...` |
+| 仓库接入（平台团队，一次） | 执行 `sdd init`、补项目事实、配 CODEOWNERS | `sdd init ...`（源码目录用 `python -m sdd init --target ...`） |
 | 每个需求 | 审 `spec.md` 并确认 | `python -m sdd approve --spec <spec> --human --evidence "需求已确认"` |
 | 审批后范围变化 | 审 change-set 并重新确认 Spec | `python -m sdd reapprove --spec <spec> --human --reason "..." --evidence "需求重新确认"` |
 | 每个需求 | 确认交付 | `python -m sdd merge --spec <spec> --human --evidence "交付已确认"` |
@@ -26,6 +26,16 @@
 | 预设升级 | 确认版本与影响后升级工作流 | `python -m sdd upgrade-workflow --spec <spec> --to <name>@<version> --reason "..." --human` |
 
 `approve`、`reapprove`、`merge`、`unblock` 都强制 `--human`；Agent 不得代替。
+旧入口 `python bootstrap.py ...` 仍可用，但会打印弃用提示并调用同一实现。
+
+Windows 一行安装（需要 Python 3.11+）：
+
+```powershell
+irm https://raw.githubusercontent.com/RyanBrainNew/sdd-kit/main/install.ps1 | iex
+```
+
+安装后直接在业务仓库执行 `sdd init`；安装脚本默认写入
+`%LOCALAPPDATA%\sdd-kit` 并把 `bin\` 加入用户 `PATH`。
 
 ## 2. Agent 会话开始
 
