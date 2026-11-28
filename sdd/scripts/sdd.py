@@ -69,7 +69,7 @@ except ImportError:  # pragma: no cover - package import fallback
         validate_review_findings,
     )
 
-VERSION = "0.9.9"
+VERSION = "0.10.0"
 EVENT_SCHEMA = 2
 
 SPEC_SECTIONS = (
@@ -6267,8 +6267,18 @@ def command_board(args: argparse.Namespace, root: Path, config: dict[str, Any]) 
         else []
     )
     specs: list[dict[str, Any]] = []
+    warnings: list[dict[str, Any]] = []
     for directory in directories:
-        state = load_json(directory / "state.json")
+        try:
+            state = load_json(directory / "state.json")
+        except SddError as exc:
+            warnings.append(
+                {
+                    "spec_dir": directory.relative_to(root).as_posix(),
+                    "message": str(exc),
+                }
+            )
+            continue
         spec_id = str(state.get("spec_id", directory.name))
         try:
             action = build_next_action(root, directory, state)
@@ -6291,6 +6301,9 @@ def command_board(args: argparse.Namespace, root: Path, config: dict[str, Any]) 
                 "spec": spec_id,
                 "title": state.get("title", ""),
                 "state": state.get("state", "UNKNOWN"),
+                "risk": state.get("risk"),
+                "updated_at": state.get("updated_at"),
+                "blocked_reason": state.get("blocked_reason"),
                 "workflow": state.get("workflow"),
                 "next": action,
                 "events_count": len(events),
@@ -6317,6 +6330,12 @@ def command_board(args: argparse.Namespace, root: Path, config: dict[str, Any]) 
         )
 
     payload = {"ok": True, "kind": "board", "specs": specs}
+    if warnings:
+        payload["warnings"] = warnings
+        for warning in warnings:
+            eprint(
+                f"[sdd] warning: {warning['spec_dir']}: {warning['message']}"
+            )
     if args.json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return 0
@@ -6674,8 +6693,18 @@ def command_inbox(args: argparse.Namespace, root: Path, config: dict[str, Any]) 
         else []
     )
     items: list[dict[str, Any]] = []
+    warnings: list[dict[str, Any]] = []
     for directory in directories:
-        state = load_json(directory / "state.json")
+        try:
+            state = load_json(directory / "state.json")
+        except SddError as exc:
+            warnings.append(
+                {
+                    "spec_dir": directory.relative_to(root).as_posix(),
+                    "message": str(exc),
+                }
+            )
+            continue
         item = build_inbox_item(
             root, config, directory, state, args.stale_days
         )
@@ -6694,6 +6723,12 @@ def command_inbox(args: argparse.Namespace, root: Path, config: dict[str, Any]) 
         "generated_at": now(),
         "items": items,
     }
+    if warnings:
+        payload["warnings"] = warnings
+        for warning in warnings:
+            eprint(
+                f"[sdd] warning: {warning['spec_dir']}: {warning['message']}"
+            )
     if args.json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return 0
@@ -6925,8 +6960,18 @@ def command_metrics(
     )
     specs: list[dict[str, Any]] = []
     all_check_rows: list[dict[str, Any]] = []
+    warnings: list[dict[str, Any]] = []
     for directory in directories:
-        state = load_json(directory / "state.json")
+        try:
+            state = load_json(directory / "state.json")
+        except SddError as exc:
+            warnings.append(
+                {
+                    "spec_dir": directory.relative_to(root).as_posix(),
+                    "message": str(exc),
+                }
+            )
+            continue
         item = compute_spec_metrics(
             root, config, directory, state, since
         )
@@ -7040,6 +7085,12 @@ def command_metrics(
             "quality": quality,
         },
     }
+    if warnings:
+        payload["warnings"] = warnings
+        for warning in warnings:
+            eprint(
+                f"[sdd] warning: {warning['spec_dir']}: {warning['message']}"
+            )
     if args.json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return 0

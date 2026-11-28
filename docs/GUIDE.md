@@ -2,7 +2,7 @@
 
 > 本文是 SDD Kit 的完整指南，覆盖接入、架构、命令、MCP 与问答。
 > 项目首页见 [README](../README.md)，架构取舍见 [ARCHITECTURE.md](../ARCHITECTURE.md)。
-> 文中文件路径默认相对仓库根目录。当前版本 0.9.9。
+> 文中文件路径默认相对仓库根目录。当前版本 0.10.0。
 
 ---
 
@@ -15,7 +15,7 @@
 - 可选命名工作流预设：`l2-standard`、`l2-hotfix`、`l2-strict`、`l2-refactor`，Spec 创建时固定版本；
 - MCP 是可选适配器；没有 MCP，`AGENTS.md + CLI + Git Hook + CI` 也能跑完整流程。
 
-当前版本：`0.9.9`。官方 P0–P5 / G0–G5 映射见
+当前版本：`0.10.0`。官方 P0–P5 / G0–G5 映射见
 [标准符合性基线](STANDARD-CONFORMANCE.md)。
 
 ---
@@ -673,9 +673,30 @@ Spec，并在没有其他人工事项时生成 `review_warning` 待办。`metric
 需要只读可视化时运行：
 
 ```powershell
+# 跨 Spec 总览：默认终端摘要，不写文件
+python -m sdd dashboard
+
+# 给 Agent / CI 消费的稳定 JSON
+python -m sdd dashboard --json
+python -m sdd dashboard --since 2026-11-01 --json
+
+# 离线 HTML 看板和每个 Spec 的详情页
+python -m sdd dashboard --html
+python -m sdd dashboard --html --out .sdd/runtime/share/board.html --open
+
+# 只生成看板，不生成详情页
+python -m sdd dashboard --html --no-detail
+
+# 单 Spec 深挖
 python -m sdd view --spec SPEC-ORDER-001 `
   --out .sdd/runtime/view/SPEC-ORDER-001.html
 ```
+
+`sdd dashboard` 只聚合 `board` / `metrics` / `inbox` / `events` 已有结果，不重新
+计算 Gate 或状态迁移；默认 HTML 位于 `.sdd/runtime/dashboard/index.html`，详情页
+位于 `.sdd/runtime/view/<spec>.html`。指定 `--out` 时，详情页写到输出文件同目录的
+`view/` 下。`--out` 只能落在 `.sdd/runtime/`，所有派生文件都不进入 `docs/specs`；
+`--no-color` 和重定向到非 TTY 时会关闭 ANSI，`--since` 原样传给 `metrics`。
 
 `sdd view` 生成单文件 HTML，只读展示状态、Gate、证据和下一步；它不写
 `state.json`，也不替代 `board` 的文本/JSON 输出。

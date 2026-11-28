@@ -15,6 +15,7 @@ from .core import (
     verify_core,
     write_manifest,
 )
+from .dashboard import run_dashboard
 from .scripts import sdd as engine
 from .view import render_view
 
@@ -74,6 +75,9 @@ def _print_human(payload: dict[str, Any]) -> None:
     if payload.get("kind") == "view":
         print(f"[sdd] view written: {payload.get('out')}")
         print(f"[sdd] bytes: {payload.get('bytes')}")
+        return
+    if payload.get("kind") == "dashboard":
+        print(payload.get("terminal", ""))
         return
     if payload.get("kind") == "inbox":
         items = payload.get("items", [])
@@ -248,7 +252,13 @@ def _workspace(args: argparse.Namespace) -> Workspace:
 
 def _emit(args: argparse.Namespace, payload: dict[str, Any]) -> None:
     if getattr(args, "json", False):
-        _print_json(payload)
+        _print_json(
+            {
+                key: value
+                for key, value in payload.items()
+                if key != "terminal"
+            }
+        )
     else:
         _print_human(payload)
 
@@ -454,6 +464,27 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--out", help="output HTML path; default .sdd/runtime/view/<spec>.html")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=lambda a, w: render_view(w.root, a.spec, a.out))
+
+    p = sub.add_parser("dashboard", help="show the read-only cross-Spec dashboard")
+    p.add_argument("--json", action="store_true")
+    p.add_argument("--html", action="store_true")
+    p.add_argument("--out", help="HTML path under .sdd/runtime/")
+    p.add_argument("--open", dest="open_browser", action="store_true")
+    p.add_argument("--since", help="ISO date/datetime passed to metrics")
+    p.add_argument("--no-color", action="store_true")
+    p.add_argument("--no-detail", action="store_true")
+    p.set_defaults(
+        func=lambda a, w: run_dashboard(
+            w.root,
+            since=a.since,
+            json_output=a.json,
+            html_output=a.html,
+            out=a.out,
+            open_browser=a.open_browser,
+            no_color=a.no_color,
+            no_detail=a.no_detail,
+        )
+    )
 
     p = sub.add_parser("check", help="validate artifacts")
     p.add_argument("--spec")
